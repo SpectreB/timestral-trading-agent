@@ -5,7 +5,7 @@ Layout under the audit root (a checkout of the `audit-log` branch in production)
     runs/YYYY-MM-DD_<mode>.json             decision record, written once, never modified
     runs/YYYY-MM-DD_<mode>_reasoning.txt    LLM reasoning trace(s), referenced by the record
     reconciliation/<day or run id>.json     order submission results, fills and realised outcomes
-    tables/{decisions,weights,forecasts,orders}.csv   derived, regenerable at any time
+    tables/{decisions,weights,forecasts,orders,fills}.csv   derived, regenerable at any time
 
 The reasoning file is written first and the JSON last: the JSON's existence means the
 run is complete. Existing files are never overwritten (atomic hard link), so a re-run
@@ -43,7 +43,8 @@ class OrderRecord(BaseModel):
     quantity: float
     limit_price: float | None
     client_order_id: str
-    status: str  # "dry_run", "submitted", "rejected", ...
+    status: str  # "dry_run", "planned", then the broker's status in the reconciliation
+    reference_price: float | None = None  # live price the limit was derived from (slippage base)
 
 
 class RunRecord(BaseModel):
@@ -199,6 +200,17 @@ class FileAuditStore:
         _write_once(path, _dump({"schema_version": SCHEMA_VERSION, "name": name, **payload}))
         return path
 
+    def has_reconciliation(self, name: str) -> bool:
+        return (self.root / "reconciliation" / f"{name}.json").exists()
+
+    def read_reconciliation(self, name: str) -> dict[str, Any] | None:
+        path = self.root / "reconciliation" / f"{name}.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+    def read_fills(self) -> list[dict[str, Any]]:
+        files = sorted((self.root / "reconciliation").glob("*_fills.json"))
+        return [json.loads(f.read_text(encoding="utf-8")) for f in files]
+
     def read_runs(self) -> list[dict[str, Any]]:
         files = sorted((self.root / "runs").glob("*.json"))
         return [json.loads(f.read_text(encoding="utf-8")) for f in files]
@@ -213,6 +225,7 @@ class FileAuditStore:
             "weights.csv": _weights_rows(runs),
             "forecasts.csv": _forecast_rows(runs),
             "orders.csv": _order_rows(runs),
+            "fills.csv": _fill_rows(self.read_fills()),
         }
         paths = []
         for name, (header, rows) in tables.items():
@@ -286,13 +299,32 @@ def _forecast_rows(runs: list[dict[str, Any]]) -> Rows:
 
 
 def _order_rows(runs: list[dict[str, Any]]) -> Rows:
-    header = ["run_id", "symbol", "side", "quantity", "limit_price", "client_order_id", "status"]
+    header = ["run_id", "symbol", "side", "quantity", "limit_price", "reference_price",
+              "client_order_id", "status"]  # fmt: skip
     rows = []
     for r in runs:
         for o in r["orders"]:
             rows.append(
                 [r["run_id"], o["symbol"], o["side"], o["quantity"],
-                 "" if o["limit_price"] is None else o["limit_price"],
+                 _blank(o["limit_price"]), _blank(o.get("reference_price")),
                  o["client_order_id"], o["status"]]
+            )  # fmt: skip
+    return header, rows
+
+
+def _blank(value: Any) -> Any:
+    return "" if value is None else value
+
+
+def _fill_rows(fills: list[dict[str, Any]]) -> Rows:
+    header = ["run_id", "symbol", "side", "quantity", "status", "filled_qty", "avg_fill_price",
+              "reference_price", "slippage_bps", "submitted_at", "filled_at"]  # fmt: skip
+    rows = []
+    for f in fills:
+        for o in f["orders"]:
+            rows.append(
+                [f["run_id"], o["symbol"], o["side"], o["quantity"], o["status"],
+                 o["filled_qty"], _blank(o["avg_fill_price"]), _blank(o["reference_price"]),
+                 _blank(o["slippage_bps"]), _blank(o["submitted_at"]), _blank(o["filled_at"])]
             )  # fmt: skip
     return header, rows

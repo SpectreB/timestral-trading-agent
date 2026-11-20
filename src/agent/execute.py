@@ -21,6 +21,7 @@ from typing import Literal, Protocol, cast
 
 from agent.audit import OrderRecord
 from agent.config import AgentConfig
+from agent.reconcile import OrderState
 from agent.safety import UnsafePortfolioError, final_check
 
 MIN_NOTIONAL = 1.0  # Alpaca minimum for fractional orders, in USD
@@ -89,6 +90,7 @@ class PlannedOrder:
     quantity: float
     limit_price: float
     client_order_id: str
+    reference_price: float
 
 
 @dataclass(frozen=True)
@@ -161,7 +163,7 @@ def _build_orders(
             continue
         limit = ref * (1 + tolerance) if side == "buy" else ref * (1 - tolerance)
         orders.append(
-            PlannedOrder(symbol, side, quantity, round(limit, 2), f"{rid}-{symbol}-{side}")
+            PlannedOrder(symbol, side, quantity, round(limit, 2), f"{rid}-{symbol}-{side}", ref)
         )
     # Sells first: they free the cash the buys need, so the account never leverages.
     return sorted(orders, key=lambda o: (o.side == "buy", o.symbol))
@@ -176,6 +178,7 @@ def order_records(plan: Plan, status: str) -> list[OrderRecord]:
             limit_price=o.limit_price,
             client_order_id=o.client_order_id,
             status=status,
+            reference_price=o.reference_price,
         )
         for o in plan.orders
     ]
@@ -205,6 +208,7 @@ def submit_orders(plan: Plan, broker: Broker) -> list[OrderRecord]:
                 limit_price=o.limit_price,
                 client_order_id=o.client_order_id,
                 status=status,
+                reference_price=o.reference_price,
             )
         )
     return records
@@ -246,6 +250,24 @@ class AlpacaBroker:  # pragma: no cover - network adapter, exercised by the smok
         request = StockLatestTradeRequest(symbol_or_symbols=list(symbols), feed=DataFeed.IEX)
         trades = cast(dict[str, Trade], self._data.get_stock_latest_trade(request))
         return {s: float(t.price) for s, t in trades.items()}
+
+    def order_by_client_id(self, client_order_id: str) -> OrderState | None:
+        from alpaca.common.exceptions import APIError
+        from alpaca.trading.models import Order
+
+        try:
+            order = cast(Order, self._trading.get_order_by_client_id(client_order_id))
+        except APIError as error:
+            if error.status_code == 404:
+                return None
+            raise
+        return OrderState(
+            status=str(getattr(order.status, "value", order.status)),
+            filled_qty=float(order.filled_qty or 0),
+            filled_avg_price=float(order.filled_avg_price) if order.filled_avg_price else None,
+            submitted_at=order.submitted_at.isoformat() if order.submitted_at else None,
+            filled_at=order.filled_at.isoformat() if order.filled_at else None,
+        )
 
     def is_market_open(self) -> bool:
         from alpaca.trading.models import Clock
