@@ -103,5 +103,4 @@ Secrets go in `.env` (git-ignored): `MISTRAL_API_KEY`, `ALPACA_API_KEY`, `ALPACA
 - The Alpaca paper account has **margin (2x buying power) and shorting enabled** by default. Guardrails must enforce long-only and no leverage in code.
 - `mistralai` 3.x moved the client: use `from mistralai.client import Mistral` (the old `from mistralai import Mistral` fails).
 - macOS python.org Python lacks system CA certificates: if a download fails with `CERTIFICATE_VERIFY_FAILED`, run with `SSL_CERT_FILE=$(python -m certifi)`.
-- Work goes through branches and pull requests: `main` is protected and requires green CI (D-009).
 - On Linux (CI), install PyTorch from the CPU index (`--extra-index-url https://download.pytorch.org/whl/cpu`), otherwise pip pulls multi-GB CUDA wheels.
