@@ -1,0 +1,63 @@
+# Publishes the read-only dashboard (D-012) to GitHub Pages.
+#
+# The page is generated from the `audit-log` branch, so it always agrees with the audit
+# records. A push made with the workflow token does not trigger other workflows, so this
+# one listens for the end of the Trade workflow instead (which also covers reconciliation).
+name: Dashboard
+
+on:
+  workflow_run:
+    workflows: [Trade]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - src/agent/dashboard.py
+      - .github/workflows/dashboard.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/checkout@v7
+        with:
+          ref: audit-log
+          path: audit
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install (the dashboard needs no model and no API client)
+        run: |
+          pip install numpy==2.4.6 pandas==3.1.1 pydantic==2.14.4
+          pip install --no-deps -e .
+
+      - name: Build the page
+        run: python -m agent.dashboard --audit-dir audit --out site
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
