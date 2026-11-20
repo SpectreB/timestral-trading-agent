@@ -212,7 +212,7 @@ The universe determines what kind of decisions the LLM can make, which risks the
 ## D-006 — Timestral configuration (model size, input, context)
 
 - **Date:** 2026-11-20
-- **Status:** Provisional (values are parameters, to be confirmed by a multi-ticker backtest)
+- **Status:** Accepted on 2026-11-21 after the multi-asset backtest (28M, prices, 512 days). Parameters: revisit if live evidence disagrees.
 
 ### Context
 Timestral comes in four sizes and accepts several input representations. Our only test so far is SPY daily data with the 28M model, 512-day context.
@@ -249,6 +249,31 @@ Timestral comes in four sizes and accepts several input representations. Our onl
 Start with the tested, lightweight configuration to de-risk the pipeline, and let a backtest on the full 15-asset universe decide the final values rather than intuition.
 
 On 4a, we discussed giving Timestral both prices and returns ("two pieces of information rather than one"). Returns carry exactly the same information as prices (like a distance in km and in miles), and Timestral already sees the changes when it reads prices. Covariates are valuable when they bring **information the price does not contain**: volume, VIX (market fear), news sentiment, earnings dates. So the covariate slots are kept for those. On 4b, 512 days is kept provisionally; 4 to 8 years will be tested to check whether recent market behaviour gets diluted.
+
+### Backtest result (2026-11-21)
+Script: [scripts/backtest_timestral.py](../scripts/backtest_timestral.py); raw numbers: [docs/timestral_backtest.csv](timestral_backtest.csv). 15 assets, 125 rolling origins each (2025-11-18 to 2026-11-13, every second session), so 1,875 forecasts per configuration, scored at 1 and 5 days. Baseline: empirical quantiles of the asset's own past returns over the same window, with no model.
+
+5-day cumulative return (the horizon the baseline rule uses), price input:
+
+| Configuration | Pinball loss | Inside the 80% interval (target 0.80) | Width-to-risk rank correlation* |
+|---|---|---|---|
+| Empirical, 512 days (no model) | 0.0085 | 0.788 | 0.329 |
+| Empirical, 1024 / 2048 days | 0.0086 | 0.803 / 0.808 | 0.311 / 0.297 |
+| **Timestral 28M, 512 days** | 0.0085 | **0.784** | 0.383 |
+| Timestral 28M, 1024 / 2048 days | 0.0085 | 0.764 / 0.749 | 0.385 / 0.387 |
+| Timestral 123M, 512 days | 0.0085 | 0.782 | 0.384 |
+| Timestral 123M, 1024 days | 0.0085 | 0.757 | 0.389 |
+
+\* Spearman correlation between the forecast interval width and the realised absolute return, pooled over assets and origins. This is the property the baseline rule relies on.
+
+Findings:
+- **Model size does not matter here.** 28M and 123M are indistinguishable on every metric, and the 123M is about 3 to 4 times slower. No reason to upgrade; 209M was not downloaded for the same reason (and for disk space).
+- **A longer context hurts calibration.** At 1024 and 2048 days the intervals are too narrow (coverage 0.75 to 0.76 against a target of 0.80). 512 days is the best calibrated configuration, confirming the provisional value.
+- **Prices or log returns: no difference** (1-day coverage 0.808 versus 0.802, same pinball loss). The 5-day return input could not be compared fairly because quantiles of a sum are not the sum of quantiles, so prices stay.
+- **Where Timestral earns its place is risk ranking, not accuracy.** Pinball loss is identical to four decimals for every configuration including the no-model baseline. But its interval width ranks the realised risk better than the empirical baseline does (0.38 versus 0.33 at 5 days, 0.33 versus 0.31 at 1 day), which is what the baseline rule uses. This supports D-004.
+- **No directional skill**, again: hit rates between 0.50 and 0.55.
+
+Caveats, stated plainly: one year of origins in a single market regime; origins two sessions apart have overlapping 5-day windows, so the effective sample is much smaller than 1,875 (roughly 400 independent 5-day periods per asset-pooled estimate, i.e. a standard error of about 0.05 on a correlation). The ranking advantage is therefore **consistent in sign across every configuration but not conclusive**. The live scoring of D-013 is the cleaner, out-of-sample test.
 
 ### Impact on further development
 - Model name, input type and context length are config parameters.
@@ -599,6 +624,39 @@ Design checks done on the rendered page (headless Chrome, light, dark and a 390 
 - Two sections are intentionally absent until their data exists: forecast calibration against realised prices, and the evaluation of the LLM's stated confidence (see Open decisions).
 - Enabling GitHub Pages is a repository setting: the site is public, like the repository and the audit log.
 - Revisit if reviewers need live updates or filtering (options B or F).
+
+---
+
+## D-013 — Forecast scoring: record observed closes as facts, derive the scores
+
+- **Date:** 2026-11-21
+- **Status:** Accepted. **Taken autonomously** (project owner away), alternatives below: to be confirmed or revised.
+
+### Context
+To know whether Timestral is useful live, each forecast must be compared with the prices that followed: how often the outcome falls inside the 80% interval, and how the median did. Forecasts are made at 10:00 ET from completed sessions, and a horizon of up to 5 sessions means the outcome is only known days later. The audit log is immutable (D-011), so the scores need a home that respects that.
+
+### Options
+| Option | Pros | Cons |
+|---|---|---|
+| Fetch prices from Alpaca when scoring (dashboard build, reconcile job) | No new files | The dashboard and the export would depend on the network and the API keys; prices can be re-adjusted later, so the same score could change |
+| Write a score file per run once all 5 horizons are known | Simple, immutable | Nothing visible for 5 sessions, past the submission deadline; or up to 10 small files a day if written per horizon |
+| Store scores as events in the log | Immutable | Scores are derived data: storing them freezes any bug in the scoring code |
+| **Record observed closes as immutable facts, derive the scores** | Facts are recorded once and never change; scores are a pure function of run records plus observations, regenerated at any time, testable offline; the 1-day outcomes show up the next day | One more file type (`observations/`) |
+
+**Price basis.** Alpaca's adjusted closes are re-based when a dividend or split occurs, so closes recorded on different days can sit on different bases. Each observation therefore holds a **window of the last 12 sessions taken at one time**; a return is only computed between two dates of the same file. The earliest observation containing both dates is used, which keeps the choice deterministic.
+
+### Decision
+- `observations/YYYY-MM-DD.json`: written once per completed session by the trade workflow (a no-op if the day is already recorded). The unfinished bar of the current session is never recorded.
+- `score_forecasts` joins run forecasts (q10, median, q90 at horizons 1 to 5) with the observations and yields one row per (run, asset, horizon) whose outcome is known: realised return, inside the 80% interval, direction hit (undefined if the median or the move is exactly zero), absolute error of the median.
+- Derived into `tables/forecast_scores.csv`, and into a **live calibration** section on the dashboard: per horizon, the share of outcomes inside the 80% interval against the 80% target, with the number of scored forecasts shown first.
+
+### Rationale
+The log stays append-only and the scores can never disagree with the facts they come from. The dashboard needs no keys or network. The page states that early figures are noisy and that one day's 15 forecasts are strongly correlated (assets move together), so the effective sample is much smaller than the count.
+
+### Impact on further development
+- Scores appear from the second trading day (1-day horizon) and complete a run after 5 sessions.
+- The same join is the basis for the evaluation of the LLM's contribution: the baseline, the LLM proposal and the final portfolio can be valued against these observed closes.
+- A stored pinball loss would need the full 21 quantiles in the run record (today only q10, median and q90 are kept); revisit if the evaluation needs it.
 
 ---
 

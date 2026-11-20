@@ -5,7 +5,8 @@ Layout under the audit root (a checkout of the `audit-log` branch in production)
     runs/YYYY-MM-DD_<mode>.json             decision record, written once, never modified
     runs/YYYY-MM-DD_<mode>_reasoning.txt    LLM reasoning trace(s), referenced by the record
     reconciliation/<day or run id>.json     order submission results, fills and realised outcomes
-    tables/{decisions,weights,forecasts,orders,fills}.csv   derived, regenerable at any time
+    observations/YYYY-MM-DD.json            recorded closes (facts), the basis of forecast scoring
+    tables/{decisions,weights,forecasts,orders,fills,forecast_scores}.csv   derived, regenerable
 
 The reasoning file is written first and the JSON last: the JSON's existence means the
 run is complete. Existing files are never overwritten (atomic hard link), so a re-run
@@ -29,6 +30,7 @@ from pydantic import BaseModel, ValidationError
 from agent.config import AgentConfig
 from agent.decide import Decision, DecisionInput
 from agent.schemas import Proposal
+from agent.scoring import score_forecasts
 
 SCHEMA_VERSION = 1
 
@@ -200,6 +202,18 @@ class FileAuditStore:
         _write_once(path, _dump({"schema_version": SCHEMA_VERSION, "name": name, **payload}))
         return path
 
+    def has_observation(self, name: str) -> bool:
+        return (self.root / "observations" / f"{name}.json").exists()
+
+    def write_observation(self, name: str, payload: dict[str, Any]) -> Path:
+        path = self.root / "observations" / f"{name}.json"
+        _write_once(path, _dump({"schema_version": SCHEMA_VERSION, **payload}))
+        return path
+
+    def read_observations(self) -> list[dict[str, Any]]:
+        files = sorted((self.root / "observations").glob("*.json"))
+        return [json.loads(f.read_text(encoding="utf-8")) for f in files]
+
     def has_reconciliation(self, name: str) -> bool:
         return (self.root / "reconciliation" / f"{name}.json").exists()
 
@@ -226,6 +240,7 @@ class FileAuditStore:
             "forecasts.csv": _forecast_rows(runs),
             "orders.csv": _order_rows(runs),
             "fills.csv": _fill_rows(self.read_fills()),
+            "forecast_scores.csv": _score_rows(score_forecasts(runs, self.read_observations())),
         }
         paths = []
         for name, (header, rows) in tables.items():
@@ -327,4 +342,12 @@ def _fill_rows(fills: list[dict[str, Any]]) -> Rows:
                  o["filled_qty"], _blank(o["avg_fill_price"]), _blank(o["reference_price"]),
                  _blank(o["slippage_bps"]), _blank(o["submitted_at"]), _blank(o["filled_at"])]
             )  # fmt: skip
+    return header, rows
+
+
+def _score_rows(scores: list[dict[str, Any]]) -> Rows:
+    header = ["run_id", "last_session", "symbol", "horizon", "realised_session", "q10", "median",
+              "q90", "width_80", "realised", "inside_80", "direction_hit",
+              "abs_error_median"]  # fmt: skip
+    rows = [[_blank(row[column]) for column in header] for row in scores]
     return header, rows
