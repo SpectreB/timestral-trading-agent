@@ -83,6 +83,7 @@ Open decisions are listed at the bottom of docs/decisions.md.
 python -m venv .venv
 # Windows: .venv\Scripts\activate   |   macOS/Linux: source .venv/bin/activate
 pip install -r requirements-dev.txt   # runtime + dev tooling (requirements.txt is runtime only)
+pre-commit install                    # gitleaks secret scan before every commit
 python scripts/explore_timestral.py --ticker SPY --model mistralai/Timestral-28M
 ```
 
@@ -101,4 +102,6 @@ Secrets go in `.env` (git-ignored): `MISTRAL_API_KEY`, `ALPACA_API_KEY`, `ALPACA
 - Alpaca also returns **today's incomplete daily bar** while the market is open. Drop it, or check the clock, before forecasting.
 - The Alpaca paper account has **margin (2x buying power) and shorting enabled** by default. Guardrails must enforce long-only and no leverage in code.
 - `mistralai` 3.x moved the client: use `from mistralai.client import Mistral` (the old `from mistralai import Mistral` fails).
+- macOS python.org Python lacks system CA certificates: if a download fails with `CERTIFICATE_VERIFY_FAILED`, run with `SSL_CERT_FILE=$(python -m certifi)`.
+- Work goes through branches and pull requests: `main` is protected and requires green CI (D-009).
 - On Linux (CI), install PyTorch from the CPU index (`--extra-index-url https://download.pytorch.org/whl/cpu`), otherwise pip pulls multi-GB CUDA wheels.

@@ -344,32 +344,56 @@ The agent's value is in its reasoning (interpreting news, cross-asset trade-offs
 
 ## D-009 — Development guardrails
 
-- **Date:** 2026-11-20
+- **Date:** 2026-11-20 (extended the same day with a second round of safeguards)
 - **Status:** Accepted
 
 ### Context
-We are judged on how the agent was built, not only on how it runs. Its safety rests on the guardrail code, so we need evidence that it is correct.
+We are judged on how the agent was built, not only on how it runs. Its safety rests on the guardrail code, so we need evidence that it is correct. The agent also handles API keys and places orders, which adds two specific risks: leaking a secret, and deploying broken code that then trades.
 
 ### Options
+**Round 1: code quality and tests**
 | Option | What it brings |
 |---|---|
 | Unit tests (pytest) | Check each rule individually |
 | Adversarial LLM outputs | Deliberately bad responses (200% NVDA, negative weight, invented ticker, broken JSON) must never pass |
-| Property-based tests | Thousands of random proposals: the final portfolio must always satisfy every constraint |
+| Property-based tests (hypothesis) | Thousands of random proposals: the final portfolio must always satisfy every constraint |
 | Dry-run mode | Full cycle without sending orders |
-| CI checks before deployment | GitHub refuses to deploy if a check fails |
-| Ruff (linter + formatter) | Catches bugs and style issues, consistent formatting |
-| Mypy (static type checking) | Catches type errors before runtime; pairs well with pydantic models |
+| CI checks | Lint, types and tests on every push |
+| Ruff (linter + formatter) | Catches likely bugs and style issues |
+| Mypy (strict static typing) | Catches type errors before runtime; pairs well with pydantic |
+
+**Round 2: safety-critical safeguards**
+| Option | What it brings | Cost | Chosen |
+|---|---|---|---|
+| Secret detection (GitHub push protection + gitleaks in CI and pre-commit) | Blocks any commit/push containing an API key | Low | Yes |
+| Independent final check before sending orders | A separate, deliberately simple function re-checks the core invariants (long-only, no leverage, cash floor, universe); any violation aborts the run. Defence in depth against a bug in `guardrails.py` | Low | Yes |
+| 100% test coverage on `guardrails.py` (pytest-cov) | No line of the critical module escapes the tests | Low | Yes |
+| Offline tests (fake Alpaca and Mistral clients, recorded responses) | Fast, reproducible, free; tests can never place an order; CI needs no secrets | Medium | Yes (see rationale) |
+| Daily real smoke test (full cycle in dry-run on the real APIs before the morning run) | Detects external breakage (e.g. the `mistralai` 3.x import change) before trading, not during | Low | Yes (see rationale) |
+| Trading gated on CI | The trading workflow only runs if the latest CI on `main` is green | Low | Yes |
+| LLM behaviour scenarios (5–10 fixed situations with an expected behaviour: simulated crash → de-risk; huge intervals → lower confidence; contradictory news → flagged) | Unit tests for the LLM's judgement; direct evidence that decisions are sound. Run manually and on prompt changes, not on every commit (API cost, non-determinism) | Medium | Yes |
+| Versioned prompt (prompt file in the repo, version logged on every run) | Behaviour changes can be attributed to prompt, model or data | Low | Yes |
+| Branch protection + pull requests on `main` (CI must pass before merge) | Team-standard workflow; nothing reaches `main` untested | Some friction for a solo developer | Yes |
+| `pip-audit` (known vulnerabilities in dependencies) | Good "client" practice | Low risk for a one-week, non-exposed project | No (deferred) |
+| Pre-commit hooks for ruff/mypy | Errors caught before CI | Friction; CI already does it | Only gitleaks in pre-commit |
 
 ### Decision
-All of the above: pytest (unit + adversarial + property-based tests), dry-run mode, ruff, mypy, all run in CI before any deployment.
+Everything in round 1, and in round 2 everything except `pip-audit`. Pre-commit is used only for secret detection.
 
 ### Rationale
-Adversarial and property-based tests are the strongest evidence that the guardrails cannot be bypassed whatever the LLM returns. Ruff and mypy are cheap and catch a class of bugs tests may miss.
+- Adversarial and property-based tests, 100% coverage on the guardrails and an independent final check together give strong evidence that no LLM output can produce a forbidden portfolio.
+- Secret leakage is the most likely serious incident on this kind of project, and the cheapest to prevent.
+- **Offline tests** were judged essential: without them, tests would call the real APIs (cost, flakiness, risk of a real order from a test) and CI would need the secrets.
+- **The daily smoke test** was judged essential: external APIs have already changed under us once (the `mistralai` 3.x client import), and the agent runs unattended; a break must be detected before the 10:00 ET run.
+- LLM behaviour scenarios are the most direct answer to "how do you know its decisions are sound?".
+- Branch protection is heavier for a solo developer, but it is the standard practice a client would expect and it makes the CI gate impossible to skip.
 
 ### Impact on further development
-- Add `ruff`, `mypy` and `hypothesis` (property-based testing) to the dev dependencies.
-- A CI workflow runs lint, type check and tests; the trading workflow only runs on a green main branch.
+- Dev dependencies: `ruff`, `mypy`, `hypothesis`, `pytest-cov`, `pre-commit`.
+- Work happens on branches and reaches `main` through pull requests with green CI.
+- External clients (Alpaca, Mistral) are injected behind small interfaces so tests can swap in fakes.
+- Workflows: `ci.yml` (lint, types, tests, coverage, gitleaks), `smoke.yml` (daily dry-run on real APIs), `trade.yml` (gated on CI).
+- The prompt lives in a versioned file; scenario evals live in `evals/`.
 
 ---
 
@@ -475,4 +499,3 @@ Volatility targeting with Timestral is kept as a strong candidate: it would stre
 - Audit log storage format
 - Dashboard technology
 - News source and covariate construction (bonus)
-- Pre-commit hooks (run ruff/mypy locally before each commit) or CI only
