@@ -289,6 +289,90 @@ The differentiated design keeps what each component is good at: Timestral on cle
 
 ---
 
+## D-008 — Decision LLM and output contract
+
+- **Date:** 2026-11-20
+- **Status:** Accepted (model is a parameter)
+
+### Context
+The LLM interprets forecasts, portfolio and news, and adjusts the baseline portfolio (D-004). About 2 calls per trading day (D-007), so cost is not a constraint: what matters is reasoning quality and reliable structured output. Models available on our key (checked 2026-11-20): `mistral-large-4-0` (alias `mistral-large-latest`, reasoning capability, 1M context), `mistral-large-2512` (previous, no reasoning), `mistral-medium-2604` / Medium 3.5 (reasoning; `magistral-medium-latest` is now an alias of it), `mistral-small-2603`.
+
+### Options
+**Model**
+| Option | Pros | Cons |
+|---|---|---|
+| Mistral Small | Fast, cheap | Weaker reasoning across 15 assets + news |
+| Mistral Medium 3.5 | Good balance, reasoning capable | Below Large on complex trade-offs |
+| **Mistral Large 4** | Strongest model, native reasoning, strict JSON schema works together with reasoning (tested) | Slightly slower (irrelevant at 2 calls per day) |
+| Dedicated reasoning model (Magistral) | Explicit step-by-step reasoning | Now merged into Medium 3.5; no advantage over Large 4 |
+
+**Output format (5a)**
+| Option | Pros | Cons |
+|---|---|---|
+| Free text then parsing | Natural | Very fragile |
+| JSON mode | Simple | Structure not guaranteed |
+| **Strict JSON schema + pydantic validation** | Structure enforced by the API, re-validated in our code | Schema to maintain |
+| Function calling | Same reliability; basis for option D (v2) | Heavier for a single call |
+
+**Reasoning before deciding (5b)**
+| Option | Pros | Cons |
+|---|---|---|
+| Direct answer | Short | Less considered, nothing to audit |
+| **`analysis` as the first JSON field** (+ the model's native reasoning, logged) | Weights are generated after the analysis; full audit trail | Longer answers |
+
+**Randomness (5c)**
+| Option | Pros | Cons |
+|---|---|---|
+| **Low temperature (0–0.2)** | Stable, reproducible | A single "opinion" |
+| Normal temperature | Variety | Unstable decisions |
+| Several samples + median (self-consistency) | Robust; measures stability | 3–5× calls; more complex |
+
+### Decision
+- **Mistral Large 4, pinned as `mistral-large-4-0`** (not the `-latest` alias, which can change silently). The model ID is logged on every run.
+- Native reasoning enabled; the reasoning trace (`ThinkChunk`) is stored in the audit log alongside the answer.
+- Strict JSON schema enforced through `response_format`, re-validated with pydantic. Fields: `analysis` first (market reading, risks), then per asset: target weight, deviation from baseline, rationale, confidence (0–1), forecast elements used; cash weight; afternoon run: hold / adjust with reason.
+- Low temperature (≈0.1) in production.
+
+### Rationale
+The agent's value is in its reasoning (interpreting news, cross-asset trade-offs), and cost is negligible at our call volume, so the strongest reasoning model is the right default. A test on 2026-11-20 confirmed Large 4 returns a reasoning trace and a schema-valid JSON in the same call (~6 s).
+
+### Impact on further development
+- Evaluation: replay the same inputs with Medium 3.5 (and different reasoning efforts) to measure whether the larger model changes decisions; run the same prompt ~5 times to measure decision stability (self-consistency as a test, not in production).
+- `mistralai` 3.x: `from mistralai.client import Mistral`; reasoning comes back as `ThinkChunk` + `TextChunk` content parts.
+
+---
+
+## D-009 — Development guardrails
+
+- **Date:** 2026-11-20
+- **Status:** Accepted
+
+### Context
+We are judged on how the agent was built, not only on how it runs. Its safety rests on the guardrail code, so we need evidence that it is correct.
+
+### Options
+| Option | What it brings |
+|---|---|
+| Unit tests (pytest) | Check each rule individually |
+| Adversarial LLM outputs | Deliberately bad responses (200% NVDA, negative weight, invented ticker, broken JSON) must never pass |
+| Property-based tests | Thousands of random proposals: the final portfolio must always satisfy every constraint |
+| Dry-run mode | Full cycle without sending orders |
+| CI checks before deployment | GitHub refuses to deploy if a check fails |
+| Ruff (linter + formatter) | Catches bugs and style issues, consistent formatting |
+| Mypy (static type checking) | Catches type errors before runtime; pairs well with pydantic models |
+
+### Decision
+All of the above: pytest (unit + adversarial + property-based tests), dry-run mode, ruff, mypy, all run in CI before any deployment.
+
+### Rationale
+Adversarial and property-based tests are the strongest evidence that the guardrails cannot be bypassed whatever the LLM returns. Ruff and mypy are cheap and catch a class of bugs tests may miss.
+
+### Impact on further development
+- Add `ruff`, `mypy` and `hypothesis` (property-based testing) to the dev dependencies.
+- A CI workflow runs lint, type check and tests; the trading workflow only runs on a green main branch.
+
+---
+
 ## Open decisions
 
 - Trading frequency and forecast horizon
