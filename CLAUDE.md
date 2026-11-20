@@ -26,7 +26,7 @@ Build an **autonomous paper-trading agent**:
 | Item | Status |
 |---|---|
 | Mistral org ID sent for credits | Done |
-| Git repo | Done (no GitHub remote yet) |
+| Git repo | Done: https://github.com/SpectreB/timestral-trading-agent |
 | Timestral installed and explored | Done, see [docs/timestral_notes.md](docs/timestral_notes.md) |
 | Alpaca paper account and API keys | Unknown, ask the user |
 | Review booked | Unknown, ask the user |
