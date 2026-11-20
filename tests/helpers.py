@@ -124,6 +124,7 @@ class FakeBroker:
         self.blocked = blocked
         self.fail_on = fail_on
         self.submitted: list[dict[str, Any]] = []
+        self.states: dict[str, Any] = {}  # client_order_id -> OrderState, set by the tests
 
     def account(self) -> Any:
         from agent.execute import AccountSnapshot
@@ -138,6 +139,9 @@ class FakeBroker:
 
     def is_market_open(self) -> bool:
         return self.market_open
+
+    def order_by_client_id(self, client_order_id: str) -> Any:
+        return self.states.get(client_order_id)
 
     def submit_limit_order(
         self, symbol: str, side: str, quantity: float, limit_price: float, client_order_id: str
