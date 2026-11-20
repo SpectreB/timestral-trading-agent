@@ -64,6 +64,8 @@ class LLMConfig:
 
     model: str = "mistral-large-4-0"  # pinned version, never a "-latest" alias
     temperature: float = 0.1
+    reasoning_effort: str = "high"  # native reasoning; the trace is stored in the audit log
+    prompt_version: str = "decide_v1"  # src/agent/prompts/<version>.md
     max_retries: int = 1  # one retry on invalid output, then fallback (D-010)
 
 
