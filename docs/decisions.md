@@ -224,7 +224,7 @@ Timestral comes in four sizes and accepts several input representations. Our onl
 |---|---|---|
 | **Prices** | Slightly better on SPY (pinball loss, hit rate) | Tested on one asset only |
 | Log returns | Scale-free, statistically cleaner | Slightly worse on SPY |
-| Both (one as target, the other as covariate) | — | Returns are a deterministic transform of prices: no new information, redundant input |
+| Both (prices as target, returns as past covariate) | Gives the model "two views" of the same series | Returns are a deterministic transform of prices (r_t = p_t / p_{t-1} − 1): no new information, redundant input that may slightly disturb the model |
 
 **Context length (4b)**
 | Option | Pros | Cons |
@@ -236,14 +236,56 @@ Timestral comes in four sizes and accepts several input representations. Our onl
 ### Decision
 - Build the first pipeline with **28M** to get familiar with the system. The model name is a config parameter; the 123M weights are already downloaded so we can switch. Move to 123M if the backtest shows a gain, and consider 209M if 123M is conclusive.
 - **Prices** as input (provisional), **512-day** context (provisional).
+- A single representation of the price is fed as the target. "Prices + returns as covariate" is still included in the backtest, so the redundancy argument is checked with evidence rather than assumed.
 
 ### Rationale
 Start with the tested, lightweight configuration to de-risk the pipeline, and let a backtest on the full 15-asset universe decide the final values rather than intuition.
+
+On 4a, we discussed giving Timestral both prices and returns ("two pieces of information rather than one"). Returns carry exactly the same information as prices (like a distance in km and in miles), and Timestral already sees the changes when it reads prices. Covariates are valuable when they bring **information the price does not contain**: volume, VIX (market fear), news sentiment, earnings dates. So the covariate slots are kept for those. On 4b, 512 days is kept provisionally; 4 to 8 years will be tested to check whether recent market behaviour gets diluted.
 
 ### Impact on further development
 - Model name, input type and context length are config parameters.
 - Backtest to run: 28M vs 123M (vs 209M), prices vs returns, 512 vs 1024 vs 2048 days, on the 15 assets.
 - Covariate slots are reserved for genuinely new information (VIX, volume, news sentiment, earnings dates), not transforms of the price.
+
+---
+
+## D-007 — Run frequency and timing: two differentiated runs per day; 5-day horizon
+
+- **Date:** 2026-11-20
+- **Status:** Accepted (times, horizon and no-trade band are parameters)
+
+### Context
+How often the agent wakes up determines whether it can react to news, how many decisions we can evaluate before the review, and whether Timestral receives clean data. Timestral works on daily bars; a daily bar is incomplete until the 16:00 ET close. GitHub Actions cron can start 15–30 minutes late.
+
+The initial recommendation was one run per day. The objection raised: with a single run, the agent is blind during the whole trading session, which under-uses one of its strengths, reasoning at given moments about what just happened, not only forecasting. Overnight (close to open) and intraday (open to close) price behaviour also differ, and two runs let us observe both. Counterpoint: even one run per day reasons about the news since the previous day, so it is not "only prediction". But re-running an identical full cycle in the afternoon would feed Timestral an incomplete daily bar, and add nothing new.
+
+### Options
+| Option | Principle | Pros | Cons |
+|---|---|---|---|
+| 1 run per day (10:00 ET) | Forecast + decision + execution | Simple; clean data | Blind to everything happening during the session |
+| 2 identical runs (10:00 and 15:30 ET) | Same full cycle twice | Twice the decisions | Afternoon forecast uses an incomplete bar or repeats the morning's; churn |
+| **2 differentiated runs** | **10:00 ET:** full cycle (new Timestral forecast, decision, rebalance). **~15:00 ET:** reassessment: the LLM gets the day's news, the intraday move and the morning forecast, and decides whether to adjust | Uses the agent's reasoning on fresh events; Timestral stays on clean data; morning vs afternoon decisions can be compared | Slightly more code (a run mode); must avoid needless churn |
+| Event-driven | Run when an important news item arrives | Most reactive | Needs continuous news monitoring; hard to bound and test in one week |
+| 1 run per week | Rebalance weekly | Very stable | 1–2 decisions before the deadline: cannot be evaluated |
+
+**Sub-question 3a — time of day:** opening (09:30, most volatile minutes), **~30 min after open (10:00, liquid and calm, forecasts on yesterday's complete bars)**, just before close (incomplete bar, risk of missing the close if cron is late), after close for next open (overnight gap risk, fills not visible in the same run).
+
+**Sub-question 3b — forecast horizon:** 1 day (noisiest), **5 days (one trading week, less noise, matches the LLM's "this week" reasoning)**, 20 days (nothing verifiable before the review).
+
+### Decision
+- Two runs per trading day: **morning full cycle at ~10:00 ET** and **afternoon reassessment at ~15:00–15:15 ET** (scheduled early because of cron delays; the code checks the market is still open before acting).
+- **No-trade band:** an order is only placed if the target weight differs from the current one by more than ~2 points; plus a turnover cap per run.
+- **Horizon: 5 trading days** for decisions. Timestral forecasts 1 to 5 days in the same call, so the **1-day forecast is logged too**, for next-day evaluation.
+
+### Rationale
+The differentiated design keeps what each component is good at: Timestral on clean daily data, the LLM reacting to what happened during the day. It doubles the number of logged decisions for evaluation, and the no-trade band and turnover cap prevent the extra run from producing noise trading.
+
+### Impact on further development
+- `run.py` takes a mode (`morning` / `afternoon`); the afternoon run reuses the morning's forecast from the audit log.
+- Two cron schedules in GitHub Actions, in UTC (currently 15:00 and 20:00 UTC; shift by one hour when US daylight saving time starts in March).
+- **The horizon is a parameter with ripple effects** (baseline rule, evaluation windows, prompt). Fixed at 5 provisionally; a shorter horizon remains a candidate, especially with two runs per day.
+- Evaluation can compare morning vs afternoon decisions, and overnight vs intraday returns.
 
 ---
 
