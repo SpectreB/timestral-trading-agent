@@ -4,7 +4,7 @@ Read this first. It holds the full context needed to continue the work on any ma
 
 ## The task
 
-Mistral take-home assignment (brief: [mistral_take_home_assignment.md](mistral_take_home_assignment.md), logistics: [mistral_take_home_next_steps.md](mistral_take_home_next_steps.md)).
+Mistral take-home assignment. The brief and logistics are in `mistral_take_home_assignment.md` and `mistral_take_home_next_steps.md`, **local only and git-ignored** (confidential brief, recruiter contacts; removed from git history on 2026-11-20 before making the repo public). Never commit them or copy recruiter emails into tracked files.
 
 Build an **autonomous paper-trading agent**:
 - **Timestral** (Mistral's time-series foundation model, run locally on CPU) produces probabilistic forecasts.
