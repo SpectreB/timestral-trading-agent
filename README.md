@@ -127,7 +127,7 @@ CLAUDE.md           development context for the AI coding agent used on this pro
 
 ## Status and limits
 
-Working: the full cycle, guardrails, audit, reconciliation, scheduled operation, and the read-only [dashboard](https://spectreb.github.io/timestral-trading-agent/). Still to come: forecast scoring against realised prices, the multi-asset backtest for the Timestral configuration (model size, input type, context length), LLM behaviour scenarios, and the optional news covariates. See the open items and the **Future work** section in [docs/decisions.md](docs/decisions.md).
+Working: the full cycle, guardrails, audit, reconciliation, scheduled operation, and the read-only [dashboard](https://spectreb.github.io/timestral-trading-agent/). Also done: the multi-asset backtest that settled the Timestral configuration ([D-006](docs/decisions.md)) and live scoring of the forecasts against realised prices ([D-013](docs/decisions.md)). Still to come: LLM behaviour scenarios, calibration of the LLM's stated confidence, and the optional news covariates. See the open items and the **Future work** section in [docs/decisions.md](docs/decisions.md).
 
 Known limits worth knowing:
 - On historical replays an LLM may already know what happened (look-ahead bias), so the live period is the clean test.
