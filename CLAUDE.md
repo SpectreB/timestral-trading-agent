@@ -62,13 +62,13 @@ Recorded in [docs/decisions.md](docs/decisions.md): D-001 to D-010 accepted or p
 |---|---|
 | Timestral exploration (SPY) | Done |
 | Alpaca paper account, Mistral key, GitHub secrets and variable | Done (kill switch `TRADING_ENABLED` is `false` until the owner enables it) |
-| Design decisions D-001 to D-011 | Done (see docs/decisions.md) |
+| Design decisions D-001 to D-012 | Done (see docs/decisions.md) |
 | Dev tooling: ruff, mypy, pytest, hypothesis, coverage gate, gitleaks, CI, branch protection | Done |
 | Guardrails + independent final check | Done, 100% coverage |
-| Data, forecast, baseline, decide, audit, execute, reconcile, run, smoke | Done, 175 offline tests |
+| Data, forecast, baseline, decide, audit, execute, reconcile, run, smoke | Done, 197 offline tests |
 | Workflows: CI, trade (10:00 and 15:00 ET), smoke test (08:30 ET) | Done, dry run verified on GitHub 2026-11-20 |
 | README | Done |
-| Dashboard (read-only view) | Next |
+| Dashboard (static page on GitHub Pages, D-012) | Done |
 | Forecast scoring vs realised prices, multi-ticker backtest (model size, input, context length) | To do |
 | LLM behaviour scenarios, confidence calibration | To do |
 | News covariates (bonus) | Later |
