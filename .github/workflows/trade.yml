@@ -103,6 +103,17 @@ jobs:
           echo "Running: python -m agent.run $ARGS (TRADING_ENABLED='${TRADING_ENABLED}')"
           python -m agent.run $ARGS
 
+      - name: Reconcile earlier runs (fills, slippage)
+        # After the cycle, so a reconciliation problem never blocks trading. Also after a
+        # failed cycle. Idempotent: only runs whose orders have all reached a final state.
+        if: always()
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          [ -d audit/.git ] || exit 0
+          python -m agent.reconcile --audit-dir audit
+
       - name: Publish the audit log
         # Also after a failure: the record is written before any order is sent.
         if: always()

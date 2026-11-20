@@ -555,6 +555,11 @@ Immutability is the strongest argument for the "are decisions sound" question: t
 - `audit.py` builds run records from the pipeline objects, writes them atomically without overwriting, and derives the tables. Tests use a temporary directory, no network.
 - Workflows check out the `audit-log` branch into a folder, run the agent against it and push the new files. The dashboard reads the derived tables from that branch.
 - No secret may ever enter a record (gitleaks also scans the branch history).
+
+### Implementation notes (reconciliation, 2026-11-20)
+- Order records carry the **reference price** the limit was derived from. `reconcile.py` looks every sent order up by its client order id and, once **all** orders of a run have reached a final state (day orders end at the close), writes `reconciliation/<run_id>_fills.json` once: final status, filled quantity, average fill price, **slippage in basis points** against the reference price (positive always means worse for us) and a summary (filled, partial, unfilled, not sent, not found, notional-weighted slippage). Orders that never reached the broker (a failed sell cancels the buys) are marked `not_sent`.
+- It is **idempotent and append-only**: runs already reconciled are skipped, runs with open orders wait for a later pass, and a failing lookup is reported without blocking the other runs. The trade workflow runs it after each cycle (also after a failed one), so the morning orders are reconciled by the afternoon run and the afternoon orders by the next morning's.
+- A `fills.csv` table is derived from these files for the dashboard and the export.
 - The record and the reconciliation files are public, like the repository: the prompt and reasoning are exactly what reviewers want to examine.
 
 ---
