@@ -1,81 +1,83 @@
-# CLAUDE.md — Project context and handoff
+# CLAUDE.md: development context
 
-Read this first. It holds the full context needed to continue the work on any machine.
+This file gives a coding agent, or a new contributor, the context needed to work on this repository. The project is developed with an AI coding agent, and this file is the agent's working memory. User-facing documentation is in [README.md](README.md). Design decisions and their rationale are in [docs/decisions.md](docs/decisions.md).
 
-## The task
+## Project
 
-Mistral take-home assignment. The brief and logistics are in `mistral_take_home_assignment.md` and `mistral_take_home_next_steps.md`, **local only and git-ignored** (confidential brief, recruiter contacts; removed from git history on 2026-11-20 before making the repo public). Never commit them or copy recruiter emails into tracked files.
+An **autonomous paper-trading agent** built for a Mistral AI take-home assignment:
 
-Build an **autonomous paper-trading agent**:
 - **Timestral** (Mistral's time-series foundation model, run locally on CPU) produces probabilistic forecasts.
-- A **Mistral LLM** (via API, $20 of credits granted) uses those forecasts to decide positions.
-- Orders execute on an **Alpaca paper account** during the assignment week.
-- Optional bonus: news analysis (e.g. GDELT) used to build covariates for Timestral.
+- A **Mistral LLM** uses those forecasts, the portfolio and market context to decide positions.
+- **Deterministic guardrails** validate and bound every LLM decision.
+- Orders execute on an **Alpaca paper account**. Every run is logged and published as a read-only view.
 
-**What is evaluated:** not PnL. Evaluators look at how Timestral is integrated with the LLM, the design and deployment of an autonomous agent, and **how we know its decisions are sound**. It should be treated as a solution shipped to a client: clean repo, runnable instructions, and a read-only view of trading activity (export or dashboard).
+**Success criteria:** not PnL. What matters is how Timestral is integrated with the LLM, how the autonomous agent is designed and deployed, and **how we know its decisions are sound**. The repository is treated as a solution shipped to a client.
+
+The assignment brief is kept locally (`mistral_take_home_*.md`, git-ignored). Never commit it or copy contact details from it into tracked files.
 
 ## Timeline
 
-- Email received **Wednesday 2026-11-18** (afternoon), so the submission deadline is **Wednesday 2026-11-25**.
+- Submission: **Wednesday 2026-11-25**. The agent can keep trading after submission, up to the review.
 - US market closed Thursday 2026-11-26 (Thanksgiving); half day Friday 2026-11-27.
-- The 20-minute review (presentation + Q&A) must be booked with **at least 8 days' notice**. The agent can keep trading after submission, up to the review.
-- **Priority: get a minimal pipeline trading live ASAP** (by Friday 2026-11-20 if possible), then iterate.
+- Goal: trading live from **Monday 2026-11-23**.
+
+## Architecture
+
+```
+Data (Alpaca) -> Forecast (Timestral) -> Baseline rule -> Decide (Mistral LLM) -> Guardrails -> Final check -> Execute (Alpaca) -> Audit log -> Dashboard
+```
+
+| Stage | Role | Decision |
+|---|---|---|
+| Data | Daily bars from Alpaca, completed bars only | D-002 |
+| Forecast | Timestral quantile forecasts, horizon 1 to 5 days, 15 assets in one batch | D-006 |
+| Baseline rule | Weights inversely proportional to the forecast interval width (Timestral as risk engine) | D-004 |
+| Decide | Mistral Large 4 adjusts the baseline: free to reduce risk, at most +15 pts to add; strict JSON schema, `analysis` first | D-004, D-008 |
+| Guardrails | 4 layers: output validity, portfolio risk rules, order sanity, system safety; correct-and-log or reject | D-010 |
+| Final check | Independent, deliberately simple re-check of core invariants before any order | D-009 |
+| Execute | Marketable limit orders, idempotent client order IDs, dry-run by default | D-010 |
+| Schedule | GitHub Actions: 10:00 ET full cycle, ~15:00 ET reassessment | D-002, D-007 |
+
+All parameters live in [src/agent/config.py](src/agent/config.py), each traced to its decision.
+
+## Decisions
+
+Recorded in [docs/decisions.md](docs/decisions.md): D-001 to D-010 accepted or provisional. The file ends with the open decisions and a **Future work** section (options deliberately deferred).
+
+## How we work
+
+- **Every design decision is recorded** in docs/decisions.md: context, options compared with pros and cons, choice, rationale, impact. Decisions are made step by step with the project owner: propose options with a recommendation, never pick silently.
+- Distinguish **parameters** (provisional value in config, revisited with evidence) from **architecture** choices (deliberated).
+- Explain findings and their implications, not just code.
+- Work on branches; changes reach `main` through pull requests with green CI.
+
+## Key findings
+
+- On SPY daily data, Timestral is **well calibrated** (80% interval coverage ≈ 80%) but has **no significant directional edge** (54.8% hit rate over 250 days, ≈1.5 standard errors from 50%). Hence its role as a risk engine (D-004). Details: [docs/timestral_notes.md](docs/timestral_notes.md).
+- Mistral Large 4 returns a native reasoning trace and a schema-valid JSON in the same call (~6 s).
 
 ## Status
 
 | Item | Status |
 |---|---|
-| Mistral org ID sent for credits | Done |
-| Git repo | Done: https://github.com/SpectreB/timestral-trading-agent |
-| Timestral installed and explored | Done, see [docs/timestral_notes.md](docs/timestral_notes.md) |
-| Alpaca paper account and API keys | Done (paper account verified 2026-11-20: $100k, keys in local .env) |
-| Mistral API key | Done (verified 2026-11-20, keys in local .env) |
-| Review booked | Unknown, ask the user |
-| Live pipeline | Not started |
+| Timestral exploration (SPY) | Done |
+| Alpaca paper account, Mistral API key | Verified 2026-11-20 |
+| Design decisions blocking the pipeline | Done (D-004 to D-010) |
+| Dev tooling: ruff, mypy, pytest, coverage, gitleaks, CI | Done |
+| Guardrails + final check | Next |
+| Forecast, decide, execute, audit log | To do |
+| Trading and smoke-test workflows | To do |
+| Multi-ticker backtest (model size, input, context length) | To do |
+| LLM behaviour scenarios, dashboard, README | To do |
+| News covariates (bonus) | Later |
 
-## How the user wants to work
+## Evaluation plan
 
-- **Every stack or design decision goes into [docs/decisions.md](docs/decisions.md)**, using the template there: context, options compared (pros and cons), what was chosen, why, and the impact on further development. Decisions are made **step by step with the user**. Propose options with a recommendation; don't silently pick.
-- Explain findings and their implications, not just code.
-- Commit at meaningful checkpoints.
-
-## Decisions so far (details in docs/decisions.md)
-
-- **D-001 Python 3.11:** accepted.
-- **D-002 GitHub Actions cron for scheduling and deployment:** provisional. Consequences: the pipeline must be stateless and idempotent, the audit log is committed back to the repo, and model weights are cached with `actions/cache`. CPU speed has since been validated locally (≈12 ms per series).
-
-## Planned architecture (agreed direction, not yet built)
-
-```
-Data -> Forecast (Timestral) -> Decide (Mistral LLM, structured JSON) -> Guardrails (deterministic) -> Execute (Alpaca) -> Audit log -> Dashboard
-```
-
-- **Data:** Alpaca daily bars for a small universe (8–15 liquid ETFs and large caps), FRED macro data, and optionally GDELT news.
-- **Forecast:** Timestral quantile forecasts per ticker. News sentiment, scored by the LLM, is a candidate **past covariate** (bonus).
-- **Decide:** the LLM receives forecast quantiles, the portfolio, risk stats and a news summary. It returns JSON target weights with a confidence and rationale per position.
-- **Guardrails:** code that clips or validates the LLM output (max position size, gross exposure, cash buffer, turnover, market hours). It falls back to "hold" on malformed output.
-- **Execute:** rebalance to target weights through Alpaca, with idempotent client order IDs and a dry-run mode.
-- **Audit log:** every run stores its inputs, forecasts, the LLM prompt and response, guardrail adjustments, orders and fills.
-- **Dashboard:** static page (GitHub Pages) or Streamlit built from the audit log. This doubles as the read-only view for reviewers.
-
-## Evaluation plan ("decisions are sound")
-
-1. Forecast quality: rolling backtest against naive baselines, measuring quantile coverage, pinball loss/CRPS and directional hit rate (started in `scripts/explore_timestral.py`).
-2. Ablations on a historical replay: full agent vs forecast-only rule vs LLM-only vs equal-weight buy-and-hold.
-3. Caveat: **LLM lookahead bias**. The LLM may already know how historical prices moved, so the live period is the clean test.
-4. Live monitoring: does each decision agree with its forecast, how often do guardrails fire, how often does LLM output fail to parse, and how do forecasts compare with realized prices.
-
-## Key finding so far
-
-On SPY daily data, Timestral is **well calibrated** (80% interval coverage ≈ 80%) but has **little directional edge** (hit rate within noise of 50%). It only slightly beats empirical-quantile baselines. Working hypothesis: use Timestral mainly as a **risk/uncertainty engine** (sizing positions by forecast spread) and let the LLM bring the directional view from context and news. Covariates are where Timestral might add signal. Not yet a recorded decision; validate on more tickers first.
-
-## Immediate next steps
-
-1. Run the multi-ticker exploration (candidate universe × 2–3 model sizes). Then record decisions for the universe, model size, and whether to feed prices or returns.
-2. Build the minimal live pipeline (Alpaca data, Timestral, LLM, guardrails, Alpaca orders, JSONL audit log) and deploy it on GitHub Actions.
-3. Then: evaluation suite, news covariates, dashboard, README.
-
-Open decisions are listed at the bottom of docs/decisions.md.
+1. **Forecasts:** rolling backtest against naive baselines on the 15 assets (coverage, pinball loss, hit rate).
+2. **Ablations:** baseline rule alone vs rule + LLM vs equal weight; value added by LLM deviations.
+3. **LLM soundness:** behaviour scenarios, stability across repeated calls, calibration of its stated confidence.
+4. **Live monitoring:** guardrail corrections and rejections per run, forecast vs realised prices.
+5. Caveat: **LLM lookahead bias** on historical replays (the model may know what happened), so the live period is the clean test.
 
 ## Environment setup
 
@@ -84,23 +86,21 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate   |   macOS/Linux: source .venv/bin/activate
 pip install -r requirements-dev.txt   # runtime + dev tooling (requirements.txt is runtime only)
 pre-commit install                    # gitleaks secret scan before every commit
-python scripts/explore_timestral.py --ticker SPY --model mistralai/Timestral-28M
+cp .env.example .env                  # then fill in the keys
 ```
 
-Checks (identical to CI, D-009), must pass before every commit:
+Checks (identical to CI), must pass before every commit:
 
 ```bash
-ruff check . && ruff format --check . && mypy && pytest
+ruff check . && ruff format --check . && mypy && pytest --cov=agent
 ```
-
-Secrets go in `.env` (git-ignored): `MISTRAL_API_KEY`, `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`. All parameters live in `src/agent/config.py`; each traces back to a decision in docs/decisions.md.
 
 ## Gotchas
 
-- yfinance returns **today's incomplete bar** during market hours. The live pipeline must use only completed bars.
-- yfinance is for exploration only. Production data comes from Alpaca.
-- Alpaca also returns **today's incomplete daily bar** while the market is open. Drop it, or check the clock, before forecasting.
-- The Alpaca paper account has **margin (2x buying power) and shorting enabled** by default. Guardrails must enforce long-only and no leverage in code.
-- `mistralai` 3.x moved the client: use `from mistralai.client import Mistral` (the old `from mistralai import Mistral` fails).
-- macOS python.org Python lacks system CA certificates: if a download fails with `CERTIFICATE_VERIFY_FAILED`, run with `SSL_CERT_FILE=$(python -m certifi)`.
+- Alpaca (and yfinance) return **today's incomplete daily bar** while the market is open. Use completed bars only.
+- The Alpaca paper account has **margin (2× buying power) and shorting enabled** by default. Long-only and no leverage are enforced in our code.
+- `mistralai` 3.x moved the client: `from mistralai.client import Mistral`. Reasoning comes back as `ThinkChunk` + `TextChunk` content parts.
+- Pin LLM versions (`mistral-large-4-0`), never `-latest` aliases.
+- macOS python.org Python lacks system CA certificates: on `CERTIFICATE_VERIFY_FAILED`, run with `SSL_CERT_FILE=$(python -m certifi)`.
 - On Linux (CI), install PyTorch from the CPU index (`--extra-index-url https://download.pytorch.org/whl/cpu`), otherwise pip pulls multi-GB CUDA wheels.
+- yfinance is for exploration only. Production data comes from Alpaca.
