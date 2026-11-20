@@ -373,13 +373,106 @@ Adversarial and property-based tests are the strongest evidence that the guardra
 
 ---
 
+## D-010 — Runtime guardrails
+
+- **Date:** 2026-11-20
+- **Status:** Accepted (thresholds are parameters; fallback on rejection is provisional)
+
+### Context
+The LLM proposes a portfolio (D-004, D-008); deterministic code decides what actually reaches the broker. The Alpaca paper account allows margin (2× buying power) and shorting by default, so every restriction must be enforced in our code.
+
+### Architecture: four layers
+1. **LLM output validity:** schema, assets within the universe, numeric weights, weights + cash sum to 100%.
+2. **Portfolio risk rules:** long-only; no leverage (invested ≤ 90%); cash ≥ 10%; ≤ 25% per ETF; ≤ 10% per single stock; ≤ 30% per sector (ETF + stock aggregated); asymmetric bound vs baseline (free decrease, increase ≤ +15 pts).
+3. **Order sanity:** no-trade band (2 pts), turnover cap per run (≈30%), market open and not in the first minutes, idempotent client order IDs.
+4. **System safety:** paper-account check, kill switch, fresh data check, forecast sanity (no NaN, no absurd interval).
+
+### Implementation priority
+Layers 1 and 2 first. From layers 3 and 4, four items are required **before the first real order**, because each costs a few lines and its absence can cause real damage:
+
+| Priority | Item | Failure it prevents |
+|---|---|---|
+| P0 | Paper-account check | A configuration mistake trading real money |
+| P0 | Market-open check | Orders queued while closed and filled later at an unexpected price |
+| P0 | Idempotent client order IDs | A re-run (e.g. GitHub retry) buying twice |
+| P0 | Kill switch (repository variable) | Having to edit code in an emergency to stop the agent |
+| P1 | No-trade band, turnover cap, fresh-data and forecast sanity checks | Churn, trading on stale or broken inputs |
+
+### Handling violations
+**Options**
+| Option | Pros | Cons |
+|---|---|---|
+| Reject everything, do nothing | Very cautious | A trivial excess (26% vs 25%) blocks the whole decision |
+| Correct silently | Agent keeps going | Hides problems: unacceptable for audit |
+| **Correct and log each correction; reject when severe** | Proportionate; every correction is traceable | Must define "severe" |
+
+**Severe → reject the whole proposal**
+| Case | Why |
+|---|---|
+| Invalid JSON, even after one retry | Nothing usable |
+| Asset outside the universe | Hallucination: the rest of the answer cannot be trusted |
+| Missing or non-numeric value | Same |
+| Weights + cash outside 95–105% | Calculation error or misunderstood instructions |
+| Too many corrections in one answer (> 3 assets or > 20 pts corrected in total) | The rules were not understood |
+| Deviation from baseline without justification | Justification is mandatory (D-004) |
+
+**Correctable → fix and log**
+| Case | Correction |
+|---|---|
+| Weights + cash within 95–105% | Renormalise |
+| Above per-asset or per-sector cap | Clip to the cap |
+| Increase above baseline + 15 pts | Clip to +15 pts |
+| Cash below 10% | Scale positions down proportionally |
+| Negative weight (attempted short) | Set to 0 and flag |
+
+The number of corrections per run is a monitored metric.
+
+**Fallback when rejected**
+| Option | Pros | Cons |
+|---|---|---|
+| **Keep current positions** (after one LLM retry) | "First, do no harm"; simplest | Day one, the portfolio stays 100% cash |
+| Apply the baseline portfolio | Always a reasonable decision | Trades without LLM validation, silently changing the agent's nature |
+| Liquidate to cash | Zero risk | Costly round trips caused by a formatting error. Ruled out. |
+
+Chosen provisionally: keep current positions. "Apply baseline" and "reject and do nothing" remain under consideration.
+
+### Order type
+| Option | Pros | Cons |
+|---|---|---|
+| Market order | Always filled | Price not guaranteed |
+| Limit order at current price | Price controlled | May never fill |
+| **Marketable limit** (limit slightly beyond the current price, e.g. ±0.3%) | Fills immediately like a market order, but protected if the price jumps; a single order | Unfilled if the price moves more than the tolerance (cancelled and logged; the next run rebalances) |
+| Escalation: limit, then market after N minutes | Best price | Run must wait and poll; more code and test cases |
+
+Chosen: marketable limit. To verify at implementation: Alpaca's support for limit orders on fractional quantities (otherwise round to whole shares).
+
+### Drawdown circuit breaker
+| Option | Pros | Cons |
+|---|---|---|
+| Single "reduce-only" mode | Simple | Only one level of response |
+| **Graduated levels** | Proportionate; each level testable | Thresholds to choose |
+| Full stop (all cash) | Maximum protection | Sells at the worst moment |
+| Volatility targeting with Timestral (preventive) | Acts before losses; uses Timestral for what it does well | Not a circuit breaker strictly; more code |
+
+Chosen: graduated levels, measured from the portfolio's peak equity:
+- **−3%:** alert; the LLM is told the portfolio is in drawdown.
+- **−5%:** reduce-only (the LLM can no longer increase positions).
+- **−8%:** gross exposure capped at 60%.
+- **−12%:** revert to the baseline portfolio at half exposure; LLM paused until a human re-enables it.
+
+Volatility targeting with Timestral is kept as a strong candidate: it would strengthen Timestral's role (anticipating losses rather than reacting).
+
+### Impact on further development
+- `guardrails.py` returns the corrected portfolio **and** a structured list of corrections or the rejection reason; both go into the audit log.
+- Thresholds live in the config.
+- A diversified 15-asset portfolio rarely loses 5% in one or two weeks, so the circuit breaker is validated with simulated drawdowns in tests rather than waiting for a live trigger.
+
+---
+
 ## Open decisions
 
-- Trading frequency and forecast horizon
-- Asset universe
-- Timestral model size (5M / 28M / 123M / 209M)
-- LLM model and decision output schema
-- Risk guardrails
+- Fallback when the LLM proposal is rejected: keep positions (provisional) vs apply baseline vs do nothing (D-010)
 - Audit log storage format
 - Dashboard technology
 - News source and covariate construction (bonus)
+- Pre-commit hooks (run ruff/mypy locally before each commit) or CI only
