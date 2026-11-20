@@ -564,10 +564,47 @@ Immutability is the strongest argument for the "are decisions sound" question: t
 
 ---
 
+## D-012 — Dashboard: a static page generated from the audit log, published on GitHub Pages
+
+- **Date:** 2026-11-21
+- **Status:** Accepted. **Taken autonomously** while the project owner was away, on the instruction to choose the best option and report the alternatives: to be confirmed or revised.
+
+### Context
+The assignment asks for a read-only view of the trading activity (export or dashboard). It must be viewable by reviewers without installing anything, must always agree with the audit log, and must not become a second system to operate.
+
+### Options
+| Option | Pros | Cons |
+|---|---|---|
+| **A. Static HTML page generated from the audit log, deployed to GitHub Pages** | No server and nothing to install; the page is a pure function of the immutable records, so it cannot drift from them; free; one public URL; testable like any other code; CSV export beside it | Updated after each trade run, not live; a single generated page rather than an app with filters |
+| B. Streamlit app | Rich interactivity, quick to write | Needs a running server (Streamlit Community Cloud or similar): an extra service, account and failure mode; sleeps when idle; not readable without it |
+| C. Notebook or Quarto report | Good for analysis and narrative | Needs execution to refresh; the evaluation write-up, not a monitoring view |
+| D. Markdown report committed to the `audit-log` branch | Zero infrastructure, readable on GitHub | No charts of any quality; no hover, no responsive layout |
+| E. Hosted BI tool (Grafana, Metabase, Evidence) | Powerful | An external service and credentials for a one-week project; data would have to be pushed out of the repository |
+| F. Interactive single-page app in JavaScript with the data embedded | Filters, client-side charts | A front-end build and dependencies to test; charts with no JavaScript fallback; heavier than the content needs |
+
+**Charts: server-rendered SVG with a ~20-line tooltip script** (chosen) versus a charting library from a CDN (an external dependency that can fail or change, and breaks the "self-contained" property) versus Canvas (not accessible, not testable as text).
+
+### Decision
+Option A. `agent.dashboard` builds one self-contained `index.html` (inline CSS, server-rendered SVG, a short script for tooltips; no external resource at all) plus the derived CSV tables for download. The `Dashboard` workflow rebuilds and deploys it to GitHub Pages whenever the `Trade` workflow completes (a push made with the workflow token does not trigger other workflows, so it listens to the end of `Trade`, which also covers reconciliation) and when the dashboard code changes.
+
+Content: portfolio value (hero figure and a line chart with its table view), headline counters (runs, guardrail corrections, rejected proposals, average slippage), the target allocation against the Timestral baseline, the Timestral 5-day forecast intervals sorted by uncertainty, the latest decision with the LLM's analysis and any guardrail corrections, all runs linked to their immutable records, executions with fills and slippage, and the CSV export.
+
+### Rationale
+The page is derived data: the audit log stays the single source of truth, and the dashboard can be regenerated or thrown away. Pages gives reviewers a URL and nothing to run. Server-rendered SVG keeps the charts testable (the tests assert on the output) and readable with scripts disabled. Hover details are a progressive enhancement and every value is also reachable in a table view. All text that comes from the data, notably the LLM's analysis and rationales, is HTML-escaped because LLM output is untrusted; a test injects markup and checks it is displayed, never executed.
+
+Design checks done on the rendered page (headless Chrome, light, dark and a 390 px viewport): this caught a real bug (an interval wider than the axis overflowed its card), fixed and covered by a test. On phones the charts keep a minimum width and scroll instead of shrinking their text.
+
+### Impact on further development
+- The dashboard reads only what the audit module writes: any new section needs its data in the records first.
+- Two sections are intentionally absent until their data exists: forecast calibration against realised prices, and the evaluation of the LLM's stated confidence (see Open decisions).
+- Enabling GitHub Pages is a repository setting: the site is public, like the repository and the audit log.
+- Revisit if reviewers need live updates or filtering (options B or F).
+
+---
+
 ## Open decisions
 
 - Fallback when the LLM proposal is rejected: keep positions (provisional) vs apply baseline vs do nothing (D-010)
-- Dashboard technology
 - News source and covariate construction (bonus)
 
 ---

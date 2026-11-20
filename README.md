@@ -35,7 +35,7 @@ On daily data, Timestral's intervals are **well calibrated** (80% intervals cont
 ## How we know the decisions are sound
 
 - **Guardrails are tested adversarially.** Invented tickers, text instead of numbers, `NaN`, short attempts, concentration, truncated JSON, and about 7,000 random proposals per run (property-based tests): every output must be rejected or pass the independent final check.
-- **100% line and branch coverage** is enforced in CI on the 11 modules that sit on the decision and execution path.
+- **100% line and branch coverage** is enforced in CI on the 12 modules that sit on the decision and execution path.
 - **Offline tests only.** Fake brokers, data sources, models and LLMs mean tests never touch the network or place an order.
 - **Immutable, write-ahead audit log.** The record of what the agent saw and decided is written before any order is sent, and never modified afterwards. Re-running the same run id fails loudly.
 - **Daily smoke test** on the real services, including a check that the pinned LLM version is the one answering.
@@ -90,9 +90,14 @@ Two GitHub Actions workflows run the agent on a schedule (see [D-002](docs/decis
 |---|---|---|
 | **Trade** | 10:00 (full cycle) and 15:00 (reassessment), trading days | One cycle, then reconciliation, then the audit log is pushed to the [`audit-log`](../../tree/audit-log) branch |
 | **Smoke test** | 08:30 | Checks Alpaca, Timestral and the pinned Mistral model without trading |
+| **Dashboard** | after every Trade run | Rebuilds the page and deploys it to GitHub Pages |
 | **CI** | every push and pull request | Lint, types, tests, 100% coverage gate, secret scan |
 
 Setup: add the secrets `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` and `MISTRAL_API_KEY`, and the repository variable `TRADING_ENABLED`. **`TRADING_ENABLED` is the kill switch**: orders are sent only when it is `true`; otherwise runs are recorded as dry runs. `main` is protected: changes go through pull requests with green CI, and the trading workflow only runs on a commit whose CI passed.
+
+## Dashboard
+
+A read-only dashboard is published at **https://spectreb.github.io/timestral-trading-agent/**. It is a single self-contained page generated from the audit log after every trade run: portfolio value, the target allocation against the Timestral baseline, the forecast intervals, the latest decision with the LLM's analysis, every run linked to its immutable record, executions with slippage, and the CSV export. Build it locally with `python -m agent.dashboard --audit-dir audit --out site` (see [D-012](docs/decisions.md)).
 
 ## Reading the audit log
 
@@ -122,7 +127,7 @@ CLAUDE.md           development context for the AI coding agent used on this pro
 
 ## Status and limits
 
-Working: the full cycle, guardrails, audit, reconciliation, scheduled operation. Still to come: the dashboard, forecast scoring against realised prices, the multi-asset backtest for the Timestral configuration (model size, input type, context length), LLM behaviour scenarios, and the optional news covariates. See the open items and the **Future work** section in [docs/decisions.md](docs/decisions.md).
+Working: the full cycle, guardrails, audit, reconciliation, scheduled operation, and the read-only [dashboard](https://spectreb.github.io/timestral-trading-agent/). Still to come: forecast scoring against realised prices, the multi-asset backtest for the Timestral configuration (model size, input type, context length), LLM behaviour scenarios, and the optional news covariates. See the open items and the **Future work** section in [docs/decisions.md](docs/decisions.md).
 
 Known limits worth knowing:
 - On historical replays an LLM may already know what happened (look-ahead bias), so the live period is the clean test.
