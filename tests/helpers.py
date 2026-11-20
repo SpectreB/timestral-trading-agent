@@ -99,3 +99,66 @@ def make_closes(
     idx = pd.bdate_range(end=end, periods=n_days)
     data = {s: 100.0 * (1 + 0.0005 * i) ** np.arange(n_days) for i, s in enumerate(symbols)}
     return pd.DataFrame(data, index=idx)
+
+
+class FakeBroker:
+    """In-memory broker: records submitted orders, can be told to fail on given symbols."""
+
+    def __init__(
+        self,
+        equity: float = 100_000.0,
+        positions: dict[str, Any] | None = None,
+        prices: dict[str, float] | None = None,
+        market_open: bool = True,
+        is_paper: bool = True,
+        status: str = "ACTIVE",
+        blocked: bool = False,
+        fail_on: frozenset[str] = frozenset(),
+    ) -> None:
+        self.equity = equity
+        self._positions = positions or {}
+        self._prices = prices or dict.fromkeys(CFG.symbols, 100.0)
+        self.market_open = market_open
+        self.is_paper = is_paper
+        self.status = status
+        self.blocked = blocked
+        self.fail_on = fail_on
+        self.submitted: list[dict[str, Any]] = []
+
+    def account(self) -> Any:
+        from agent.execute import AccountSnapshot
+
+        return AccountSnapshot(self.equity, self.is_paper, self.status, self.blocked)
+
+    def positions(self) -> dict[str, Any]:
+        return dict(self._positions)
+
+    def latest_prices(self, symbols: Any) -> dict[str, float]:
+        return {s: self._prices[s] for s in symbols}
+
+    def is_market_open(self) -> bool:
+        return self.market_open
+
+    def submit_limit_order(
+        self, symbol: str, side: str, quantity: float, limit_price: float, client_order_id: str
+    ) -> str:
+        if symbol in self.fail_on:
+            raise RuntimeError("insufficient buying power")
+        self.submitted.append(
+            {"symbol": symbol, "side": side, "quantity": quantity, "limit": limit_price,
+             "id": client_order_id}
+        )  # fmt: skip
+        return "accepted"
+
+
+def positions_for(
+    weights: dict[str, float], equity: float = 100_000.0, price: float = 100.0
+) -> Any:
+    """Positions worth `weight * equity` each, at a constant price."""
+    from agent.execute import Position
+
+    return {
+        s: Position(quantity=w * equity / price, market_value=w * equity)
+        for s, w in weights.items()
+        if w > 0
+    }

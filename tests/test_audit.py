@@ -132,7 +132,7 @@ def test_reconciliation_files_are_immutable_too(tmp_path: Path) -> None:
     store = FileAuditStore(tmp_path)
     path = store.write_reconciliation("2026-11-23", {"fills": [{"symbol": "TLT", "price": 80.7}]})
     content = json.loads(path.read_text())
-    assert content["day"] == "2026-11-23"
+    assert content["name"] == "2026-11-23"
     assert content["fills"][0]["price"] == 80.7
     with pytest.raises(AuditError, match="immutable"):
         store.write_reconciliation("2026-11-23", {"fills": []})

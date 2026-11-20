@@ -4,7 +4,7 @@ Layout under the audit root (a checkout of the `audit-log` branch in production)
 
     runs/YYYY-MM-DD_<mode>.json             decision record, written once, never modified
     runs/YYYY-MM-DD_<mode>_reasoning.txt    LLM reasoning trace(s), referenced by the record
-    reconciliation/YYYY-MM-DD.json          fills and realised outcomes, written by later runs
+    reconciliation/<day or run id>.json     order submission results, fills and realised outcomes
     tables/{decisions,weights,forecasts,orders}.csv   derived, regenerable at any time
 
 The reasoning file is written first and the JSON last: the JSON's existence means the
@@ -193,9 +193,10 @@ class FileAuditStore:
         _write_once(self._run_path(record.run_id), content)  # last: marks the run complete
         return self._run_path(record.run_id)
 
-    def write_reconciliation(self, day: str, payload: dict[str, Any]) -> Path:
-        path = self.root / "reconciliation" / f"{day}.json"
-        _write_once(path, _dump({"schema_version": SCHEMA_VERSION, "day": day, **payload}))
+    def write_reconciliation(self, name: str, payload: dict[str, Any]) -> Path:
+        """`name` is a day (fills, outcomes) or a run id (order submission results)."""
+        path = self.root / "reconciliation" / f"{name}.json"
+        _write_once(path, _dump({"schema_version": SCHEMA_VERSION, "name": name, **payload}))
         return path
 
     def read_runs(self) -> list[dict[str, Any]]:
