@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import resources
 from typing import Any, Literal, Protocol
@@ -102,6 +102,7 @@ class DecisionInput:
     closes: pd.DataFrame  # completed daily closes, used for recent returns and volatility
     drawdown: float  # from peak equity, <= 0
     equity: float
+    latest_prices: Mapping[str, float] = field(default_factory=dict)  # live reference prices
 
 
 class Attempt(BaseModel):
@@ -179,6 +180,8 @@ def build_payload(inp: DecisionInput, cfg: AgentConfig) -> dict[str, Any]:
     assets = []
     for a in cfg.universe:
         fc = inp.forecasts[a.symbol].summary((1, h))
+        last_close = float(inp.closes[a.symbol].iloc[-1])
+        latest = inp.latest_prices.get(a.symbol)
         assets.append(
             {
                 "symbol": a.symbol,
@@ -190,6 +193,10 @@ def build_payload(inp: DecisionInput, cfg: AgentConfig) -> dict[str, Any]:
                 "max_weight": cfg.max_weight(a.symbol),
                 "forecast": fc["horizons"],
                 "recent": _recent_stats(inp.closes[a.symbol]),
+                "latest_price": None if latest is None else round(latest, 4),
+                "move_since_last_close": (
+                    None if latest is None else round(latest / last_close - 1, 5)
+                ),
             }
         )
     return {
