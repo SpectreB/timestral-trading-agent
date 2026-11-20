@@ -28,7 +28,8 @@ Build an **autonomous paper-trading agent**:
 | Mistral org ID sent for credits | Done |
 | Git repo | Done: https://github.com/SpectreB/timestral-trading-agent |
 | Timestral installed and explored | Done, see [docs/timestral_notes.md](docs/timestral_notes.md) |
-| Alpaca paper account and API keys | Unknown, ask the user |
+| Alpaca paper account and API keys | Done (paper account verified 2026-11-20: $100k, keys in local .env) |
+| Mistral API key | Done (verified 2026-11-20, keys in local .env) |
 | Review booked | Unknown, ask the user |
 | Live pipeline | Not started |
 
@@ -91,4 +92,7 @@ Secrets will go in `.env` (git-ignored): `MISTRAL_API_KEY`, `ALPACA_API_KEY`, `A
 
 - yfinance returns **today's incomplete bar** during market hours. The live pipeline must use only completed bars.
 - yfinance is for exploration only. Production data comes from Alpaca.
+- Alpaca also returns **today's incomplete daily bar** while the market is open. Drop it, or check the clock, before forecasting.
+- The Alpaca paper account has **margin (2x buying power) and shorting enabled** by default. Guardrails must enforce long-only and no leverage in code.
+- `mistralai` 3.x moved the client: use `from mistralai.client import Mistral` (the old `from mistralai import Mistral` fails).
 - Package management (pip+venv vs uv) is still an open decision. `requirements.txt` is a stopgap.
