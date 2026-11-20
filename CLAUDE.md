@@ -61,14 +61,16 @@ Recorded in [docs/decisions.md](docs/decisions.md): D-001 to D-010 accepted or p
 | Item | Status |
 |---|---|
 | Timestral exploration (SPY) | Done |
-| Alpaca paper account, Mistral API key | Verified 2026-11-20 |
-| Design decisions blocking the pipeline | Done (D-004 to D-010) |
-| Dev tooling: ruff, mypy, pytest, coverage, gitleaks, CI | Done |
-| Guardrails + final check | Next |
-| Forecast, decide, execute, audit log | To do |
-| Trading and smoke-test workflows | To do |
-| Multi-ticker backtest (model size, input, context length) | To do |
-| LLM behaviour scenarios, dashboard, README | To do |
+| Alpaca paper account, Mistral key, GitHub secrets and variable | Done (kill switch `TRADING_ENABLED` is `false` until the owner enables it) |
+| Design decisions D-001 to D-011 | Done (see docs/decisions.md) |
+| Dev tooling: ruff, mypy, pytest, hypothesis, coverage gate, gitleaks, CI, branch protection | Done |
+| Guardrails + independent final check | Done, 100% coverage |
+| Data, forecast, baseline, decide, audit, execute, reconcile, run, smoke | Done, 175 offline tests |
+| Workflows: CI, trade (10:00 and 15:00 ET), smoke test (08:30 ET) | Done, dry run verified on GitHub 2026-11-20 |
+| README | Done |
+| Dashboard (read-only view) | Next |
+| Forecast scoring vs realised prices, multi-ticker backtest (model size, input, context length) | To do |
+| LLM behaviour scenarios, confidence calibration | To do |
 | News covariates (bonus) | Later |
 
 ## Evaluation plan
