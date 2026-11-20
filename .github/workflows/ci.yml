@@ -1,4 +1,5 @@
-# Development guardrails (D-009): lint, type check and tests on every push and pull request.
+# Development guardrails (D-009): lint, type check, tests with coverage and secret detection
+# on every push and pull request.
 # The trading workflow will only run on a green main branch.
 name: CI
 
@@ -33,5 +34,16 @@ jobs:
       - name: Type check (mypy)
         run: mypy
 
-      - name: Tests (pytest)
-        run: pytest
+      - name: Tests with coverage (pytest)
+        run: pytest --cov=agent --cov-report=term-missing
+
+  secrets:
+    # Secret detection on the full history (D-009)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
