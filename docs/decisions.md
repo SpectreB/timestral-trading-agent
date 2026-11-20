@@ -373,12 +373,12 @@ We are judged on how the agent was built, not only on how it runs. Its safety re
 | Trading gated on CI | The trading workflow only runs if the latest CI on `main` is green | Low | Yes |
 | LLM behaviour scenarios (5–10 fixed situations with an expected behaviour: simulated crash → de-risk; huge intervals → lower confidence; contradictory news → flagged) | Unit tests for the LLM's judgement; direct evidence that decisions are sound. Run manually and on prompt changes, not on every commit (API cost, non-determinism) | Medium | Yes |
 | Versioned prompt (prompt file in the repo, version logged on every run) | Behaviour changes can be attributed to prompt, model or data | Low | Yes |
-| Branch protection + pull requests on `main` (CI must pass before merge) | Team-standard workflow; nothing reaches `main` untested | Some friction for a solo developer | Yes |
+| Branch protection + pull requests on `main` (CI must pass before merge) | Team-standard workflow; nothing reaches `main` untested | Friction for a solo developer; on a free GitHub plan, requires a public repository | No (deferred, see Future work) |
 | `pip-audit` (known vulnerabilities in dependencies) | Good "client" practice | Low risk for a one-week, non-exposed project | No (deferred) |
 | Pre-commit hooks for ruff/mypy | Errors caught before CI | Friction; CI already does it | Only gitleaks in pre-commit |
 
 ### Decision
-Everything in round 1, and in round 2 everything except `pip-audit`. Pre-commit is used only for secret detection.
+Everything in round 1, and in round 2 everything except `pip-audit` and branch protection. Pre-commit is used only for secret detection.
 
 ### Rationale
 - Adversarial and property-based tests, 100% coverage on the guardrails and an independent final check together give strong evidence that no LLM output can produce a forbidden portfolio.
@@ -386,11 +386,10 @@ Everything in round 1, and in round 2 everything except `pip-audit`. Pre-commit 
 - **Offline tests** were judged essential: without them, tests would call the real APIs (cost, flakiness, risk of a real order from a test) and CI would need the secrets.
 - **The daily smoke test** was judged essential: external APIs have already changed under us once (the `mistralai` 3.x client import), and the agent runs unattended; a break must be detected before the 10:00 ET run.
 - LLM behaviour scenarios are the most direct answer to "how do you know its decisions are sound?".
-- Branch protection is heavier for a solo developer, but it is the standard practice a client would expect and it makes the CI gate impossible to skip.
+- Branch protection is the standard practice in a team, but for a solo developer over about ten days its value is low, and the repository is private (branch protection needs a public repository on a free plan). The CI gate on the trading workflow covers the essential risk: trading with broken code.
 
 ### Impact on further development
 - Dev dependencies: `ruff`, `mypy`, `hypothesis`, `pytest-cov`, `pre-commit`.
-- Work happens on branches and reaches `main` through pull requests with green CI.
 - External clients (Alpaca, Mistral) are injected behind small interfaces so tests can swap in fakes.
 - Workflows: `ci.yml` (lint, types, tests, coverage, gitleaks), `smoke.yml` (daily dry-run on real APIs), `trade.yml` (gated on CI).
 - The prompt lives in a versioned file; scenario evals live in `evals/`.
@@ -499,3 +498,23 @@ Volatility targeting with Timestral is kept as a strong candidate: it would stre
 - Audit log storage format
 - Dashboard technology
 - News source and covariate construction (bonus)
+- Repository visibility for reviewers (currently private: make public, or invite reviewers)
+
+---
+
+## Future work: with more time or in a longer project
+
+Options deliberately set aside for this one-week assignment. Each would make sense in a longer-lived project, a team setting or a production deployment.
+
+| Item | From | Why deferred | When it would make sense |
+|---|---|---|---|
+| LLM orchestrating Timestral and news as tools (function calling) | D-004 option D | Hard to bound, reproduce and evaluate in one week | Once the v1 pipeline and its evaluation are stable; the modules are already written as separate functions to allow it |
+| Variable LLM freedom based on its confidence | D-004 (1a) | LLM self-reported confidence is unproven | If the logged confidence proves calibrated against outcomes |
+| Baseline rule using forecast direction (width + median) | D-004 (1b) | No measured directional skill | If news covariates improve Timestral's directional accuracy |
+| Volatility targeting with Timestral forecasts | D-010 | More code; the graduated circuit breaker covers the urgent need | Natural next step: makes Timestral act before losses rather than after |
+| More bond exposure (IEF, LQD, HYG) and crypto | D-005 | Each needs specific guardrails, and crypto a 24/7 calendar | Once the guardrails are validated and the LLM's behaviour with volatile assets is evaluated |
+| Larger Timestral models (123M, 209M) | D-006 | Start with the tested 28M | If the multi-ticker backtest shows a gain |
+| Event-driven runs (triggered by news) | D-007 | Requires continuous news monitoring | With a streaming news source and a longer evaluation period |
+| Branch protection + mandatory pull requests | D-009 | Solo developer, about ten days, private repository | Any team project or longer-lived codebase |
+| `pip-audit` (dependency vulnerability scanning) | D-009 | Low exposure for a short, non-public project | Any production or client deployment |
+| Pre-commit hooks for ruff and mypy | D-009 | CI already runs them | Larger team, to catch issues before CI |
