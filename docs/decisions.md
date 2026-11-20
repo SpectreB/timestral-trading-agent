@@ -491,6 +491,15 @@ Volatility targeting with Timestral is kept as a strong candidate: it would stre
 - Thresholds live in the config.
 - A diversified 15-asset portfolio rarely loses 5% in one or two weeks, so the circuit breaker is validated with simulated drawdowns in tests rather than waiting for a live trigger.
 
+### Implementation notes (execution, 2026-11-20)
+- **Fractional limit orders are accepted** by Alpaca paper (verified: a 0.5-share limit order was accepted, then cancelled with no fill). They must be day orders; limit prices are rounded to the cent. The reference price comes from the IEX feed (the free plan refuses recent SIP data).
+- **Write-ahead audit:** the run record, including the planned orders, is written before any order is sent; submission results go to `reconciliation/<run_id>.json`. The agent can never act without a record, and a crash in between is detectable (a record with no submissions).
+- **Kill switch:** live orders need the `--live` flag **and** `TRADING_ENABLED=true`; otherwise the run is recorded as `dry_run_kill_switch`. Idempotency: a run id already in the audit log is skipped, and client order ids are `<run_id>-<symbol>-<side>`.
+- **Sells before buys, and a failed sell cancels the buys:** without the proceeds of the sell, the buys could only be funded with margin, i.e. leverage.
+- **No-trade band relaxed when needed:** if skipping small moves would leave an invariant broken (for example a position drifting above its cap), the band is dropped for that run; if no plan is safe, the run aborts.
+- **Consequence of the turnover cap:** the first deployment from 100% cash is throttled to 30% of equity per run, so reaching the target takes about three runs. The cap is a parameter.
+- Positions outside the universe, an unexpected short or leverage in the account stop the run.
+
 ---
 
 ## D-011 — Audit log: format, storage and immutability

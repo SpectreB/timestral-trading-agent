@@ -43,7 +43,3 @@ def test_drawdown_levels_are_increasingly_severe() -> None:
 
 def test_llm_model_is_pinned() -> None:
     assert "latest" not in CFG.llm.model
-
-
-def test_dry_run_is_the_default() -> None:
-    assert CFG.execution.dry_run is True

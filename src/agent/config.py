@@ -107,7 +107,6 @@ class ExecutionConfig:
     no_trade_band: float = 0.02  # skip orders that move a weight by less than 2 pts
     max_turnover_per_run: float = 0.30
     limit_price_tolerance: float = 0.003  # marketable limit: +/-0.3% beyond current price
-    dry_run: bool = True  # safe default: real orders require an explicit opt-in
 
 
 @dataclass(frozen=True)
