@@ -153,6 +153,7 @@ def test_tables_are_derived_from_the_run_records(tmp_path: Path) -> None:
         "weights.csv",
         "forecasts.csv",
         "orders.csv",
+        "fills.csv",
     }
 
     decisions = {r["run_id"]: r for r in read_csv(tmp_path / "tables" / "decisions.csv")}
