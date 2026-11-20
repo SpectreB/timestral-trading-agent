@@ -37,6 +37,9 @@ jobs:
       - name: Tests with coverage (pytest)
         run: pytest --cov=agent --cov-report=term-missing
 
+      - name: Coverage gate on safety-critical modules (100%)
+        run: coverage report --include="src/agent/guardrails.py,src/agent/safety.py" --fail-under=100
+
   secrets:
     # Secret detection on the full history (D-009). Runs the same gitleaks version as the
     # local pre-commit hook, on the whole history: independent of the push range, so it
