@@ -87,9 +87,36 @@ At daily frequency, a few minutes of cron jitter is harmless. Auditability (a pu
 
 ---
 
+## D-003 — Package and environment management: pip + venv
+
+- **Date:** 2026-11-20
+- **Status:** Accepted
+
+### Context
+We need a reproducible environment that reviewers can install, and that GitHub Actions can install on every run. The deadline is tight, so tooling overhead matters.
+
+### Options
+| Option | Pros | Cons |
+|---|---|---|
+| pip + venv + pinned `requirements.txt` | Ships with Python, nothing extra to install; universally understood by reviewers; trivial in GitHub Actions | No lockfile for transitive dependencies; slower installs |
+| uv | Very fast installs; proper lockfile | One more tool for reviewers and CI to install |
+| poetry | Lockfile; project metadata | Heavier; slower; more configuration |
+
+### Decision
+pip + venv, with direct dependencies pinned to exact versions (and Timestral pinned to a git commit) in `requirements.txt`.
+
+### Rationale
+Zero extra tooling, and every reviewer can run it. Pinning direct dependencies, including the Timestral commit, gives enough reproducibility for a one-week project.
+
+### Impact on further development
+- Setup instructions are `python -m venv .venv && pip install -r requirements.txt`.
+- The CI workflow uses `actions/setup-python` with pip caching.
+- Transitive dependencies are not locked. Revisit (uv) if a dependency drift breaks a run.
+
+---
+
 ## Open decisions
 
-- Package and environment management (pip+venv vs uv vs poetry)
 - Trading frequency and forecast horizon
 - Asset universe
 - Timestral model size (5M / 28M / 123M / 209M)
