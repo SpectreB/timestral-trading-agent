@@ -1,0 +1,37 @@
+# Development guardrails (D-009): lint, type check and tests on every push and pull request.
+# The trading workflow will only run on a green main branch.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies (CPU-only PyTorch)
+        run: pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (ruff)
+        run: ruff format --check .
+
+      - name: Type check (mypy)
+        run: mypy
+
+      - name: Tests (pytest)
+        run: pytest

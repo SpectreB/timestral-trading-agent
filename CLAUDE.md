@@ -82,11 +82,17 @@ Open decisions are listed at the bottom of docs/decisions.md.
 ```bash
 python -m venv .venv
 # Windows: .venv\Scripts\activate   |   macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # runtime + dev tooling (requirements.txt is runtime only)
 python scripts/explore_timestral.py --ticker SPY --model mistralai/Timestral-28M
 ```
 
-Secrets will go in `.env` (git-ignored): `MISTRAL_API_KEY`, `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`.
+Checks (identical to CI, D-009), must pass before every commit:
+
+```bash
+ruff check . && ruff format --check . && mypy && pytest
+```
+
+Secrets go in `.env` (git-ignored): `MISTRAL_API_KEY`, `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`. All parameters live in `src/agent/config.py`; each traces back to a decision in docs/decisions.md.
 
 ## Gotchas
 
@@ -95,4 +101,4 @@ Secrets will go in `.env` (git-ignored): `MISTRAL_API_KEY`, `ALPACA_API_KEY`, `A
 - Alpaca also returns **today's incomplete daily bar** while the market is open. Drop it, or check the clock, before forecasting.
 - The Alpaca paper account has **margin (2x buying power) and shorting enabled** by default. Guardrails must enforce long-only and no leverage in code.
 - `mistralai` 3.x moved the client: use `from mistralai.client import Mistral` (the old `from mistralai import Mistral` fails).
-- Package management (pip+venv vs uv) is still an open decision. `requirements.txt` is a stopgap.
+- On Linux (CI), install PyTorch from the CPU index (`--extra-index-url https://download.pytorch.org/whl/cpu`), otherwise pip pulls multi-GB CUDA wheels.
