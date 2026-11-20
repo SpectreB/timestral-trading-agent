@@ -1,0 +1,119 @@
+# Autonomous trading runs (D-002, D-007, D-010).
+#
+# Two scheduled runs per trading day, in UTC (US Eastern standard time = UTC-5 until March):
+#   15:00 UTC = 10:00 ET  morning: full cycle
+#   20:00 UTC = 15:00 ET  afternoon: reassessment
+# GitHub may start scheduled jobs 10-30 minutes late; the code checks that the market is open
+# and does nothing on holidays or after the close.
+#
+# Orders are only sent when the repository variable TRADING_ENABLED is "true" (kill switch:
+# Settings > Secrets and variables > Actions > Variables). Otherwise the run is a recorded dry run.
+# The audit log is pushed to the `audit-log` branch, never to `main` (D-011).
+name: Trade
+
+on:
+  schedule:
+    - cron: "0 15 * * 1-5"
+    - cron: "0 20 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Run mode
+        type: choice
+        options: [morning, afternoon]
+        default: morning
+      live:
+        description: Request live orders (still requires TRADING_ENABLED=true)
+        type: boolean
+        default: false
+
+# One trading run at a time, never cancelled midway.
+concurrency:
+  group: trading
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the audit log to the audit-log branch
+  actions: read # read the CI result in the gate
+
+jobs:
+  gate:
+    # Trading is gated on CI: the commit being deployed must have a successful CI run.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a green CI on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          green=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" \
+            --json status,conclusion \
+            --jq '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
+          if [ "$green" -lt 1 ]; then
+            echo "::error::No successful CI run for $GITHUB_SHA: not trading."
+            exit 1
+          fi
+
+  trade:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/checkout@v7
+        with:
+          ref: audit-log
+          path: audit
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Cache Timestral weights
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface
+          key: hf-timestral-28M-v1
+
+      - name: Install (CPU-only PyTorch)
+        run: |
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+          pip install --no-deps -e .
+
+      - name: Run one cycle
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_LIVE: ${{ inputs.live }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TRADING_ENABLED: ${{ vars.TRADING_ENABLED }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            MODE="$INPUT_MODE"; LIVE="$INPUT_LIVE"
+          else
+            if [ "$(date -u +%H)" -lt 18 ]; then MODE=morning; else MODE=afternoon; fi
+            LIVE=true
+          fi
+          ARGS="--mode $MODE --audit-dir audit"
+          if [ "$LIVE" = "true" ]; then ARGS="$ARGS --live"; fi
+          echo "Running: python -m agent.run $ARGS (TRADING_ENABLED='${TRADING_ENABLED}')"
+          python -m agent.run $ARGS
+
+      - name: Publish the audit log
+        # Also after a failure: the record is written before any order is sent.
+        if: always()
+        run: |
+          [ -d audit/.git ] || exit 0
+          python -c "from pathlib import Path; from agent.audit import FileAuditStore; FileAuditStore(Path('audit')).build_tables()" || true
+          cd audit
+          git config user.name "trading-agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "No new audit records."; exit 0; fi
+          git commit -m "Audit log: ${GITHUB_RUN_ID} ($(date -u +%FT%TZ))"
+          git pull --rebase origin audit-log
+          git push origin HEAD:audit-log

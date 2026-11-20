@@ -85,6 +85,13 @@ At daily frequency, a few minutes of cron jitter is harmless. Auditability (a pu
 - Hugging Face weights should be cached with `actions/cache`.
 - Revisit if runtime or reliability on the runner proves insufficient.
 
+### Implementation notes (workflows, 2026-11-20)
+- **`trade.yml`:** two cron schedules (15:00 and 20:00 UTC, i.e. 10:00 and 15:00 ET while the US is on standard time; shift by one hour when daylight saving time starts in March) plus a manual dispatch. A `gate` job requires a successful CI run on the exact commit being deployed ("trading gated on CI", D-009). Runs are serialised (`concurrency`, never cancelled midway). On a holiday or half-day afternoon the market-open check ends the run before any LLM call.
+- **Kill switch:** the repository variable `TRADING_ENABLED` must be `true` for orders to be sent. Scheduled runs always request live orders; with the variable unset or `false` they are recorded as `dry_run_kill_switch`, which lets us watch the first runs before enabling trading.
+- **Audit log:** the `audit-log` branch is checked out into `audit/`, the run writes there, and the workflow pushes it afterwards, **also after a failure** (the record is written before any order, D-011). Derived CSV tables are rebuilt on every publish.
+- **`smoke.yml`:** a daily smoke test at 13:30 UTC (08:30 ET) on the real services, no order and no audit record: paper account, data validation, Timestral forecast, live prices, and a strict-schema call to the **pinned** Mistral model, whose answer must report the pinned model id (a silent alias change would otherwise go unnoticed). It is an alert, not a gate: a failure is visible and the kill switch is one variable away.
+- **Caching:** the Hugging Face weights and pip downloads are cached; CPU-only PyTorch is installed from the PyTorch CPU index.
+
 ---
 
 ## D-003 — Package and environment management: pip + venv

@@ -1,0 +1,43 @@
+# Daily smoke test on the real services (D-009), before the morning run.
+# Places no order and writes no audit record. If it fails, check the logs and, if needed,
+# set the TRADING_ENABLED repository variable to "false" (kill switch) until it is fixed.
+name: Smoke test
+
+on:
+  schedule:
+    - cron: "30 13 * * 1-5" # 08:30 ET, 90 minutes before the morning run
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Cache Timestral weights
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface
+          key: hf-timestral-28M-v1
+
+      - name: Install (CPU-only PyTorch)
+        run: |
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+          pip install --no-deps -e .
+
+      - name: Smoke test
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python -m agent.smoke
