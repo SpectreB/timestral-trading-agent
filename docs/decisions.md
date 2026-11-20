@@ -81,7 +81,7 @@ At daily frequency, a few minutes of cron jitter is harmless. Auditability (a pu
 
 ### Impact on further development
 - The pipeline must be **stateless and idempotent**: each run reconstructs state from Alpaca and the persisted audit log.
-- The audit log must be committed back to the repo (or a dedicated branch) so the dashboard can be built from it.
+- The audit log must be committed back to the repo (or a dedicated branch) so the dashboard can be built from it. **Refined by D-011:** a dedicated `audit-log` branch, because `main` is protected (D-009) and cannot receive automated commits.
 - Hugging Face weights should be cached with `actions/cache`.
 - Revisit if runtime or reliability on the runner proves insufficient.
 
@@ -493,10 +493,59 @@ Volatility targeting with Timestral is kept as a strong candidate: it would stre
 
 ---
 
+## D-011 — Audit log: format, storage and immutability
+
+- **Date:** 2026-11-20
+- **Status:** Accepted (file names and the split between files are parameters)
+
+### Context
+"How do we know the decisions are sound?" requires a record of everything the agent saw and did: inputs, Timestral forecasts, the three portfolios (baseline, LLM proposal, executed), the full prompt and answer, the reasoning trace, guardrail corrections, orders and fills. A live record is about 60 KB (prompt 20 KB, reasoning 24 KB, answer 6 KB); at two runs a day for about 20 trading days that is about 2.5 MB, which Git handles easily. The log also feeds the dashboard and the read-only export for reviewers.
+
+### Options
+**Storage format**
+| Option | Pros | Cons |
+|---|---|---|
+| A. One JSON file per run | Readable directly on GitHub; no write conflicts between runs; file name doubles as an idempotency lock; readable diffs | Cross-run statistics require loading every file |
+| B. A single JSONL file | Simple to stream | One 60 KB line per run is unreadable; one growing file; conflicts if runs overlap |
+| C. SQLite database in the repository | Easy to query | Binary: invisible on GitHub, no readable diffs, unmergeable; reviewers must download it |
+| D. CSV or Parquet only | Ideal for analysis and charts | Nested data (prompt, reasoning, attempts) fits badly |
+| **E. Hybrid: A as source of truth + derived flat tables** | Complete and readable (JSON), easy to analyse (CSV); the CSVs are directly the "export" the assignment asks for; tables can always be regenerated | One more small script to maintain and test |
+
+**Where to store it**
+| Option | Pros | Cons |
+|---|---|---|
+| Commit to `main` | Code and log together | Blocked by the branch protection of D-009; bypassing it would weaken "nothing trades without green CI" |
+| **Dedicated `audit-log` branch** | No bypass: the code stays protected while runs commit the log automatically; visible, immutable history; readable on GitHub | One more branch to explain; the log is not on the default branch |
+| GitHub Actions artifacts | No repository writes | Deleted after 90 days; not browsable without signing in: useless as a read-only view for reviewers |
+| External service (hosted database, object storage) | Robust in theory | An extra account, keys and service; nothing left to read in the repository |
+
+**Fills (order results arrive after the decision)**
+| Option | Pros | Cons |
+|---|---|---|
+| Rewrite the run file once results are known | One complete file | The log is no longer immutable: the proof of what was decided at time T is lost |
+| **Immutable run records + separate reconciliation files** | The decision record is never modified; later runs write fills, price slippage and forecast-vs-realised comparisons to `reconciliation/` | Analysis must join the two kinds of files (the derived tables do it) |
+
+### Decision
+- **Format E.** One JSON file per run (`runs/YYYY-MM-DD_morning.json`, `..._afternoon.json`) is the source of truth. Flat CSV tables are derived from it by a script: `decisions.csv` (one row per run), `weights.csv` (one row per run and asset: current, baseline, LLM proposal, final, confidence, rationale), `forecasts.csv` (quantiles per run, asset and horizon) and `orders.csv`.
+- **Storage:** a dedicated `audit-log` branch.
+- **Immutability:** a run record is written once and never modified. Writing an existing run is an error, which also makes a re-run (for example a GitHub retry) detectable. Fills and realised outcomes go to separate `reconciliation/YYYY-MM-DD.json` files written by later runs.
+- **Reasoning trace** in a sibling file (`..._reasoning.txt`, referenced by the run record) so the JSON that tools read stays light. The reasoning file is written first and the JSON last, so the JSON's existence means the run is complete.
+- Each record carries a `schema_version`, the code version (git commit), a snapshot of the configuration and the prompt version.
+
+### Rationale
+Immutability is the strongest argument for the "are decisions sound" question: the record of what the agent saw and decided cannot be edited afterwards, and its outcome is appended later. The hybrid format serves both audiences, a complete audit trail (JSON) and quick reading and export (CSV). The dedicated branch is the consequence of adopting branch protection: the code path stays protected, the data path is automated.
+
+### Impact on further development
+- `audit.py` builds run records from the pipeline objects, writes them atomically without overwriting, and derives the tables. Tests use a temporary directory, no network.
+- Workflows check out the `audit-log` branch into a folder, run the agent against it and push the new files. The dashboard reads the derived tables from that branch.
+- No secret may ever enter a record (gitleaks also scans the branch history).
+- The record and the reconciliation files are public, like the repository: the prompt and reasoning are exactly what reviewers want to examine.
+
+---
+
 ## Open decisions
 
 - Fallback when the LLM proposal is rejected: keep positions (provisional) vs apply baseline vs do nothing (D-010)
-- Audit log storage format
 - Dashboard technology
 - News source and covariate construction (bonus)
 
