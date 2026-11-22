@@ -9,6 +9,13 @@
 # Orders are only sent when the repository variable TRADING_ENABLED is "true" (kill switch:
 # Settings > Secrets and variables > Actions > Variables). Otherwise the run is a recorded dry run.
 # The audit log is pushed to the `audit-log` branch, never to `main` (D-011).
+#
+# Two agents (D-018), each on its own Alpaca paper account and with its own kill switch:
+#   pipeline  Timestral always runs, the LLM adjusts the baseline   -> audit/ (root)
+#             keys ALPACA_API_KEY / ALPACA_SECRET_KEY, variable TRADING_ENABLED
+#   tools     the LLM queries Timestral through tools               -> audit/agents/tools/
+#             keys ALPACA_TOOLS_API_KEY / ALPACA_TOOLS_SECRET_KEY, variable TRADING_ENABLED_TOOLS
+# The tool agent is skipped while its keys are not set; each agent runs even if the other fails.
 name: Trade
 
 on:
@@ -79,14 +86,14 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/huggingface
-          key: hf-timestral-28M-v1
+          key: hf-timestral-28M-209M-v1
 
       - name: Install (CPU-only PyTorch)
         run: |
           pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
           pip install --no-deps -e .
 
-      - name: Run one cycle
+      - name: Run one cycle (pipeline agent)
         env:
           EVENT: ${{ github.event_name }}
           INPUT_MODE: ${{ inputs.mode }}
@@ -107,6 +114,29 @@ jobs:
           echo "Running: python -m agent.run $ARGS (TRADING_ENABLED='${TRADING_ENABLED}')"
           python -m agent.run $ARGS
 
+      - name: Run one cycle (tool agent)
+        if: always()
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_LIVE: ${{ inputs.live }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          ALPACA_TOOLS_API_KEY: ${{ secrets.ALPACA_TOOLS_API_KEY }}
+          ALPACA_TOOLS_SECRET_KEY: ${{ secrets.ALPACA_TOOLS_SECRET_KEY }}
+          TRADING_ENABLED: ${{ vars.TRADING_ENABLED_TOOLS }}
+        run: |
+          if [ -z "$ALPACA_TOOLS_API_KEY" ]; then echo "Tool agent account not configured: skipped."; exit 0; fi
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            MODE="$INPUT_MODE"; LIVE="$INPUT_LIVE"
+          else
+            if [ "$(date -u +%H)" -lt 18 ]; then MODE=morning; else MODE=afternoon; fi
+            LIVE=true
+          fi
+          ARGS="--agent tools --mode $MODE --audit-dir audit/agents/tools"
+          if [ "$LIVE" = "true" ]; then ARGS="$ARGS --live"; fi
+          echo "Running: python -m agent.run $ARGS (TRADING_ENABLED_TOOLS='${TRADING_ENABLED}')"
+          python -m agent.run $ARGS
+
       - name: Reconcile earlier runs (fills, slippage)
         # After the cycle, so a reconciliation problem never blocks trading. Also after a
         # failed cycle. Idempotent: only runs whose orders have all reached a final state.
@@ -114,9 +144,14 @@ jobs:
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_TOOLS_API_KEY: ${{ secrets.ALPACA_TOOLS_API_KEY }}
+          ALPACA_TOOLS_SECRET_KEY: ${{ secrets.ALPACA_TOOLS_SECRET_KEY }}
         run: |
           [ -d audit/.git ] || exit 0
           python -m agent.reconcile --audit-dir audit
+          if [ -n "$ALPACA_TOOLS_API_KEY" ] && [ -d audit/agents/tools/runs ]; then
+            python -m agent.reconcile --agent tools --audit-dir audit/agents/tools
+          fi
 
       - name: Record the day's closes (basis for forecast scoring)
         # Facts, written once per session: the forecast scores are derived from them.
@@ -127,6 +162,9 @@ jobs:
         run: |
           [ -d audit/.git ] || exit 0
           python -m agent.scoring --audit-dir audit
+          if [ -d audit/agents/tools/runs ]; then
+            python -m agent.scoring --audit-dir audit/agents/tools
+          fi
 
       - name: Publish the audit log
         # Also after a failure: the record is written before any order is sent.
@@ -134,7 +172,7 @@ jobs:
         if: always() && (github.event_name != 'workflow_dispatch' || inputs.publish)
         run: |
           [ -d audit/.git ] || exit 0
-          python -c "from pathlib import Path; from agent.audit import FileAuditStore; FileAuditStore(Path('audit')).build_tables()" || true
+          python -c "from pathlib import Path; from agent.audit import FileAuditStore; [FileAuditStore(p).build_tables() for p in (Path('audit'), Path('audit/agents/tools')) if (p / 'runs').exists()]" || true
           cd audit
           git config user.name "trading-agent"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

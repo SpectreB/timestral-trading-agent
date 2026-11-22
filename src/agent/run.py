@@ -23,9 +23,10 @@ from typing import Literal
 
 from agent.audit import FileAuditStore, build_record, run_id
 from agent.baseline import baseline_weights
-from agent.config import AgentConfig
+from agent.config import AgentConfig, tool_agent_config
 from agent.data import NEW_YORK, MarketData, load_context
-from agent.decide import DecisionInput, LLMClient, Mode, decide
+from agent.decide import DecisionInput, LLMClient, Mode
+from agent.decide_tools import decide_agent
 from agent.execute import (
     Broker,
     ExecutionError,
@@ -40,6 +41,28 @@ from agent.forecast import QuantileModel, forecast_assets
 from agent.safety import final_check
 
 Status = Literal["done", "already_done", "market_closed"]
+
+# D-018: two agents, each trading its own Alpaca paper account.
+AGENTS = ("pipeline", "tools")
+ALPACA_KEY_NAMES = {
+    "pipeline": ("ALPACA_API_KEY", "ALPACA_SECRET_KEY"),
+    "tools": ("ALPACA_TOOLS_API_KEY", "ALPACA_TOOLS_SECRET_KEY"),
+}
+
+
+def config_for(agent: str) -> AgentConfig:
+    if agent not in AGENTS:
+        raise ValueError(f"unknown agent {agent!r}")
+    return tool_agent_config() if agent == "tools" else AgentConfig()
+
+
+def alpaca_keys(agent: str, env: Mapping[str, str]) -> tuple[str, str]:
+    """The keys of the agent's own paper account: the two agents never share an account."""
+    key_name, secret_name = ALPACA_KEY_NAMES[agent]
+    key, secret = env.get(key_name, ""), env.get(secret_name, "")
+    if not key or not secret:
+        raise KeyError(f"{key_name} and {secret_name} must be set for the {agent} agent")
+    return key, secret
 
 
 @dataclass(frozen=True)
@@ -107,7 +130,7 @@ def run_cycle(
         equity=equity,
         latest_prices=prices,
     )
-    decision = decide(inp, llm, cfg)
+    decision = decide_agent(inp, llm, model, cfg)
 
     plan: Plan | None = None
     if decision.outcome != "fallback_hold":
@@ -158,11 +181,12 @@ def main() -> None:  # pragma: no cover - CLI wiring, exercised by the smoke tes
     parser.add_argument("--mode", choices=["morning", "afternoon"], default="morning")
     parser.add_argument("--live", action="store_true", help="send real (paper) orders")
     parser.add_argument("--audit-dir", default="audit", type=Path)
+    parser.add_argument("--agent", choices=AGENTS, default="pipeline")
     args = parser.parse_args()
 
     load_dotenv()
-    cfg = AgentConfig()
-    key, secret = os.environ["ALPACA_API_KEY"], os.environ["ALPACA_SECRET_KEY"]
+    cfg = config_for(args.agent)
+    key, secret = alpaca_keys(args.agent, os.environ)
     result = run_cycle(
         mode=args.mode,
         now=datetime.now(UTC),
