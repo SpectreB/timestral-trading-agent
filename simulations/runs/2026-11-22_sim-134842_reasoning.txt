@@ -1,0 +1,540 @@
+===== attempt 1 =====
+The user wants me to act as a portfolio decision-maker for an autonomous paper-trading agent. I need to output valid JSON with an analysis, positions for all 15 assets, and cash_weight.
+
+Let me analyze the data:
+
+1. **Current state**: Portfolio is $100,000 equity, current_cash is 1.0 (which seems to mean 1% or $1,000? Actually looking at "current_cash": 1.0 and "baseline_cash": 0.1, and all current_weight are 0.0. This suggests the portfolio is currently all cash? Wait, "current_cash": 1.0 likely means 100% cash (weight 1.0), and all asset current_weights are 0.0. But "baseline_cash": 0.1 means the baseline rule suggests 10% cash. So currently we're at 100% cash, and the baseline wants to deploy 90% into assets.
+
+Wait, let me re-read: "current_cash": 1.0 - this is likely the weight (100% cash). All current_weight for assets are 0.0. So we're currently all in cash. The baseline weights sum to... let me check: 0.047+0.0373+0.0612+0.0566+0.0362+0.0661+0.0867+0.0824+0.1461+0.0497+0.0157+0.0571+0.0593+0.0563+0.0422 = let's calculate:
+
+0.047 + 0.0373 = 0.0843
++ 0.0612 = 0.1455
++ 0.0566 = 0.2021
++ 0.0362 = 0.2383
++ 0.0661 = 0.3044
++ 0.0867 = 0.3911
++ 0.0824 = 0.4735
++ 0.1461 = 0.6196
++ 0.0497 = 0.6693
++ 0.0157 = 0.685
++ 0.0571 = 0.7421
++ 0.0593 = 0.8014
++ 0.0563 = 0.8577
++ 0.0422 = 0.8999
+
+So baseline sums to ~0.90, with baseline_cash 0.10. That checks out.
+
+Current portfolio: all cash (weight 1.0), no positions. Drawdown is 0.0, no drawdown actions.
+
+2. **Market context**: All assets have negative recent returns (1d, 5d, 20d mostly negative). This looks like a market selloff. NVDA is down 40% over 20 days, -14% in 1 day. QQQ down 13.6% over 20d. SPY down 9.2% over 20d. This is a risk-off environment.
+
+3. **Forecasts**: The median forecasts are mostly near zero or slightly positive/negative. The system says median has no reliable directional skill. The widths (risk) vary:
+   - TLT has the narrowest width (0.019 1d, 0.0406 5d) - lowest uncertainty
+   - XLV also narrow (0.0337 1d, 0.0684 5d)
+   - XLF narrow (0.0376 1d, 0.0719 5d)
+   - XLE narrow (0.0426 1d, 0.0896 5d)
+   - IWM relatively narrow (0.0479 1d, 0.0969 5d)
+   - NVDA extremely wide (0.18 1d, 0.378 5d) - highest uncertainty
+   - QQQ wide (0.0758 1d, 0.1587 5d)
+   - EEM wide (0.0807 1d, 0.1639 5d)
+
+4. **Baseline weights**: Inversely proportional to width. So TLT gets highest weight (0.1461), then XLV (0.0867), XLF (0.0824), XLE (0.0661), IWM (0.0612), XOM (0.0593), EFA (0.0566), LLY (0.0563), JPM (0.0571), GLD (0.0497), SPY (0.047), AMZN (0.0422), QQQ (0.0373), EEM (0.0362), NVDA (0.0157).
+
+5. **Constraints**:
+   - Long-only, sum to 1 with cash
+   - Cash >= 10%
+   - ETF <= 25%, stock <= 10%, group <= 30%
+   - Can increase a position by at most 15pp above baseline weight
+   - Currently at 0 for all, so I can go up to baseline + 0.15 for each, but also constrained by max_weight (ETF 25%, stock 10%) and group limits.
+   - Deviations from baseline > 0.5pp need rationale.
+   - No drawdown, so no reduce_only or cap_exposure_60.
+
+6. **Groups**:
+   - us_broad: SPY, IWM
+   - tech_growth: QQQ, NVDA, AMZN
+   - intl_developed: EFA
+   - emerging: EEM
+   - energy: XLE, XOM
+   - health: XLV, LLY
+   - financials: XLF, JPM
+   - bonds: TLT
+   - gold: GLD
+
+   Group limits: <= 30% total per group.
+
+   Check baseline group sums:
+   - us_broad: 0.047 + 0.0612 = 0.1082 (OK)
+   - tech_growth: 0.0373 + 0.0157 + 0.0422 = 0.0952 (OK)
+   - energy: 0.0661 + 0.0593 = 0.1254 (OK)
+   - health: 0.0867 + 0.0563 = 0.143 (OK)
+   - financials: 0.0824 + 0.0571 = 0.1395 (OK)
+   - Others are single assets.
+
+7. **Decision making**:
+   Since we're currently 100% cash and the baseline wants 90% invested, I need to decide whether to follow the baseline or deviate.
+
+   Market context: Broad selloff across equities. NVDA crushed (-40% 20d). Volatility is high in tech (QQQ 40% ann vol, NVDA 69% ann vol). Defensive assets (TLT) have positive recent returns and low vol (11% ann).
+
+   The baseline already heavily weights TLT (14.6%) due to low uncertainty. It also weights defensive sectors (XLV, XLF) highly.
+
+   However, the recent momentum is strongly negative for equities. The forecasts show wide intervals for equities, suggesting high uncertainty. The median forecasts are not reliable.
+
+   Given the sharp selloff, should I increase cash above 10%? The rules allow me to raise cash as much as I want (asymmetric freedom). But the baseline is 10% cash. If I increase cash, I'm deviating from baseline (reducing positions), which is allowed without the 15pp limit (that limit is only for increases above baseline).
+
+   But wait: "You may increase a position by at most 15 percentage points above its baseline weight." Since current is 0, and baseline is e.g. 0.047 for SPY, I can go up to 0.197. But I can also choose to stay at 0 or any weight below baseline.
+
+   The question is: given the market is down sharply, should I deploy capital now or wait?
+
+   The forecasts don't show strong directional signals (medians near zero). The widths suggest high uncertainty in equities. TLT has the tightest interval and positive recent momentum.
+
+   However, the baseline already accounts for uncertainty via inverse width weighting. My job is to add judgement.
+
+   Key observations:
+   - NVDA has extremely wide forecast intervals (width 0.38 for 5d) and has been crushed. Baseline gives it only 1.57%. I should probably keep it low or zero. But since current is 0, and baseline is 0.0157, I could just take the baseline or reduce to 0. Reducing to 0 is a deviation of -1.57pp from baseline, which needs rationale (>0.5pp). I can justify: extreme volatility and recent drawdown.
+   - QQQ also wide (0.159 5d width), high vol. Baseline 3.73%.
+   - EEM wide (0.164), baseline 3.62%.
+   - Defensive: TLT baseline 14.6%, XLV 8.67%, XLF 8.24%.
+
+   Group constraints: If I increase TLT above baseline, I can go up to baseline + 15pp = 29.6%, but max ETF is 25%, so max 25%. But group "bonds" is just TLT, so 25% is fine.
+
+   Should I increase TLT? It has the lowest uncertainty and positive recent returns. In a risk-off environment, overweighting bonds makes sense. But the median forecast is slightly negative for 1d (-0.00017) and slightly positive for 5d (0.00086). Not a strong signal.
+
+   Actually, looking at the recent data: TLT return_1d +1.37%, return_5d +2.61%. It's been rallying as equities fall (flight to safety). The forecast width is very tight, meaning the model is confident about TLT's range. But the median is near zero.
+
+   Since the median has no skill, I shouldn't overweight based on median. But I can overweight based on risk (lower width = safer). The baseline already does this. To deviate, I need a concrete reason.
+
+   Concrete reasons to deviate:
+   1. **Concentration in defensive assets**: The baseline already has 14.6% TLT + 8.7% XLV + 8.2% XLF = ~31.5% in defensive/low-vol assets. Plus cash 10%. That's 41.5% in defensive. Maybe that's fine given the selloff.
+   2. **Avoid the falling knives**: NVDA, QQQ, EEM have very wide intervals and negative momentum. I could reduce these below baseline (to 0) and put the money in cash or safer assets.
+   3. **Group limits**: tech_growth group baseline is 9.52%. If I reduce NVDA to 0, I free up 1.57%. I could put that in... but I can only increase other assets by up to 15pp above their baseline. Since current is 0, I can increase any asset up to baseline+15pp.
+
+   Wait, I need to be careful about the "increase by at most 15pp above baseline" rule. It says: "You may increase a position by at most 15 percentage points above its baseline weight." This applies when moving from current to target? Or from baseline to target? The wording: "you may reduce any position, down to zero, and raise cash as much as you want. You may increase a position by at most 15 percentage points above its baseline weight."
+
+   I interpret this as: target_weight <= baseline_weight + 0.15. Since current_weight is 0 for all, and baseline is positive, I can set target up to baseline+0.15. But I also cannot exceed max_weight (25% ETF, 10% stock) and group limits.
+
+   So for TLT: baseline 0.1461, max allowed = min(0.25, 0.1461+0.15=0.2961) = 0.25. But group bonds is just TLT, so 25% is OK.
+   For XLV: baseline 0.0867, max = min(0.25, 0.2367) = 0.2367, but group health includes LLY. If I increase XLV, I need to check group health <= 30%.
+   For NVDA: baseline 0.0157, max = min(0.10, 0.1657) = 0.10. But I probably want to reduce it.
+
+   Strategy: Given the sharp equity selloff and high uncertainty in growth/tech, I will:
+   - Keep cash at 10% (baseline) or maybe higher? The rules allow raising cash. But if I raise cash above 10%, I'm reducing exposure. Given the market is down and uncertain, maybe 15-20% cash is prudent? But the baseline is 10%. Deviating to higher cash means I'm not deploying capital. However, the asymmetric freedom allows it. But I need a rationale.
+
+   Actually, looking at the recent returns: everything is down except TLT. This is a risk-off tape. The forecast intervals for equities are wide, suggesting high uncertainty. The model is saying "I don't know where equities will go, but the range is wide." In such cases, holding more cash or bonds is reasonable.
+
+   But the baseline already puts 10% cash and 14.6% TLT. Total defensive = 24.6%. Plus XLV/XLF which are defensive sectors.
+
+   Let me think about what concrete judgement I can add:
+   - **NVDA**: Extreme volatility (69% ann), -40% 20d, forecast width 0.38. This is a falling knife. I will set NVDA to 0 (deviation -1.57pp from baseline). Rationale: extreme downside risk, wide forecast interval, recent crash.
+   - **QQQ**: High vol (40%), -13.6% 20d, wide interval (0.159). I could reduce to 0 or keep low. Baseline 3.73%. I'll reduce to 0 or maybe 2%? Let's say 0 for simplicity, deviation -3.73pp. Rationale: high uncertainty, negative momentum.
+   - **EEM**: Wide interval (0.164), -13.2% 20d. Baseline 3.62%. Reduce to 0. Deviation -3.62pp.
+   - **AMZN**: Baseline 4.22%, vol 44%, -4.1% 1d. Interval width 0.14. Could reduce but less extreme than NVDA/QQQ. Maybe keep at baseline or slightly reduce.
+
+   If I reduce NVDA, QQQ, EEM to 0, I free up 1.57+3.73+3.62 = 8.92pp. I need to put this somewhere or into cash.
+
+   Where to put it?
+   - TLT: already 14.6%, can go up to 25%. I could increase TLT by up to 10.4pp (to 25%). That would absorb most of the freed capital.
+   - Cash: increase from 10% to higher.
+   - Defensive sectors: XLV, XLF already high.
+
+   But wait: if I increase TLT to 25%, that's +10.4pp from baseline, which is within the +15pp limit. Group bonds is just TLT, so 25% is fine.
+
+   However, is it wise to put 25% in TLT? TLT has low vol and positive momentum. In a risk-off environment, yes. But the forecast median is near zero. Still, the low uncertainty makes it a "safe" holding.
+
+   Alternatively, I could increase cash to 20% and keep TLT at baseline. That would be a deviation of +10pp cash (from baseline 10%). Cash has no forecast, but it's the safest.
+
+   But the baseline rule is designed to optimize risk-adjusted returns based on forecast widths. Deviating too much might hurt.
+
+   Let me consider the group constraints carefully:
+   - tech_growth: QQQ + NVDA + AMZN. If I set QQQ=0, NVDA=0, AMZN=0.0422 (baseline), group = 4.22% (OK).
+   - If I increase AMZN, I could, but it's high vol.
+
+   Another angle: The market has sold off sharply. Mean reversion might suggest buying, but the forecasts don't support directional bets (medians near zero). The widths are wide for equities, so the model is uncertain. In such cases, the baseline already reduces equity exposure via inverse width weighting. But I can go further by cutting the most uncertain assets (NVDA, QQQ, EEM) entirely.
+
+   Let me calculate a proposed portfolio:
+   - Cash: 0.15 (15%) - up from baseline 10%. Rationale: elevated uncertainty, broad selloff, preserve capital.
+   - TLT: 0.20 (20%) - up from 14.61%. Rationale: flight to safety, lowest forecast uncertainty, positive momentum. Within +15pp limit (14.61+15=29.61, capped at 25% ETF max, so 20% is fine).
+   - XLV: 0.0867 (baseline) - defensive, low vol.
+   - XLF: 0.0824 (baseline) - defensive.
+   - XLE: 0.0661 (baseline) - energy, but negative momentum. Maybe reduce? Width is moderate (0.0896 5d). Keep baseline.
+   - IWM: 0.0612 (baseline) - small caps, relatively narrow width (0.0969 5d). Keep.
+   - EFA: 0.0566 (baseline) - intl developed. Keep.
+   - SPY: 0.047 (baseline) - broad market. Keep.
+   - GLD: 0.0497 (baseline) - gold, negative momentum (-11.9% 20d), wide interval (0.119). Maybe reduce? But it's a hedge. Keep baseline or reduce slightly.
+   - AMZN: 0.0422 (baseline) - tech growth, high vol. Keep baseline or reduce.
+   - QQQ: 0.0 (down from 0.0373) - high vol, wide interval, negative momentum.
+   - EEM: 0.0 (down from 0.0362) - wide interval, negative momentum.
+   - NVDA: 0.0 (down from 0.0157) - extreme vol, crash.
+   - JPM: 0.0571 (baseline) - financials, moderate.
+   - XOM: 0.0593 (baseline) - energy stock.
+   - LLY: 0.0563 (baseline) - health stock, positive 20d return (+5.9%), relatively lower vol than tech.
+
+   Let's sum these:
+   Cash: 0.15
+   TLT: 0.20
+   XLV: 0.0867
+   XLF: 0.0824
+   XLE: 0.0661
+   IWM: 0.0612
+   EFA: 0.0566
+   SPY: 0.047
+   GLD: 0.0497
+   AMZN: 0.0422
+   JPM: 0.0571
+   XOM: 0.0593
+   LLY: 0.0563
+   QQQ: 0
+   EEM: 0
+   NVDA: 0
+
+   Sum: 0.15+0.20 = 0.35
+   +0.0867 = 0.4367
+   +0.0824 = 0.5191
+   +0.0661 = 0.5852
+   +0.0612 = 0.6464
+   +0.0566 = 0.703
+   +0.047 = 0.75
+   +0.0497 = 0.7997
+   +0.0422 = 0.8419
+   +0.0571 = 0.899
+   +0.0593 = 0.9583
+   +0.0563 = 1.0146
+
+   That's over 1.0. I need to adjust.
+
+   Let me recalculate with cash 0.10 (baseline) and TLT 0.20:
+   Cash 0.10, TLT 0.20 = 0.30
+   Others at baseline except QQQ, EEM, NVDA = 0:
+   Baseline sum was 0.8999. Remove QQQ (0.0373), EEM (0.0362), NVDA (0.0157) = remove 0.0892. So assets sum = 0.8999 - 0.0892 = 0.8107.
+   Plus cash 0.10 = 0.9107. Plus TLT increase: TLT baseline 0.1461, I want 0.20, so +0.0539.
+   Total = 0.9107 + 0.0539 = 0.9646. Still under 1.0. I have room to add 0.0354.
+
+   I could increase cash to 0.1354, or increase TLT more, or increase other assets.
+
+   Let's try: Cash 0.12, TLT 0.22.
+   Assets (ex QQQ/EEM/NVDA): 0.8107
+   TLT: 0.22 (instead of 0.1461, so +0.0739)
+   Cash: 0.12
+   Total: 0.8107 + 0.22 + 0.12 = 1.1507. Too high.
+
+   Wait, I think I'm double counting. The baseline sum of 0.8999 includes TLT at 0.1461. If I set TLT to 0.22, I'm replacing 0.1461 with 0.22, so net add 0.0739.
+   So total = (0.8999 - 0.0892) + 0.22 + cash = 0.8107 + 0.22 + cash = 1.0307 + cash. That's already over 1 even with cash 0.
+
+   Let me recalculate baseline sum carefully:
+   SPY 0.047
+   QQQ 0.0373
+   IWM 0.0612
+   EFA 0.0566
+   EEM 0.0362
+   XLE 0.0661
+   XLV 0.0867
+   XLF 0.0824
+   TLT 0.1461
+   GLD 0.0497
+   NVDA 0.0157
+   JPM 0.0571
+   XOM 0.0593
+   LLY 0.0563
+   AMZN 0.0422
+
+   Sum:
+   0.047+0.0373=0.0843
+   +0.0612=0.1455
+   +0.0566=0.2021
+   +0.0362=0.2383
+   +0.0661=0.3044
+   +0.0867=0.3911
+   +0.0824=0.4735
+   +0.1461=0.6196
+   +0.0497=0.6693
+   +0.0157=0.685
+   +0.0571=0.7421
+   +0.0593=0.8014
+   +0.0563=0.8577
+   +0.0422=0.8999
+
+   Yes, 0.8999. Baseline cash 0.1001 (approx 0.1).
+
+   If I remove QQQ, EEM, NVDA (sum 0.0892), remaining assets sum = 0.8107.
+   If I keep TLT at baseline 0.1461, and cash at 0.10, total = 0.8107 + 0.1461 + 0.10 = 1.0568. Wait, that's wrong because 0.8107 already includes TLT? No, 0.8107 is the sum of all assets except QQQ/EEM/NVDA, which includes TLT at 0.1461.
+
+   Let me list the remaining assets with baseline weights:
+   SPY 0.047
+   IWM 0.0612
+   EFA 0.0566
+   XLE 0.0661
+   XLV 0.0867
+   XLF 0.0824
+   TLT 0.1461
+   GLD 0.0497
+   JPM 0.0571
+   XOM 0.0593
+   LLY 0.0563
+   AMZN 0.0422
+
+   Sum these:
+   0.047+0.0612=0.1082
+   +0.0566=0.1648
+   +0.0661=0.2309
+   +0.0867=0.3176
+   +0.0824=0.4
+   +0.1461=0.5461
+   +0.0497=0.5958
+   +0.0571=0.6529
+   +0.0593=0.7122
+   +0.0563=0.7685
+   +0.0422=0.8107
+
+   Yes. So if I keep these at baseline and set QQQ/EEM/NVDA to 0, and cash to 0.10, total = 0.8107 + 0.10 = 0.9107. I have 0.0893 to allocate.
+
+   I can allocate this to:
+   - Increase cash (up to any amount)
+   - Increase TLT (up to 0.25, currently 0.1461, so can add up to 0.1039)
+   - Increase other assets (up to baseline+0.15)
+
+   Given the risk-off environment, I'll increase TLT and cash.
+   Let's set TLT to 0.20 (add 0.0539) and cash to 0.15 (add 0.05). Total added = 0.1039. New total = 0.9107 + 0.1039 = 1.0146. Slightly over. Adjust cash to 0.1354.
+
+   Or: TLT 0.19 (add 0.0439), cash 0.15 (add 0.05), total add 0.0939, new total 1.0046. Close enough, adjust cash to 0.1454.
+
+   Let's do: TLT 0.20, cash 0.1354. Sum = 0.8107 + 0.20 + 0.1354 = 1.1461? No, wait. The 0.8107 includes TLT at 0.1461. If I change TLT to 0.20, the asset sum becomes 0.8107 - 0.1461 + 0.20 = 0.8646. Then + cash 0.1354 = 1.0000. Perfect.
+
+   So:
+   - TLT: 0.20 (deviation +0.0539 from baseline 0.1461)
+   - Cash: 0.1354 (deviation +0.0354 from baseline 0.10)
+   - QQQ: 0.0 (deviation -0.0373)
+   - EEM: 0.0 (deviation -0.0362)
+   - NVDA: 0.0 (deviation -0.0157)
+   - All others at baseline.
+
+   Check constraints:
+   - Cash 13.54% >= 10% OK.
+   - TLT 20% <= 25% OK.
+   - Group bonds: TLT 20% <= 30% OK.
+   - Group tech_growth: QQQ 0 + NVDA 0 + AMZN 0.0422 = 4.22% <= 30% OK.
+   - Group us_broad: SPY 0.047 + IWM 0.0612 = 10.82% <= 30% OK.
+   - Group energy: XLE 0.0661 + XOM 0.0593 = 12.54% <= 30% OK.
+   - Group health: XLV 0.0867 + LLY 0.0563 = 14.3% <= 30% OK.
+   - Group financials: XLF 0.0824 + JPM 0.0571 = 13.95% <= 30% OK.
+   - Stocks: JPM 5.71% <= 10%, XOM 5.93% <= 10%, LLY 5.63% <= 10%, AMZN 4.22% <= 10%, NVDA 0 <= 10%. OK.
+   - Increases above baseline: TLT +5.39pp <= 15pp OK. Cash is not an asset, but cash increase is allowed freely.
+   - Deviations > 0.5pp: TLT +5.39pp (needs rationale), QQQ -3.73pp (rationale), EEM -3.62pp (rationale), NVDA -1.57pp (rationale), cash +3.54pp (rationale). All need rationale, which I'll provide.
+
+   Is this a good decision? I'm essentially cutting the highest-volatility, worst-performing assets (NVDA, QQQ, EEM) and adding to TLT and cash. This is a defensive posture appropriate for a sharp selloff with high uncertainty.
+
+   Alternative: Keep some QQQ/EEM for diversification? But their forecast widths are very wide (0.159, 0.164) vs TLT 0.041. The baseline already underweights them. Cutting them entirely is a judgement call that the risk is too high.
+
+   Another consideration: GLD also has negative momentum (-11.9% 20d) and wide interval (0.119). Should I cut GLD too? Baseline 4.97%. I could reduce it to 0 and add to cash/TLT. But gold is a traditional hedge. However, it's been falling. I'll keep it at baseline for diversification, or maybe reduce slightly. Let's keep at baseline to avoid too many changes.
+
+   What about AMZN? It's in tech_growth with QQQ/NVDA. Its width is 0.140, vol 44%. It's less extreme than NVDA but still high. Baseline 4.22%. I'll keep it.
+
+   So my final proposal:
+   - SPY: 0.047 (baseline)
+   - QQQ: 0.0 (cut)
+   - IWM: 0.0612 (baseline)
+   - EFA: 0.0566 (baseline)
+   - EEM: 0.0 (cut)
+   - XLE: 0.0661 (baseline)
+   - XLV: 0.0867 (baseline)
+   - XLF: 0.0824 (baseline)
+   - TLT: 0.20 (increased)
+   - GLD: 0.0497 (baseline)
+   - NVDA: 0.0 (cut)
+   - JPM: 0.0571 (baseline)
+   - XOM: 0.0593 (baseline)
+   - LLY: 0.0563 (baseline)
+   - AMZN: 0.0422 (baseline)
+   - Cash: 0.1354
+
+   Sum check:
+   0.047 + 0 + 0.0612 + 0.0566 + 0 + 0.0661 + 0.0867 + 0.0824 + 0.20 + 0.0497 + 0 + 0.0571 + 0.0593 + 0.0563 + 0.0422 + 0.1354
+   = 0.047+0.0612=0.1082
+   +0.0566=0.1648
+   +0.0661=0.2309
+   +0.0867=0.3176
+   +0.0824=0.4
+   +0.20=0.6
+   +0.0497=0.6497
+   +0.0571=0.7068
+   +0.0593=0.7661
+   +0.0563=0.8224
+   +0.0422=0.8646
+   +0.1354=1.0000
+
+   Perfect.
+
+   Confidence: I'm fairly confident that reducing high-vol crashing assets and increasing bonds/cash is better than baseline in this environment. But the median forecasts don't give directional edge. I'll set confidence around 0.6 for the deviations, 0.5 for baseline holdings.
+
+   Actually, the confidence field is per position. For positions at baseline, confidence 0.5. For deviations, higher.
+
+   Let me write the analysis:
+   - Market is in a sharp risk-off selloff: SPY -9.2% 20d, QQQ -13.6%, NVDA -40%, EEM -13.2%.
+   - Volatility is elevated in tech/growth (QQQ 40%, NVDA 69% ann) while TLT shows low vol (11%) and positive momentum (+2.6% 5d).
+   - Forecast intervals are very wide for NVDA (0.38), QQQ (0.159), EEM (0.164), indicating high uncertainty; TLT has the tightest interval (0.041).
+   - Median forecasts show no reliable directional signal, so I avoid directional bets on equities.
+   - I cut NVDA, QQQ, EEM entirely due to extreme downside risk and wide forecast uncertainty.
+   - I increase TLT to 20% (from 14.6%) as a flight-to-safety allocation given its low uncertainty and positive recent trend.
+   - I raise cash to 13.5% (from 10%) to preserve capital amid broad market weakness.
+   - Defensive sectors (XLV, XLF) and diversified holdings (SPY, IWM, EFA) remain at baseline.
+
+   Rationale for each position:
+   - SPY: baseline, broad market exposure, moderate uncertainty.
+   - QQQ: cut to 0, high vol and wide forecast interval, negative momentum.
+   - IWM: baseline, relatively narrow interval among equities.
+   - EFA: baseline, diversification.
+   - EEM: cut to 0, widest interval among ETFs, sharp drawdown.
+   - XLE: baseline, energy sector, moderate uncertainty.
+   - XLV: baseline, defensive sector, lowest equity vol.
+   - XLF: baseline, defensive, low vol.
+   - TLT: increased to 20%, lowest forecast uncertainty, positive momentum, safe haven.
+   - GLD: baseline, hedge but recent weakness.
+   - NVDA: cut to 0, extreme volatility and crash, widest interval.
+   - JPM: baseline, financial stock, moderate.
+   - XOM: baseline, energy stock.
+   - LLY: baseline, health stock, positive 20d return.
+   - AMZN: baseline, tech growth but less extreme than NVDA/QQQ.
+   - Cash: 13.54%, increased for capital preservation.
+
+   Confidence values:
+   - For cuts (QQQ, EEM, NVDA): 0.65 (confident that reducing is better)
+   - For TLT increase: 0.6
+   - For cash increase: 0.55
+   - For baseline: 0.5
+
+   Wait, the confidence is "your probability that your deviation from the baseline will turn out better". So for positions where I deviate, I give >0.5. For positions at baseline, 0.5.
+
+   Let me double-check the group limits with my proposal:
+   - us_broad: SPY 4.7% + IWM 6.12% = 10.82% <= 30% OK
+   - tech_growth: QQQ 0 + NVDA 0 + AMZN 4.22% = 4.22% <= 30% OK
+   - intl_developed: EFA 5.66% OK
+   - emerging: EEM 0 OK
+   - energy: XLE 6.61% + XOM 5.93% = 12.54% <= 30% OK
+   - health: XLV 8.67% + LLY 5.63% = 14.3% <= 30% OK
+   - financials: XLF 8.24% + JPM 5.71% = 13.95% <= 30% OK
+   - bonds: TLT 20% <= 30% OK
+   - gold: GLD 4.97% OK
+
+   All good.
+
+   Max weight checks:
+   - ETFs: TLT 20% <= 25%, others lower. OK.
+   - Stocks: all <= 10%. OK.
+
+   Cash >= 10%: 13.54% OK.
+
+   Sum = 1.0 OK.
+
+   Deviations from baseline > 0.5pp:
+   - QQQ: 0 - 0.0373 = -3.73pp (rationale provided)
+   - EEM: 0 - 0.0362 = -3.62pp (rationale)
+   - NVDA: 0 - 0.0157 = -1.57pp (rationale)
+   - TLT: 0.20 - 0.1461 = +5.39pp (rationale)
+   - Cash: 0.1354 - 0.10 = +3.54pp (rationale)
+
+   All have rationale.
+
+   Number of corrections: The guardrails correct small violations. I have 5 deviations > 0.5pp. The rule says "Too many corrections (more than 3 assets, or more than 20 points in total) and your proposal is rejected entirely." Wait, this is about corrections the guardrails make, not my deviations. But it says "Respect the limits yourself." My deviations are within limits (increases <= 15pp, etc.), so no corrections should be needed. The "more than 3 assets" refers to assets that need correction. Since I'm respecting all hard limits, there should be 0 corrections.
+
+   Wait, let me re-read: "Too many corrections (more than 3 assets, or more than 20 points in total) and your proposal is rejected entirely." This likely means if the guardrails have to correct more than 3 assets or more than 20pp total, it rejects. Since I'm within all limits, no corrections needed.
+
+   One thing: "Every deviation from the baseline larger than 0.5 percentage points needs a rationale." I have that.
+
+   Also: "Avoid churn: changes smaller than 2 points from the current weight are not traded anyway." Current weight is 0 for all. So any target > 2pp is a trade. My targets are all > 2pp except maybe none. QQQ/EEM/NVDA are 0, which is same as current (0), so no trade there? Wait, current is 0, target 0, no change. But deviation from baseline is what matters for rationale. The churn rule is about current weight vs target. Since current is 0, setting to 0 is no trade. Setting to baseline (e.g., 0.047) is a trade of +4.7pp.
+
+   Actually, the portfolio is currently 100% cash. So moving to any asset is a change from current. The "changes smaller than 2 points from current weight are not traded" means if I set target to 0.01 when current is 0, it's not traded. But I'm setting to 0 or to baseline values which are > 2pp (except NVDA baseline 1.57pp, but I'm setting to 0). So all my non-zero targets are trades.
+
+   Wait, NVDA baseline is 0.0157 (1.57pp). If I set to 0, that's a change of -1.57pp from current (0), which is < 2pp, so not traded? But current is 0, target 0, no change. The deviation from baseline is -1.57pp, which needs rationale, but no trade occurs. That's fine.
+
+   Actually, I think the churn rule means: if |target - current| < 0.02, don't trade. Since current is 0 for all, any target < 0.02 is not traded. So NVDA at 0 is not traded (already 0). QQQ at 0 is not traded. EEM at 0 is not traded. All others are > 0.02, so they are traded.
+
+   This is fine.
+
+   Let me refine the cash weight to be cleaner. Instead of 0.1354, maybe 0.14? Then I need to adjust something else.
+   If cash = 0.14, and TLT = 0.20, and others at baseline except cuts:
+   Sum assets (ex cuts, with TLT 0.20) = 0.8646 (as calculated)
+   + cash 0.14 = 1.0046. Slightly over.
+   Reduce TLT to 0.1954? Or reduce cash to 0.1354.
+   Let's use cash = 0.135 and TLT = 0.20, then sum = 0.8646 + 0.135 = 0.9996. Close enough, but should be exactly 1.0 ideally.
+   Let's calculate precisely:
+   Assets sum with TLT=0.20: 0.8646 (from before: 0.8107 - 0.1461 + 0.20 = 0.8646)
+   Cash needed = 1 - 0.8646 = 0.1354.
+   So cash = 0.1354 exactly.
+
+   Or I could set TLT = 0.195 and cash = 0.1404.
+   Let's keep TLT = 0.20 and cash = 0.1354.
+
+   Actually, to make it cleaner, I could reduce another asset slightly. But it's fine.
+
+   Let me check if there's any issue with the "increase by at most 15pp above baseline" for TLT: baseline 0.1461, target 0.20, increase = 0.0539 = 5.39pp < 15pp. OK.
+
+   Confidence: I'll set 0.6 for TLT, 0.65 for the cuts, 0.55 for cash, 0.5 for others.
+
+   Wait, the confidence is per position, and it's about the deviation from baseline. For positions at baseline, confidence = 0.5. For TLT, deviation is +5.39pp, confidence 0.6. For QQQ, deviation -3.73pp, confidence 0.65. Etc.
+
+   Let me write the JSON.
+
+   One final check: the schema requires all 15 symbols in positions. I have them all.
+
+   Analysis text should be first in the JSON.
+
+   Let me draft the analysis:
+   "Market regime is sharply risk-off: broad equity indices are down 7-14% over 20 days, with NVDA down 40% and QQQ down 13.6%. Volatility is elevated in growth/tech (QQQ 40% ann, NVDA 69% ann) while TLT exhibits low vol (11% ann) and positive momentum (+2.6% 5d). Forecast intervals are extremely wide for NVDA (5d width 0.38), QQQ (0.159) and EEM (0.164), signaling high uncertainty, whereas TLT has the tightest interval (0.041). Median forecasts show no reliable directional edge, so I avoid directional equity bets. I cut NVDA, QQQ and EEM to zero given their extreme downside risk and wide forecast uncertainty, increase TLT to 20% as a flight-to-safety allocation, and raise cash to 13.5% to preserve capital. Defensive sectors (XLV, XLF) and diversified holdings (SPY, IWM, EFA) remain at baseline weights."
+
+   That looks good.
+
+   Now the positions array. I'll order them as in the input.
+
+   SPY: 0.047, rationale "Baseline weight; broad US equity exposure with moderate forecast uncertainty.", confidence 0.5
+   QQQ: 0.0, rationale "Cut to zero: high volatility (40% ann), wide 5d forecast interval (0.159), and -13.6% 20d drawdown signal elevated risk.", confidence 0.65
+   IWM: 0.0612, rationale "Baseline; relatively narrow forecast interval among equity ETFs (0.097 5d width).", confidence 0.5
+   EFA: 0.0566, rationale "Baseline; international diversification with moderate uncertainty.", confidence 0.5
+   EEM: 0.0, rationale "Cut to zero: widest 5d interval among ETFs (0.164) and -13.2% 20d decline indicate high uncertainty.", confidence 0.65
+   XLE: 0.0661, rationale "Baseline; energy sector with moderate forecast width (0.090 5d).", confidence 0.5
+   XLV: 0.0867, rationale "Baseline; defensive health care sector with low volatility (22% ann) and narrow interval.", confidence 0.5
+   XLF: 0.0824, rationale "Baseline; defensive financials with low vol (24% ann) and tight forecast range.", confidence 0.5
+   TLT: 0.20, rationale "Increased from 14.6% to 20%: lowest forecast uncertainty (5d width 0.041), positive momentum (+2.6% 5d), and safe-haven demand in risk-off tape. Within +15pp limit.", confidence 0.6
+   GLD: 0.0497, rationale "Baseline; gold hedge despite recent -11.9% 20d decline and wide interval (0.119).", confidence 0.5
+   NVDA: 0.0, rationale "Cut to zero: extreme volatility (69% ann), -40% 20d crash, and widest forecast interval (0.378 5d) make risk/reward unattractive.", confidence 0.7
+   JPM: 0.0571, rationale "Baseline; financial stock with moderate uncertainty (5d width 0.104).", confidence 0.5
+   XOM: 0.0593, rationale "Baseline; energy stock with moderate forecast width (0.100 5d).", confidence 0.5
+   LLY: 0.0563, rationale "Baseline; health stock with positive 20d return (+5.9%) and moderate vol.", confidence 0.5
+   AMZN: 0.0422, rationale "Baseline; tech growth exposure retained but less extreme than NVDA/QQQ (5d width 0.140).", confidence 0.5
+
+   Cash: 0.1354, rationale not needed in positions, but cash_weight is separate. Wait, the schema has cash_weight at top level, not in positions. So I just put the number.
+
+   Actually, looking at the schema: "cash_weight": {"type": "number"} at the top level. So I don't need a rationale for cash in the positions array. But the analysis covers it.
+
+   Let me verify the sum one more time with exact numbers:
+   SPY 0.047
+   QQQ 0.0
+   IWM 0.0612
+   EFA 0.0566
+   EEM 0.0
+   XLE 0.0661
+   XLV 0.0867
+   XLF 0.0824
+   TLT 0.20
+   GLD 0.0497
+   NVDA 0.0
+   JPM 0.0571
+   XOM 0.0593
+   LLY 0.0563
+   AMZN 0.0422
+   Cash 0.1354
+
+   Sum:
+   0.047 + 0.0612 = 0.1082
+   + 0.0566 = 0.1648
+   + 0.0661 = 0.2309
+   + 0.0867 = 0.3176
+   + 0.0824 = 0.4
+   + 0.20 = 0.6
+   + 0.0497 = 0.6497
+   + 0.0571 = 0.7068
+   + 0.0593 = 0.7661
+   + 0.0563 = 0.8224
+   + 0.0422 = 0.8646
+   + 0.1354 = 1.0000
+
+   Perfect.
+
+   All constraints satisfied.
