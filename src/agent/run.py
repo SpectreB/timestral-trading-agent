@@ -63,9 +63,14 @@ def run_cycle(
     store: FileAuditStore,
     live: bool,
     env: Mapping[str, str],
+    label: str | None = None,
+    requested_by: str | None = None,
+    history: FileAuditStore | None = None,
 ) -> CycleResult:
+    """One cycle. `label` gives the run its own id (simulations, D-017); `history` is the store
+    whose records give the peak equity, when the records are written elsewhere."""
     now_ny = now.astimezone(NEW_YORK)
-    rid = run_id(now_ny, mode)
+    rid = run_id(now_ny, label or mode)
     if store.has_run(rid):  # idempotent: a retried job must not trade twice
         return CycleResult(rid, "already_done")
     if live and not broker.is_market_open():
@@ -88,7 +93,7 @@ def run_cycle(
     prices = broker.latest_prices(cfg.symbols)
 
     # Drawdown from the peak equity ever recorded (stateless: the audit log is the memory).
-    peak = max([equity, *(r["account"]["equity"] for r in store.read_runs())])
+    peak = max([equity, *(r["account"]["equity"] for r in (history or store).read_runs())])
     drawdown = min(0.0, equity / peak - 1.0)
 
     inp = DecisionInput(
@@ -123,6 +128,8 @@ def run_cycle(
         order_records(plan, "planned" if live_orders else "dry_run") if plan is not None else []
     )
     record, reasoning = build_record(
+        label=label,
+        requested_by=requested_by,
         mode=mode,
         now=now_ny,
         cfg=cfg,

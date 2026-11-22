@@ -21,6 +21,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from agent.audit import FileAuditStore
 from agent.metrics import MIN_SESSIONS_FOR_CI, SERIES, performance_report
@@ -28,6 +29,13 @@ from agent.scoring import calibration, score_forecasts
 
 DEFAULT_REPO = "https://github.com/SpectreB/timestral-trading-agent"
 AUDIT_BRANCH = "audit-log"
+SIM_TITLE = "Simulation request"  # the Simulate workflow reacts to issues titled so (D-017)
+SIM_BODY = (
+    "Submitting this issue asks the agent to run one simulation now: live market data, "
+    "Timestral forecasts, the LLM and the guardrails, on its current portfolio. No order is sent. "
+    "The answer is posted here in about 6 minutes. At most one simulation every 10 minutes and "
+    "20 a day."
+)
 
 CSS = """
 .viz-root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;
@@ -81,6 +89,8 @@ white-space:nowrap}
 .meter .fill{position:absolute;left:0;top:0;bottom:0;background:var(--s1);border-radius:5px}
 .meter i{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
 .alloc{grid-template-columns:64px 1fr 150px}
+.btn{display:inline-block;background:var(--s1);color:#fff;border-radius:8px;padding:8px 16px;
+font-weight:600;text-decoration:none}.btn:hover{opacity:.9}
 .alloc .val{white-space:nowrap}
 .alloc .val small{color:var(--muted);margin-left:6px}
 details.ev{border-top:1px solid var(--grid);margin:0;padding:8px 0}
@@ -851,6 +861,32 @@ def _performance(runs: list[dict[str, Any]], report: dict[str, Any] | None) -> s
     return f'<div class="card"><h2>Performance</h2>{hero}{body}{exposure}{definitions}</div>'
 
 
+def _simulations(sims: list[dict[str, Any]], repo: str) -> str:
+    """The evaluators' entry point: request a simulation, and see the ones already run."""
+    url = f"{repo}/issues/new?" + urlencode({"title": SIM_TITLE, "body": SIM_BODY})
+    items = []
+    for r in list(reversed(sims))[:10]:
+        who = r.get("requested_by") or "unknown"
+        analysis = _analysis(r)
+        excerpt = analysis if len(analysis) <= 300 else analysis[:297] + "..."
+        link = f"{repo}/blob/{AUDIT_BRANCH}/simulations/runs/{r['run_id']}.json"
+        items.append(
+            f'<details class="run"><summary>{_e(r["run_id"])} · requested by {_e(who)} · '
+            f"{_outcome(r)} · {len(r['orders'])} order(s) planned, none sent</summary>"
+            f'<p class="read">{_e(excerpt) or "No parsable analysis."}</p>'
+            f'<p><a href="{_e(link)}">Full record</a></p></details>'
+        )
+    listing = "".join(items) or '<p class="sec-sub">No simulation has been requested yet.</p>'
+    return (
+        '<div class="card"><h2>Run it yourself</h2><p class="sec-sub">Ask the agent to decide '
+        "now, on its current portfolio: live data, Timestral, the LLM and the guardrails. "
+        "<b>Simulations never send an order.</b> The button opens a pre-filled GitHub issue "
+        "(a GitHub account is needed); the answer is posted in the issue in about 6 minutes and "
+        "appears below. At most one simulation every 10 minutes and 20 a day.</p>"
+        f'<p><a class="btn" href="{_e(url)}">Run a simulation</a></p>{listing}</div>'
+    )
+
+
 def _evidence(title: str, note: str, body: str) -> str:
     return (
         f'<details class="ev"><summary><b>{_e(title)}</b> '
@@ -990,6 +1026,7 @@ def render(
     tables: list[str] | None = None,
     scores: list[dict[str, Any]] | None = None,
     report: dict[str, Any] | None = None,
+    simulations: list[dict[str, Any]] | None = None,
 ) -> str:
     intro = (
         '<h1>Timestral Trading Agent</h1><p class="sub">An autonomous paper-trading agent: '
@@ -1017,6 +1054,7 @@ def render(
         body = "".join(
             [
                 _status(runs, fills),
+                _simulations(simulations or [], repo),
                 _today(runs[-1], fills),
                 _performance(runs, report),
                 _allocation(runs[-1]),
@@ -1028,7 +1066,7 @@ def render(
         body = (
             '<div class="card"><h2>No runs yet</h2><p class="sec-sub">The agent has not recorded '
             "a run. This page fills in automatically after the first scheduled run.</p></div>"
-        )
+        ) + _simulations(simulations or [], repo)
     stamp = generated_at.isoformat(timespec="seconds")
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
@@ -1064,8 +1102,9 @@ def build(audit_dir: Path, out_dir: Path, generated_at: datetime, repo: str = DE
     observations = store.read_observations()
     scores = score_forecasts(runs, observations)
     report = performance_report(runs, observations)
+    sims = chronological(FileAuditStore(audit_dir / "simulations").read_runs())
     page.write_text(
-        render(runs, fills, generated_at, repo, tables, scores, report), encoding="utf-8"
+        render(runs, fills, generated_at, repo, tables, scores, report, sims), encoding="utf-8"
     )
     return page
 
