@@ -41,7 +41,8 @@ from agent.audit import FileAuditStore, build_record
 from agent.baseline import baseline_weights
 from agent.config import AgentConfig, Asset
 from agent.data import NEW_YORK
-from agent.decide import DecisionInput, LLMClient, build_payload, decide
+from agent.decide import DecisionInput, LLMClient, build_payload
+from agent.decide_tools import decide_agent
 from agent.execute import ExecutionError, Position, order_records, plan_orders
 from agent.forecast import QuantileModel, forecast_assets
 from agent.metrics import performance_report
@@ -223,7 +224,7 @@ def run_replay(
                 drawdown=min(0.0, equity_prev / peak - 1.0),
                 equity=equity_prev,
             )
-            decision = decide(inp, llm, alias_cfg, on_llm_failure="raise")
+            decision = decide_agent(inp, llm, model, alias_cfg, on_llm_failure="raise")
             outcome, target = decision.outcome, decision.target_weights
             if outcome != "fallback_hold":
                 final_check(decision.target_weights, decision.cash, alias_cfg)
@@ -554,6 +555,7 @@ def main() -> None:  # pragma: no cover - CLI wiring, long-running
 
     from agent.decide import MistralLLM
     from agent.forecast import load_model
+    from agent.run import AGENTS, config_for
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["run", "probe", "report"])
@@ -562,10 +564,11 @@ def main() -> None:  # pragma: no cover - CLI wiring, long-running
     parser.add_argument("--end", default="2026-11-20")
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--n", default=5, type=int, help="probe: number of sessions to probe")
+    parser.add_argument("--agent", choices=AGENTS, default="pipeline")
     args = parser.parse_args()
 
     load_dotenv()
-    cfg = AgentConfig()
+    cfg = config_for(args.agent)
     store = FileAuditStore(args.out)
     if args.command == "report":
         manifest = json.loads((args.out / "manifest.json").read_text(encoding="utf-8"))

@@ -58,6 +58,9 @@ CONFIGS = [
     Config("mistralai/Timestral-123M", "price", 512),
     Config("mistralai/Timestral-123M", "price", 1024),
     Config("mistralai/Timestral-123M", "log_return", 512),
+    Config("mistralai/Timestral-5M", "price", 512),
+    Config("mistralai/Timestral-209M", "price", 512),
+    Config("mistralai/Timestral-209M", "price", 1024),
 ]
 
 
@@ -167,7 +170,11 @@ def main() -> None:
     parser.add_argument("--origins", type=int, default=125)
     parser.add_argument("--step", type=int, default=2)
     parser.add_argument("--out", type=Path, default=Path("docs/timestral_backtest"))
+    parser.add_argument(
+        "--models", nargs="*", help="only these sizes, e.g. 5M 209M (default: every config)"
+    )
     args = parser.parse_args()
+    configs = [c for c in CONFIGS if not args.models or c.model.split("-")[-1] in args.models]
 
     closes = load_closes()
     n = len(closes)
@@ -188,7 +195,7 @@ def main() -> None:
         }
         rows.append(row)
     models: dict[str, object] = {}
-    for config in CONFIGS:
+    for config in configs:
         if config.model not in models:
             models[config.model] = TimestralForecaster.from_pretrained(config.model)
         t0 = time.perf_counter()

@@ -71,7 +71,9 @@ class FakeTimestral:
         last = context[:, -1]
         h = np.arange(1, prediction_length + 1)
         z = np.asarray(LEVELS) - 0.5  # linear in the level: q90 - q10 = 0.8 * spread
-        spread = np.asarray(self.daily_spread)[:, None, None] * np.sqrt(h)[None, :, None]
+        # A batch of another size (e.g. one portfolio series, D-018) reuses the spreads in turn.
+        spreads = np.resize(np.asarray(self.daily_spread, dtype=float), len(last))
+        spread = spreads[:, None, None] * np.sqrt(h)[None, :, None]
         rel = self.drift * h[None, :, None] + 2 * spread * z[None, None, :] / 2
         q = last[:, None, None] * (1 + rel)
         return FakeOutput(q[:, None, :, :], LEVELS)  # (B, V=1, H, L) like Timestral

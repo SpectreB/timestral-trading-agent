@@ -1,0 +1,332 @@
+"""Timestral as a set of tools the LLM calls before deciding (D-018).
+
+Three tools, each a question the LLM may ask:
+
+- `get_forecasts`: Timestral's quantile forecast of chosen assets at a chosen horizon (1 to 5
+  trading days), with the volatility implied by the 80% interval.
+- `evaluate_portfolio`: what a candidate allocation would look like. Two views of its risk:
+  1. **Timestral forecasts the portfolio itself.** The value history of the candidate holdings
+     is rebuilt over the context window and given to Timestral as one more series. Its quantiles
+     describe the portfolio's own distribution, correlations included, with no normal
+     assumption: probability of a loss, bad-case loss (5% quantile).
+  2. The risk decomposition of D-014 (Timestral volatilities x shrunk historical correlation):
+     forecast volatility and each asset's share of the risk.
+  It also says whether the guardrails would accept the allocation as it is, using the
+  production guardrails themselves, so the LLM can correct itself before answering.
+- `get_baseline`: the rule-based portfolio (weights inversely proportional to the forecast
+  interval width), as a reference the LLM may use or ignore.
+
+Everything the LLM sends is untrusted: arguments are validated, a bad call returns an error the
+LLM can read (never an exception), and the number of calls is capped. Every call and its result
+is recorded for the audit log.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+from collections.abc import Mapping
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from agent.config import AgentConfig
+from agent.forecast import AssetForecast, QuantileModel, _to_numpy
+from agent.guardrails import apply_guardrails
+from agent.risk import correlation, covariance, forecast_vols, portfolio_vol, risk_contributions
+
+LEVELS_SHOWN = {"q05": 0.05, "q10": 0.1, "q25": 0.25, "median": 0.5, "q75": 0.75, "q90": 0.9,
+                "q95": 0.95}  # fmt: skip
+
+
+def _r(x: float, digits: int = 5) -> float:
+    return round(float(x), digits)
+
+
+def _quantiles(levels: tuple[float, ...], values: np.ndarray) -> dict[str, float]:
+    lv = np.asarray(levels)
+    return {k: _r(values[int(np.argmin(np.abs(lv - v)))]) for k, v in LEVELS_SHOWN.items()}
+
+
+def _probability_below_zero(levels: tuple[float, ...], values: np.ndarray) -> float:
+    """P(return < 0) read from the quantile function by linear interpolation."""
+    lv = np.asarray(levels, dtype=float)
+    if values[0] >= 0:
+        return _r(lv[0], 3)
+    if values[-1] <= 0:
+        return _r(lv[-1], 3)
+    return _r(float(np.interp(0.0, values, lv)), 3)
+
+
+class ToolError(ValueError):
+    """An invalid tool call: its message is returned to the LLM."""
+
+
+class TimestralTools:
+    """The tools of one decision. `forecasts` is the batched Timestral run of the cycle."""
+
+    def __init__(
+        self,
+        *,
+        forecasts: Mapping[str, AssetForecast],
+        closes: pd.DataFrame,
+        model: QuantileModel,
+        baseline: Mapping[str, float],
+        current: Mapping[str, float],
+        drawdown: float,
+        cfg: AgentConfig,
+    ) -> None:
+        self.forecasts = forecasts
+        self.closes = closes
+        self.model = model
+        self.baseline = dict(baseline)
+        self.current = dict(current)
+        self.drawdown = drawdown
+        self.cfg = cfg
+        self.calls: list[dict[str, Any]] = []
+        self._corr = correlation(closes)
+
+    # ------------------------------------------------------------------ schemas
+
+    def specs(self) -> list[dict[str, Any]]:
+        symbols = list(self.cfg.symbols)
+        horizon = {
+            "type": "integer",
+            "description": f"Trading days ahead, 1 to {self.cfg.forecast.horizon}.",
+        }
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_forecasts",
+                    "description": (
+                        "Timestral's forecast of the cumulative return of each asset from the "
+                        "last close to the given horizon: quantiles q05 to q95, the width of the "
+                        "80% interval and the implied volatility. An empty list means all assets."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbols": {
+                                "type": "array",
+                                "items": {"type": "string", "enum": symbols},
+                            },
+                            "horizon": horizon,
+                        },
+                        "required": ["symbols", "horizon"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "evaluate_portfolio",
+                    "description": (
+                        "Evaluate a candidate allocation (weights as fractions of the portfolio; "
+                        "omitted assets are 0, the rest is cash). Returns Timestral's forecast of "
+                        "the portfolio's own value (quantiles, probability of a loss), its "
+                        "forecast volatility and each asset's share of the risk, and whether the "
+                        "guardrails would accept it as it is."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "weights": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "symbol": {"type": "string", "enum": symbols},
+                                        "weight": {"type": "number"},
+                                    },
+                                    "required": ["symbol", "weight"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "horizon": horizon,
+                        },
+                        "required": ["weights", "horizon"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_baseline",
+                    "description": (
+                        "The rule-based reference portfolio: weights inversely proportional to "
+                        "the width of each asset's 80% forecast interval at the decision "
+                        "horizon, within every cap. A reference, not an obligation."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                },
+            },
+        ]
+
+    # ------------------------------------------------------------------ dispatch
+
+    @property
+    def budget_left(self) -> int:
+        return self.cfg.tools.max_calls - len(self.calls)
+
+    def call(self, name: str, arguments: str) -> str:
+        """Run one tool call from the LLM and return its JSON result (errors included)."""
+        if self.budget_left <= 0:
+            result: dict[str, Any] = {
+                "error": "Tool budget exhausted: give your final decision now."
+            }
+        else:
+            try:
+                args = json.loads(arguments) if arguments.strip() else {}
+                if not isinstance(args, dict):
+                    raise ToolError("arguments must be a JSON object")
+                if name == "get_forecasts":
+                    result = self.get_forecasts(args.get("symbols", []), args.get("horizon"))
+                elif name == "evaluate_portfolio":
+                    result = self.evaluate_portfolio(args.get("weights"), args.get("horizon"))
+                elif name == "get_baseline":
+                    result = self.get_baseline()
+                else:
+                    raise ToolError(f"unknown tool {name!r}")
+            except json.JSONDecodeError:
+                result = {"error": "arguments are not valid JSON"}
+            except ToolError as error:
+                result = {"error": str(error)}
+        self.calls.append({"name": name, "arguments": arguments, "result": result})
+        return json.dumps(result)
+
+    # ------------------------------------------------------------------ validation
+
+    def _horizon(self, h: Any) -> int:
+        if isinstance(h, bool) or not isinstance(h, int | float) or h != int(h):
+            raise ToolError("horizon must be an integer")
+        if not 1 <= int(h) <= self.cfg.forecast.horizon:
+            raise ToolError(f"horizon must be between 1 and {self.cfg.forecast.horizon}")
+        return int(h)
+
+    def _symbols(self, symbols: Any) -> list[str]:
+        if not isinstance(symbols, list) or not all(isinstance(s, str) for s in symbols):
+            raise ToolError("symbols must be a list of strings")
+        unknown = sorted(set(symbols) - set(self.cfg.symbols))
+        if unknown:
+            raise ToolError(f"not in the universe: {', '.join(unknown)}")
+        return [s for s in self.cfg.symbols if s in symbols] if symbols else list(self.cfg.symbols)
+
+    def _weights(self, weights: Any) -> dict[str, float]:
+        if not isinstance(weights, list):
+            raise ToolError("weights must be a list of {symbol, weight}")
+        out = dict.fromkeys(self.cfg.symbols, 0.0)
+        seen: set[str] = set()
+        for item in weights:
+            if not isinstance(item, dict):
+                raise ToolError("each weight must be an object {symbol, weight}")
+            s, w = item.get("symbol"), item.get("weight")
+            if s not in out:
+                raise ToolError(f"not in the universe: {s}")
+            if s in seen:
+                raise ToolError(f"{s} appears twice")
+            if isinstance(w, bool) or not isinstance(w, int | float) or not math.isfinite(w):
+                raise ToolError(f"weight of {s} must be a finite number")
+            if w < 0:
+                raise ToolError(f"weight of {s} is negative: the portfolio is long-only")
+            seen.add(s)
+            out[s] = float(w)
+        if sum(out.values()) > 1 + 1e-9:
+            raise ToolError("weights sum to more than 1: no leverage")
+        return out
+
+    # ------------------------------------------------------------------ tools
+
+    def get_forecasts(self, symbols: Any, horizon: Any) -> dict[str, Any]:
+        h = self._horizon(horizon)
+        chosen = self._symbols(symbols)
+        vols = forecast_vols({s: self.forecasts[s] for s in chosen}, h)
+        return {
+            "horizon": h,
+            "last_close_date": next(iter(self.forecasts.values())).last_date.isoformat(),
+            "assets": {
+                s: {
+                    **_quantiles(self.forecasts[s].levels, self.forecasts[s].cum_returns[h - 1]),
+                    "width_80": _r(self.forecasts[s].width(h)),
+                    "volatility": _r(vols[s]),
+                }
+                for s in chosen
+            },
+        }
+
+    def portfolio_series(self, weights: Mapping[str, float]) -> np.ndarray:
+        """Value history of the candidate holdings, scaled to 1 at the last close.
+
+        Holdings are those the weights give today (shares bought at the last close), so the
+        series is what holding this portfolio would have been worth on each past day."""
+        values = self.closes[list(self.cfg.symbols)].to_numpy(dtype=np.float64)
+        w = np.array([weights[s] for s in self.cfg.symbols])
+        cash = 1.0 - float(w.sum())
+        return cash + (values / values[-1]) @ w  # type: ignore[no-any-return]
+
+    def evaluate_portfolio(self, weights: Any, horizon: Any) -> dict[str, Any]:
+        h = self._horizon(horizon)
+        w = self._weights(weights)
+        invested = sum(w.values())
+
+        # 1. Timestral forecasts the portfolio's own value series (all cash: nothing to forecast).
+        if invested > 0:
+            series = self.portfolio_series(w)
+            out = self.model.forecast(series[None, :], prediction_length=self.cfg.forecast.horizon)
+            levels = tuple(float(v) for v in _to_numpy(out.quantile_levels))
+            q = _to_numpy(out.quantiles).reshape(self.cfg.forecast.horizon, len(levels))
+            cum = np.maximum.accumulate(q[h - 1] / series[-1] - 1.0)  # quantiles must not cross
+        else:
+            levels = tuple(LEVELS_SHOWN.values())
+            cum = np.zeros(len(levels))
+
+        # 2. Risk decomposition from the asset forecasts (D-014).
+        cov = covariance(forecast_vols(self.forecasts, h), self._corr)
+        shares = risk_contributions(w, cov)
+        top = sorted(((s, x) for s, x in shares.items() if w[s] > 0), key=lambda t: -t[1])[:5]
+
+        # 3. Would the guardrails accept it as it is?
+        proposal = {
+            "analysis": "tool check",
+            "positions": [
+                {"symbol": s, "target_weight": v, "rationale": "tool check", "confidence": 0.5}
+                for s, v in w.items()
+            ],
+            "cash_weight": 1.0 - invested,
+        }
+        check = apply_guardrails(proposal, self.baseline, self.current, self.drawdown, self.cfg)
+        breaches = [
+            f"{c.rule} {c.symbol or ''}: {c.before:.4f} -> {c.after:.4f}".replace("  ", " ")
+            for c in check.corrections
+            if c.counted
+        ]
+        return {
+            "horizon": h,
+            "invested": _r(invested, 4),
+            "cash": _r(1 - invested, 4),
+            "timestral_portfolio_forecast": {
+                **_quantiles(levels, cum),
+                "probability_of_loss": _probability_below_zero(levels, cum),
+            },
+            "forecast_volatility": _r(portfolio_vol(w, cov)),
+            "risk_share_top5": {s: _r(x, 3) for s, x in top},
+            "guardrails": {
+                "would_be": check.status,
+                "rejection_reason": check.rejection_reason,
+                "breaches": breaches,
+            },
+        }
+
+    def get_baseline(self) -> dict[str, Any]:
+        return {
+            "horizon": self.cfg.forecast.horizon,
+            "weights": {s: _r(w, 4) for s, w in self.baseline.items()},
+            "cash": _r(1 - sum(self.baseline.values()), 4),
+        }

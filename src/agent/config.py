@@ -114,6 +114,14 @@ class ExecutionConfig:
 
 
 @dataclass(frozen=True)
+class ToolConfig:
+    """D-018: limits of the agent that calls Timestral as a tool."""
+
+    max_rounds: int = 6  # LLM turns allowed to call tools before the final decision
+    max_calls: int = 12  # tool calls in total per decision
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     universe: tuple[Asset, ...] = UNIVERSE
     forecast: ForecastConfig = field(default_factory=ForecastConfig)
@@ -122,6 +130,10 @@ class AgentConfig:
     drawdown_levels: tuple[DrawdownLevel, ...] = DRAWDOWN_LEVELS
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     benchmark: str = "SPY"  # the market reference of the performance comparisons (D-014)
+    # D-018: "pipeline" (Timestral always runs, the LLM adjusts the baseline) or "tools"
+    # (the LLM queries Timestral through tools and builds the portfolio itself).
+    agent: str = "pipeline"
+    tools: ToolConfig = field(default_factory=ToolConfig)
 
     @property
     def symbols(self) -> tuple[str, ...]:
@@ -136,3 +148,24 @@ class AgentConfig:
     def max_weight(self, symbol: str) -> float:
         a = self.asset(symbol)
         return self.risk.max_weight_etf if a.type is AssetType.ETF else self.risk.max_weight_stock
+
+
+def tool_agent_config(base: AgentConfig | None = None) -> AgentConfig:
+    """The agent that uses Timestral as a tool (D-018), derived from the pipeline agent.
+
+    Differences, and only these: the agent kind, the largest Timestral model (D-006: sizes are
+    indistinguishable on our data, 209M is the best on Mistral's benchmarks and costs ~0.5 s per
+    run), its own prompt, and no bound relative to the baseline (option B, "bounded freedom":
+    the baseline is a tool the LLM may consult, not an anchor). Every absolute limit (caps, cash
+    floor, drawdown circuit breaker, turnover, severity) is unchanged.
+    """
+    from dataclasses import replace
+
+    base = base or AgentConfig()
+    return replace(
+        base,
+        agent="tools",
+        forecast=replace(base.forecast, model_id="mistralai/Timestral-209M"),
+        llm=replace(base.llm, prompt_version="decide_tools_v1"),
+        risk=replace(base.risk, max_increase_vs_baseline=1.0),  # 1.0 = no baseline bound
+    )
