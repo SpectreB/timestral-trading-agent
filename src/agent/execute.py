@@ -114,6 +114,8 @@ def plan_orders(
     symbols = cfg.symbols
     current_value = {s: positions[s].market_value if s in positions else 0.0 for s in symbols}
     deltas = {s: target[s] * equity - current_value[s] for s in symbols}
+    # Starting from (almost) all cash, the turnover cap would only delay the first investment.
+    initial_deployment = sum(current_value.values()) / equity <= ex.initial_deployment_max_invested
 
     last_error = ""
     for band in dict.fromkeys((ex.no_trade_band, 0.0)):  # then relax the band if needed
@@ -123,7 +125,8 @@ def plan_orders(
             if abs(d) >= MIN_NOTIONAL and (abs(d) >= band * equity or target[s] == 0)
         }
         turnover = sum(abs(d) for d in trades.values()) / equity
-        scale = 1.0 if turnover <= ex.max_turnover_per_run else ex.max_turnover_per_run / turnover
+        cap = 1.0 if initial_deployment else ex.max_turnover_per_run
+        scale = 1.0 if turnover <= cap else cap / turnover
         post_value = {s: current_value[s] + scale * trades.get(s, 0.0) for s in symbols}
         post_weights = {s: v / equity for s, v in post_value.items()}
         post_cash = 1.0 - sum(post_weights.values())
