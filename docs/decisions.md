@@ -593,7 +593,7 @@ Immutability is the strongest argument for the "are decisions sound" question: t
 ## D-012 — Dashboard: a static page generated from the audit log, published on GitHub Pages
 
 - **Date:** 2026-11-21
-- **Status:** Accepted. **Taken autonomously** while the project owner was away, on the instruction to choose the best option and report the alternatives: to be confirmed or revised.
+- **Status:** Accepted. Taken autonomously on 2026-11-21 while the project owner was away, then **confirmed by the owner on 2026-11-22** after reviewing the pros and cons, who judged the static page sufficient as it is. The dashboard is a replaceable layer: all its data comes from the derived CSV tables, so a different front end could be built on them without touching the agent.
 
 ### Context
 The assignment asks for a read-only view of the trading activity (export or dashboard). It must be viewable by reviewers without installing anything, must always agree with the audit log, and must not become a second system to operate.
@@ -631,7 +631,7 @@ Design checks done on the rendered page (headless Chrome, light, dark and a 390 
 ## D-013 — Forecast scoring: record observed closes as facts, derive the scores
 
 - **Date:** 2026-11-21
-- **Status:** Accepted. **Taken autonomously** (project owner away), alternatives below: to be confirmed or revised.
+- **Status:** Accepted. Taken autonomously on 2026-11-21, then **confirmed by the owner on 2026-11-22**: record the observed closes, do not query the broker on demand. A hybrid was discussed (see the last row of the options table) and kept as an optional improvement.
 
 ### Context
 To know whether Timestral is useful live, each forecast must be compared with the prices that followed: how often the outcome falls inside the 80% interval, and how the median did. Forecasts are made at 10:00 ET from completed sessions, and a horizon of up to 5 sessions means the outcome is only known days later. The audit log is immutable (D-011), so the scores need a home that respects that.
@@ -643,6 +643,7 @@ To know whether Timestral is useful live, each forecast must be compared with th
 | Write a score file per run once all 5 horizons are known | Simple, immutable | Nothing visible for 5 sessions, past the submission deadline; or up to 10 small files a day if written per horizon |
 | Store scores as events in the log | Immutable | Scores are derived data: storing them freezes any bug in the scoring code |
 | **Record observed closes as immutable facts, derive the scores** | Facts are recorded once and never change; scores are a pure function of run records plus observations, regenerated at any time, testable offline; the 1-day outcomes show up the next day | One more file type (`observations/`) |
+| Hybrid: record, plus an automatic check that compares each new window with the previous one to flag a dividend or split re-basing (no extra API call) | Makes the re-basing risk visible instead of hidden, at no extra cost in calls | About 20 lines and their tests; does not change the scores (they already use one basis per observation). **Optional, not scheduled** |
 
 **Price basis.** Alpaca's adjusted closes are re-based when a dividend or split occurs, so closes recorded on different days can sit on different bases. Each observation therefore holds a **window of the last 12 sessions taken at one time**; a return is only computed between two dates of the same file. The earliest observation containing both dates is used, which keeps the choice deterministic.
 
