@@ -29,6 +29,8 @@ from pydantic import BaseModel, ValidationError
 
 from agent.config import AgentConfig
 from agent.decide import Decision, DecisionInput
+from agent.metrics import SERIES, shadow_returns
+from agent.risk import risk_snapshot
 from agent.schemas import Proposal
 from agent.scoring import score_forecasts
 
@@ -65,6 +67,8 @@ class RunRecord(BaseModel):
     orders: list[OrderRecord]
     execution_status: str
     reasoning_file: str
+    # Forecast risk of every portfolio (D-014); absent in records written before it existed.
+    risk: dict[str, Any] | None = None
 
 
 def run_id(now: datetime, mode: str) -> str:
@@ -151,6 +155,19 @@ def build_record(
         orders=list(orders),
         execution_status=execution_status,
         reasoning_file=f"{rid}_reasoning.txt",
+        risk=risk_snapshot(
+            inp.forecasts,
+            inp.closes,
+            (1, cfg.forecast.horizon),
+            {
+                "current": dict(inp.current),
+                "baseline": dict(inp.baseline),
+                "proposed": (
+                    {s: v["weight"] for s, v in proposed.items()} if proposed is not None else None
+                ),
+                "final": decision.target_weights,
+            },
+        ),
     )
     return record, reasoning
 
@@ -241,6 +258,7 @@ class FileAuditStore:
             "orders.csv": _order_rows(runs),
             "fills.csv": _fill_rows(self.read_fills()),
             "forecast_scores.csv": _score_rows(score_forecasts(runs, self.read_observations())),
+            "shadow_portfolios.csv": _shadow_rows(shadow_returns(runs, self.read_observations())),
         }
         paths = []
         for name, (header, rows) in tables.items():
@@ -351,3 +369,9 @@ def _score_rows(scores: list[dict[str, Any]]) -> Rows:
               "abs_error_median"]  # fmt: skip
     rows = [[_blank(row[column]) for column in header] for row in scores]
     return header, rows
+
+
+def _shadow_rows(rows: list[dict[str, Any]]) -> Rows:
+    """Daily return of each shadow portfolio (D-014)."""
+    header = ["session", "run_id", *SERIES]
+    return header, [[row[column] for column in header] for row in rows]

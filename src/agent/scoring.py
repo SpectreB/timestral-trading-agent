@@ -69,7 +69,7 @@ def score_forecasts(
         for symbol, horizons in run["forecasts"].items():
             for key, q in horizons.items():
                 h = int(key)
-                found = _outcome(ordered, d0, h, symbol)
+                found = realised_return(ordered, d0, h, symbol)
                 if found is None:
                     continue
                 dh, realised = found
@@ -96,9 +96,11 @@ def score_forecasts(
     return rows
 
 
-def _outcome(
+def realised_return(
     observations: Sequence[dict[str, Any]], d0: str, h: int, symbol: str
 ) -> tuple[str, float] | None:
+    """(session, return) of `symbol` from the close of d0 to the close h sessions later, from the
+    earliest observation (sorted by date) that contains both; None if unknown."""
     for obs in observations:
         sessions = sorted(obs["closes"])
         later = [d for d in sessions if d > d0]
