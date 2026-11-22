@@ -791,6 +791,9 @@ Recent data minimises look-ahead bias, and anonymisation plus a leakage probe ma
 - Reuses the metrics of D-014 (T-03), so T-03 comes first.
 - The afternoon reassessment run is not replayed (it would need intraday data).
 
+### Results of the replay (2026-11-23, pipeline agent)
+Full report: [docs/replay/README.md](replay/README.md). 63 sessions from 2026-08-25 to 2026-11-20, a falling market (SPY -9.4%). Valued at the close without costs: **agent -5.8%, Timestral rule -8.0%, equal weight -9.3%, SPY -9.4%**; maximum drawdown -6.1% against -11.5% for SPY. Each layer moved in the right direction (rule +1.2 pts over equal weight, LLM +2.2 pts over the rule), but **no difference is conclusive**: every 95% bootstrap interval contains zero. The guardrails changed nothing measurable (proposals within the rules). The forecast portfolio risk was slightly too narrow at 1 day (71% inside the 80% band) and right at 5 days (78%). The LLM's confidence carries no information (701 tilts, stated 0.56, paid off 51%, Brier 0.251 against 0.25 for always 0.5). Leakage probe: 0 of 15 assets identified on all five probed sessions, no period recognised. The simulated account (fills at the open plus costs) ended at -5.4%.
+
 ---
 
 ## D-016 — How to check that the LLM behaves soundly: scenarios on the proposal, and repeated calls
