@@ -7,6 +7,7 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -39,12 +40,14 @@ def test_a_single_dry_run_shows_every_section(tmp_path: Path) -> None:
     html = page(store)
     for section in (
         "$100,000",
-        "Portfolio value",
-        "Target allocation",
+        "Performance",
+        "What it holds",
+        "At the last run",
+        "Can we trust it?",
         "Timestral forecasts, 5-day cumulative return",
-        "Latest decision",
-        "All runs",
-        "Executions",
+        "History of runs",
+        "Executions and slippage",
+        "Account value per run",
         "No orders have been reconciled yet",
         "dry run",
         "accepted",
@@ -52,7 +55,6 @@ def test_a_single_dry_run_shows_every_section(tmp_path: Path) -> None:
         "decide_v1",
     ):
         assert section in html, section
-    assert "n/a" in html  # no slippage yet
     assert 'href="data/decisions.csv"' in html
     assert "blob/audit-log/runs/2026-11-23_morning.json" in html
 
@@ -87,7 +89,7 @@ def test_a_rejected_run_is_shown_as_such(tmp_path: Path) -> None:
     _, _, _, store = cycle(tmp_path, llm=FakeLLM([BROKEN, BROKEN]))
     html = page(store)
     assert "rejected, positions held" in html
-    assert "Rejection reason: invalid_json" in html
+    assert "LLM proposal rejected (invalid_json): positions held" in html
     assert "No parsable analysis." in html
     assert "no orders (positions held)" in html
 
@@ -117,18 +119,19 @@ def test_reconciled_fills_feed_the_table_and_the_slippage_tile(tmp_path: Path) -
     states[broker.submitted[0]["id"]] = OrderState("expired", 0.0, None, None, None)
     reconcile_runs(store, Lookup(states), LATER)
     html = page(store)
-    assert "+10.0 bps" in html and "vs reference price" in html
-    assert "14/15 filled" in html
+    assert "14/15 filled, average slippage +10.0 bps" in html
+    assert "1 unfilled, 0 unsent order(s)" in html  # surfaced as an alert, not buried
     assert "expired" in html and "+10.0" in html
     assert "No orders have been reconciled yet" not in html
 
 
-def test_slippage_tile_without_any_filled_order(tmp_path: Path) -> None:
+def test_no_slippage_is_claimed_without_any_filled_order(tmp_path: Path) -> None:
     store, broker = live_run(tmp_path)
     states = {o["id"]: OrderState("expired", 0.0, None, None, None) for o in broker.submitted}
     reconcile_runs(store, Lookup(states), LATER)
     html = page(store)
-    assert "no fills reconciled yet" in html and "0/15 filled" in html
+    assert "0/15 filled" in html and "average slippage" not in html
+    assert "15 unfilled" in html
 
 
 def test_llm_text_is_escaped_everywhere(tmp_path: Path) -> None:
@@ -163,7 +166,7 @@ def test_light_and_dark_themes_and_phone_layout_are_defined(tmp_path: Path) -> N
 def test_charts_have_text_alternatives(tmp_path: Path) -> None:
     _, _, _, store = cycle(tmp_path)
     html = page(store)
-    assert html.count('role="img"') == 2
+    assert html.count('role="img"') == 3  # forecasts, account value, circuit-breaker meter
     assert html.count("<summary>Table view</summary>") == 3
     assert 'aria-label="80% forecast intervals of 15 assets over 5 days"' in html
 
@@ -196,7 +199,7 @@ def test_build_without_tables_still_works(tmp_path: Path) -> None:
     audit, site = tmp_path / "audit", tmp_path / "site"
     cycle(audit)
     html = build(audit, site, STAMP).read_text(encoding="utf-8")
-    assert "Target allocation" in html and not (site / "data").exists()
+    assert "What it holds" in html and not (site / "data").exists()
     assert as_json(proposal()) and CFG  # keep shared imports exercised
 
 
@@ -263,3 +266,231 @@ def test_a_direction_hit_rate_is_shown_when_forecasts_have_a_direction(tmp_path:
     _, _, _, store = cycle(tmp_path)
     html = render(chronological(store.read_runs()), [], STAMP, scores=scores)
     assert "direction hit rate 100%" in html
+
+
+# --------------------------------------------------------------------------- redesign (T-04)
+
+
+def _report(tmp_path: Path, closes_after: tuple[float, ...] = (101.0, 102.0, 101.5)) -> Any:
+    """A real run plus observed closes: the performance report as the page gets it."""
+    from agent.metrics import performance_report
+    from tests.test_scoring import SYMS
+
+    _, _, _, store = cycle(tmp_path)
+    dates = ["2026-11-20", "2026-11-23", "2026-11-24", "2026-11-25"]
+    prices = (100.0, *closes_after)
+    closes = {d: dict.fromkeys(SYMS, p) for d, p in zip(dates, prices, strict=True)}
+    closes["2026-11-24"]["SPY"] = 99.0  # the market falls on day two: references differ
+    store.write_observation("2026-11-25", {"as_of": "2026-11-25", "closes": closes})
+    runs = chronological(store.read_runs())
+    return store, runs, performance_report(runs, store.read_observations())
+
+
+def test_the_page_is_organised_around_the_readers_questions(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    html = page(store)
+    order = [html.index(h) for h in ("dry run", "At the last run", "Performance",
+                                     "What it holds", "Can we trust it?", "Export")]  # fmt: skip
+    assert order == sorted(order)
+    assert html.count('class="ev"') == 7  # evidence stays folded away until asked for
+
+
+def test_the_status_banner_shows_when_it_ran_and_what_runs_next(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    html = page(store)
+    assert "Last run <b>Mon 23 Nov, 10:00 ET</b> (morning)" in html
+    assert "Next run about <b>Mon 23 Nov, 15:00 ET</b>" in html
+    assert "prompt decide_v1" in html and "No alert at the last run" in html
+
+
+def test_the_next_run_skips_the_weekend() -> None:
+    from agent.dashboard import _next_run, _when
+
+    friday = datetime.fromisoformat("2026-11-20T15:02:00-05:00")
+    assert _when(_next_run(friday, "afternoon")) == "Mon 23 Nov, 10:00 ET"
+    assert _when(_next_run(friday, "morning")) == "Fri 20 Nov, 15:00 ET"
+    assert _when(_next_run(datetime.fromisoformat("2026-11-23T15:02:00-05:00"), "afternoon")) == (
+        "Tue 24 Nov, 10:00 ET"
+    )
+
+
+def test_alerts_surface_corrections_and_circuit_breaker_levels(tmp_path: Path) -> None:
+    llm = FakeLLM([json.dumps(proposal(NVDA=0.15, SPY=0.01))])
+    _, _, _, store = cycle(tmp_path / "a", llm=llm)
+    assert "1 guardrail correction(s) at the last run" in page(store)
+    cycle(tmp_path / "b", mode="morning")
+    drifted = FakeBroker(equity=94_000.0, positions=_held(94_000.0))
+    _, _, _, store = cycle(tmp_path / "b", mode="afternoon", broker=drifted)
+    assert "Circuit breaker active: reduce-only mode" in page(store)
+    cycle(tmp_path / "c", mode="morning")
+    dipped = FakeBroker(equity=96_500.0, positions=_held(96_500.0))
+    _, _, _, store = cycle(tmp_path / "c", mode="afternoon", broker=dipped)
+    assert "Drawdown alert level reached" in page(store)
+    cycle(tmp_path / "d", mode="morning")
+    crashed = FakeBroker(equity=80_000.0, positions=_held(80_000.0))
+    _, _, _, store = cycle(tmp_path / "d", mode="afternoon", broker=crashed)
+    assert "Circuit breaker override: the LLM was bypassed" in page(store)
+
+
+def test_the_last_run_lists_its_biggest_moves_with_the_reason(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    html = page(store)
+    assert "cash → 6.0%" in html and "+6.0 pts" in html
+    assert "Justified by the forecast interval." in html
+    assert "+ 9 smaller move(s)" in html  # 15 moves from cash, the six largest are listed
+    assert "Orders: 15 dry_run" in html
+
+
+def test_a_long_analysis_is_excerpted_with_the_full_text_one_click_away(tmp_path: Path) -> None:
+    answer = proposal()
+    answer["analysis"] = "Risk-off regime. " * 40
+    _, _, _, store = cycle(tmp_path, llm=FakeLLM([json.dumps(answer)]))
+    html = page(store)
+    assert "Full analysis" in html and "Risk-off regime." in html
+    assert "..." in html
+
+
+def test_the_unchanged_portfolio_is_stated_plainly(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    runs = chronological(store.read_runs())
+    runs[-1]["portfolios"]["current"] = dict(runs[-1]["portfolios"]["final"])
+    assert "No change: positions held." in render(runs, [], STAMP)
+
+
+def test_performance_waits_for_the_first_closed_session(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    html = page(store)
+    assert "No trading session has closed since the first run" in html
+    assert "What does each layer add?" not in html
+    assert "0.0% from peak" in html or "0.0% invested" in html or "drawdown" in html
+
+
+def test_performance_compares_the_agent_with_four_references(tmp_path: Path) -> None:
+    _, runs, report = _report(tmp_path)
+    html = render(runs, [], STAMP, report=report)
+    assert "3 session(s), 2026-11-23 to 2026-11-25" in html
+    assert html.count('data-toggle="') == 5 and 'aria-pressed="true"' in html
+    for label in (
+        "Agent (after guardrails)",
+        "LLM proposal",
+        "Timestral rule",
+        "Equal weight",
+        "SPY",
+    ):
+        assert label in html
+    assert 'class="sline s-agent"' in html and "What does each layer add?" in html
+    assert "too early (3 of 10 sessions)" in html
+    assert "A difference is only called conclusive" in html
+    assert "<summary>Definitions</summary>" in html
+
+
+def test_a_comparison_is_called_conclusive_only_with_its_interval(tmp_path: Path) -> None:
+    _, runs, report = _report(tmp_path)
+    comps = report["comparisons"]
+    comps[0].update(conclusive=True, ci95_mean_daily=(0.001, 0.003))
+    comps[1].update(conclusive=False, ci95_mean_daily=(-0.001, 0.002))
+    html = render(runs, [], STAMP, report=report)
+    assert "conclusive: the 95% interval excludes zero" in html
+    assert "not distinguishable from zero" in html
+
+
+def test_the_circuit_breaker_meter_shows_the_next_safeguard(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    runs = chronological(store.read_runs())
+    html = render(runs, [], STAMP)
+    assert "next safeguard at -3% (alert)" in html
+    assert "Safeguards: -3% alert · -5% reduce-only mode" in html
+    assert html.count("<i style=") == 4
+    runs[-1]["account"]["drawdown_from_peak"] = -0.06
+    assert "next safeguard at -8% (exposure capped at 60%)" in render(runs, [], STAMP)
+    runs[-1]["account"]["drawdown_from_peak"] = -0.15
+    assert "every safeguard level has been reached" in render(runs, [], STAMP)
+
+
+def test_the_allocation_shows_each_assets_share_of_the_forecast_risk(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    runs = chronological(store.read_runs())
+    html = render(runs, [], STAMP)
+    assert "<small>risk " in html
+    assert "Forecast volatility of the final portfolio over the horizon" in html
+    del runs[-1]["risk"]  # a record written before the risk module existed
+    old = render(runs, [], STAMP)
+    assert "<small>risk " not in old and "Forecast volatility of the final" not in old
+
+
+def test_the_evidence_explains_what_is_not_resolved_yet(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    html = page(store)
+    assert "No forecast is resolved yet" in html
+    assert "No deviation from the baseline is resolved yet" in html
+    assert "No correction, rejection or override in 1 run(s)." in html
+
+
+def test_the_evidence_shows_risk_and_confidence_calibration(tmp_path: Path) -> None:
+    _, runs, report = _report(tmp_path)
+    report["risk_calibration"] = [{"horizon": 1, "n": 4, "inside_80": 0.75, "rms_z": 0.9}]
+    report["confidence"] = {
+        "n": 10,
+        "mean_confidence": 0.62,
+        "hit_rate": 0.5,
+        "brier": 0.26,
+        "bins": [{"range": "0.55-0.65", "n": 10, "mean_confidence": 0.62, "hit_rate": 0.5}],
+    }
+    html = render(runs, [], STAMP, report=report)
+    assert "75%" in html and "0.90" in html and "underestimated" in html
+    assert "10 tilt(s) resolved" in html and "Brier score 0.260" in html and "0.55-0.65" in html
+
+
+def test_guardrail_activity_counts_rules_rejections_and_overrides(tmp_path: Path) -> None:
+    llm = FakeLLM([json.dumps(proposal(NVDA=0.15, SPY=0.01))])
+    _, _, _, store = cycle(tmp_path, llm=llm)
+    html = page(store)
+    assert "above_asset_cap" in html and "0 rejected proposal(s)" in html
+
+
+def test_every_run_can_be_opened_in_place(tmp_path: Path) -> None:
+    cycle(tmp_path, mode="morning", llm=FakeLLM([json.dumps(proposal(NVDA=0.15, SPY=0.01))]))
+    _, _, _, store = cycle(tmp_path, mode="afternoon", broker=FakeBroker(equity=100_000.0))
+    html = page(store)
+    assert html.count('<details class="run">') == 2
+    assert "Full immutable record" in html and "<h3>Corrections</h3>" in html
+    assert "<h3>Orders</h3>" in html
+    runs = chronological(store.read_runs())
+    runs[0]["orders"] = []
+    assert "No order." in render(runs, [], STAMP)
+
+
+def test_the_legend_toggle_script_is_present_and_valid() -> None:
+    import shutil
+    import subprocess
+    import tempfile
+
+    from agent.dashboard import SCRIPT
+
+    assert "data-toggle" in SCRIPT and "aria-pressed" in SCRIPT
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+        f.write(SCRIPT)
+    assert subprocess.run([node, "--check", f.name], capture_output=True).returncode == 0
+
+
+def test_a_fully_filled_run_raises_no_execution_alert(tmp_path: Path) -> None:
+    store, broker = live_run(tmp_path)
+    reconcile_runs(store, Lookup(states_for(broker)), LATER)
+    html = page(store)
+    assert "No alert at the last run" in html and "unfilled" not in html
+    assert "15/15 filled, average slippage +10.0 bps" in html
+
+
+def test_a_long_series_labels_the_time_axis_sparingly(tmp_path: Path) -> None:
+    _, runs, report = _report(tmp_path)
+    rows = [dict(report["daily"][0], session=f"2026-12-{day:02d}") for day in range(1, 15)]
+    report.update(
+        daily=rows, sessions=len(rows), first_session="2026-12-01", last_session="2026-12-14"
+    )
+    html = render(runs, [], STAMP, report=report)
+    labels = re.findall(r'text-anchor="middle">(12-\d\d)</text>', html)
+    assert 3 <= len(labels) < len(rows)  # a handful of dates, the last one always shown
+    assert labels[-1] == "12-14"

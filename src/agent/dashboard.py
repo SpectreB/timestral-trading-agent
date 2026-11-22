@@ -17,11 +17,13 @@ import html
 import json
 import math
 import shutil
-from datetime import datetime
+from collections import Counter
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from agent.audit import FileAuditStore
+from agent.metrics import MIN_SESSIONS_FOR_CI, SERIES, performance_report
 from agent.scoring import calibration, score_forecasts
 
 DEFAULT_REPO = "https://github.com/SpectreB/timestral-trading-agent"
@@ -62,6 +64,30 @@ font-size:12px;font-weight:600;white-space:nowrap}
 .b-mute{color:var(--ink2)}
 svg{display:block;width:100%;height:auto;overflow:visible}
 .chart{overflow-x:auto}.chart svg{min-width:600px}
+h3{font-size:14px;margin:16px 0 4px}
+.status{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px}
+.chip{border:1px solid var(--border);background:var(--surface);border-radius:999px;
+padding:1px 10px;font-size:12px;color:var(--ink2)}
+.alerts{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.read{margin:4px 0}
+.sline{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+.s-agent.sline{stroke:var(--s1);stroke-width:2.5}.sdot{fill:var(--muted)}
+.sdot.s-agent{fill:var(--s1);stroke:var(--surface);stroke-width:2}
+.key{display:inline-flex;gap:6px;align-items:center;background:none;border:1px solid var(--border);
+border-radius:999px;padding:2px 10px;color:var(--ink2);font:inherit;font-size:13px;cursor:pointer;
+white-space:nowrap}
+.key[aria-pressed="false"]{opacity:.45;text-decoration:line-through}
+.meter{position:relative;height:10px;background:var(--grid);border-radius:5px;margin:4px 0 12px}
+.meter .fill{position:absolute;left:0;top:0;bottom:0;background:var(--s1);border-radius:5px}
+.meter i{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+.alloc{grid-template-columns:64px 1fr 150px}
+.alloc .val{white-space:nowrap}
+.alloc .val small{color:var(--muted);margin-left:6px}
+details.ev{border-top:1px solid var(--grid);margin:0;padding:8px 0}
+details.ev>summary{font-size:14px}details.ev .card{border:0;padding:0;margin:8px 0 0}
+details.ev .card>h2{display:none}
+details.run{border-top:1px solid var(--grid);padding:6px 0}
+details.run>summary{font-size:13px}
 svg text{fill:var(--muted);font:12px system-ui,sans-serif}
 .grid{stroke:var(--grid);stroke-width:1}.axis{stroke:var(--axis);stroke-width:1}
 .line{fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
@@ -99,7 +125,7 @@ a{color:var(--s1)}
 border:1px solid var(--axis);border-radius:8px;padding:6px 10px;font-size:12px;
 box-shadow:0 2px 8px rgba(0,0,0,.15);max-width:320px}
 .tip strong{display:block;color:var(--ink);font-size:13px}
-@media (max-width:560px){.hero{font-size:40px}.alloc{grid-template-columns:52px 1fr 48px}}
+@media (max-width:560px){.hero{font-size:40px}.alloc{grid-template-columns:52px 1fr 112px}}
 """
 
 SCRIPT = """
@@ -111,6 +137,11 @@ for(const t of lines.slice(1)){const d=document.createElement('div');d.textConte
 tip.appendChild(d);}tip.hidden=false;const r=tip.getBoundingClientRect();
 tip.style.left=Math.max(8,Math.min(x+14,innerWidth-r.width-8))+'px';
 tip.style.top=Math.max(8,y-r.height-12)+'px';}
+for(const b of document.querySelectorAll('[data-toggle]')){
+b.addEventListener('click',()=>{const on=b.getAttribute('aria-pressed')!=='true';
+b.setAttribute('aria-pressed',on?'true':'false');
+for(const g of document.querySelectorAll('[data-series="'+b.dataset.toggle+'"]')){
+g.style.display=on?'':'none';}});}
 for(const el of document.querySelectorAll('[data-tip]')){
 el.addEventListener('pointermove',e=>show(el,e.clientX,e.clientY));
 el.addEventListener('pointerleave',()=>{tip.hidden=true;});
@@ -209,59 +240,6 @@ def _corrections(run: dict[str, Any]) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------- sections
 
 
-def _header(runs: list[dict[str, Any]], generated_at: datetime, repo: str) -> str:
-    sub = (
-        "An autonomous paper-trading agent: Timestral forecasts risk, a Mistral LLM adjusts a "
-        "rule-based baseline, deterministic guardrails decide what reaches the broker. "
-        "Paper money only. Read-only view generated from the immutable "
-        f'<a href="{_e(repo)}/tree/{AUDIT_BRANCH}">audit log</a>.'
-    )
-    return f'<h1>Timestral Trading Agent</h1><p class="sub">{sub}</p>'
-
-
-def _hero(runs: list[dict[str, Any]]) -> str:
-    first, last = runs[0], runs[-1]
-    equity, start = last["account"]["equity"], first["account"]["equity"]
-    change = equity / start - 1
-    invested = 1 - last["portfolios"]["final_cash"]
-    return (
-        '<div class="card"><div class="l sec-sub">Portfolio value at the latest run</div>'
-        f'<div class="hero">{_usd(equity)}</div>'
-        f'<div class="delta">{_spct(change, 2)} since the first run ({_usd(start)}) · '
-        f"{_pct(invested, 0)} invested in the latest target · {_e(last['run_id'])}</div></div>"
-    )
-
-
-def _tile(label: str, value: str, note: str = "") -> str:
-    note_html = f'<div class="n">{_e(note)}</div>' if note else ""
-    return (
-        f'<div class="tile"><div class="l">{_e(label)}</div><div class="v">{_e(value)}</div>'
-        f"{note_html}</div>"
-    )
-
-
-def _kpis(runs: list[dict[str, Any]], fills: list[dict[str, Any]]) -> str:
-    outcomes = [r["decision"]["outcome"] for r in runs]
-    n_corr = sum(len(_corrections(r)) for r in runs)
-    live = sum(r["execution_status"] == "live" for r in runs)
-    held = sum(o == "fallback_hold" for o in outcomes)
-    weighted = [
-        (f["summary"]["slippage_bps_weighted"], f["summary"]["filled_notional"])
-        for f in fills
-        if f["summary"]["slippage_bps_weighted"] is not None
-    ]
-    total = sum(n for _, n in weighted)
-    slippage = f"{sum(s * n for s, n in weighted) / total:+.1f} bps" if total > 0 else "n/a"
-    note = "no fills reconciled yet" if not weighted else "vs reference price, + is worse"
-    tiles = [
-        _tile("Runs recorded", str(len(runs)), f"{live} with live orders"),
-        _tile("Guardrail corrections", str(n_corr), "rule violations fixed and logged"),
-        _tile("Proposals rejected", str(held), "positions held instead"),
-        _tile("Average slippage", slippage, note),
-    ]
-    return f'<div class="kpis">{"".join(tiles)}</div>'
-
-
 def _equity_chart(runs: list[dict[str, Any]]) -> str:
     width, height, left, right, top, bottom = 720, 240, 64, 24, 16, 36
     equity: list[float] = [r["account"]["equity"] for r in runs]
@@ -346,6 +324,11 @@ def _allocation(run: dict[str, Any]) -> str:
     proposed = p["proposed"] or {}
     final, baseline = p["final"], p["baseline"]
     scale = max(0.25, *final.values(), *baseline.values())
+    shares = (run.get("risk") or {}).get("risk_contributions_final", {})
+
+    def risk_note(symbol: str) -> str:
+        return f"<small>risk {_pct(shares[symbol], 0)}</small>" if symbol in shares else ""
+
     rows, table = [], []
     for symbol in sorted(final, key=lambda s: -final[s]):
         view = proposed.get(symbol)
@@ -364,7 +347,7 @@ def _allocation(run: dict[str, Any]) -> str:
             f'<span class="name">{_e(symbol)}</span><span class="track">'
             f'<span class="bar" style="width:{bar:.1f}%"></span>'
             f'<span class="tick" style="left:calc({mark:.1f}% - 1px)"></span></span>'
-            f'<span class="val">{_pct(final[symbol])}</span></div>'
+            f'<span class="val">{_pct(final[symbol])}{risk_note(symbol)}</span></div>'
         )
         llm_weight = _pct(view["weight"]) if view else "n/a"
         confidence = f"{view['confidence']:.2f}" if view else "n/a"
@@ -375,6 +358,15 @@ def _allocation(run: dict[str, Any]) -> str:
             f"<td class='num'>{_pct(final[symbol])}</td><td class='num'>{confidence}</td>"
             f"<td>{why}</td></tr>"
         )
+    vols = ((run.get("risk") or {}).get("portfolio_vol") or {}).get(
+        str(max(int(h) for h in run["forecasts"][next(iter(run["forecasts"]))])), {}
+    )
+    vol_line = (
+        f'<p class="sec-sub">Forecast volatility of the final portfolio over the horizon: '
+        f"{_pct(vols['final'])} (Timestral rule alone: {_pct(vols['baseline'])}).</p>"
+        if "final" in vols and "baseline" in vols
+        else ""
+    )
     cash = p["final_cash"]
     cash_bar = 100 * cash / scale
     rows.append(
@@ -388,9 +380,10 @@ def _allocation(run: dict[str, Any]) -> str:
         '<span><i class="tk"></i>Baseline (Timestral rule)</span></div>'
     )
     return (
-        '<div class="card"><h2>Target allocation</h2>'
-        f'<p class="sec-sub">{_e(run["run_id"])}: what the agent decided to hold, against the '
-        "baseline derived from Timestral's forecast intervals. Hover a row for the rationale.</p>"
+        '<div class="card"><h2>What it holds</h2>'
+        f'<p class="sec-sub">{_e(run["run_id"])}: the target allocation, against the baseline '
+        "derived from Timestral's forecast intervals. The small figure is each asset's share of "
+        f"the portfolio's forecast risk. Hover a row for the rationale.</p>{vol_line}"
         f"{''.join(rows)}{legend}"
         '<details><summary>Table view</summary><div class="scroll"><table><tr><th>Asset</th>'
         '<th class="num">Current</th><th class="num">Baseline</th><th class="num">LLM</th>'
@@ -510,54 +503,6 @@ def _calibration(scores: list[dict[str, Any]]) -> str:
     )
 
 
-def _decision(run: dict[str, Any]) -> str:
-    attempt = _last_attempt(run)
-    corrections = _corrections(run)
-    reason = attempt["guardrails"]["rejection_reason"]
-    items = [
-        f"<li>{_e(c['rule'])} {_e(c['symbol'] or '')}: {c['before']:.4f} → {c['after']:.4f}</li>"
-        for c in corrections
-    ]
-    fixes = f"<p>Guardrail corrections:</p><ul>{''.join(items)}</ul>" if items else ""
-    rejected = f"<p>Rejection reason: {_e(reason)}</p>" if reason else ""
-    analysis = _analysis(run)
-    body = f'<pre class="txt">{_e(analysis)}</pre>' if analysis else "<p>No parsable analysis.</p>"
-    tokens_in = sum(a["prompt_tokens"] for a in run["decision"]["attempts"])
-    tokens_out = sum(a["completion_tokens"] for a in run["decision"]["attempts"])
-    return (
-        '<div class="card"><h2>Latest decision</h2>'
-        f'<p class="sec-sub">{_e(run["run_id"])} · {_outcome(run)} · {_execution(run)}</p>'
-        f"<p>Model <b>{_e(attempt['model'])}</b> · prompt "
-        f"<b>{_e(run['decision']['prompt_version'])}</b> · "
-        f"{len(run['decision']['attempts'])} attempt(s) · {tokens_in:,} tokens in, "
-        f"{tokens_out:,} out · code <b>{_e(run['git_sha'][:7])}</b></p>"
-        f"{rejected}{fixes}<details open><summary>The LLM's analysis</summary>{body}</details>"
-        "</div>"
-    )
-
-
-def _runs_table(runs: list[dict[str, Any]], fills: list[dict[str, Any]], repo: str) -> str:
-    by_run = {f["run_id"]: f["summary"] for f in fills}
-    rows = []
-    for r in reversed(runs):
-        s = by_run.get(r["run_id"])
-        fill = f"{s['n_filled']}/{s['n_orders']} filled" if s else "not reconciled"
-        link = f"{repo}/blob/{AUDIT_BRANCH}/runs/{r['run_id']}.json"
-        rows.append(
-            f'<tr><td><a href="{_e(link)}">{_e(r["run_id"])}</a></td><td>{_outcome(r)}</td>'
-            f"<td>{_execution(r)}</td><td class='num'>{len(_corrections(r))}</td>"
-            f"<td class='num'>{len(r['orders'])}</td><td>{_e(fill)}</td>"
-            f"<td class='num'>{_usd(r['account']['equity'])}</td></tr>"
-        )
-    return (
-        '<div class="card"><h2>All runs</h2><p class="sec-sub">Newest first. Each run id links '
-        "to its immutable record.</p><div class='scroll'><table><tr><th>Run</th><th>Decision</th>"
-        '<th>Execution</th><th class="num">Corrections</th><th class="num">Orders</th>'
-        '<th>Fills</th><th class="num">Equity</th></tr>'
-        f"{''.join(rows)}</table></div></div>"
-    )
-
-
 def _fills_table(fills: list[dict[str, Any]]) -> str:
     rows = []
     for f in reversed(fills):
@@ -586,6 +531,443 @@ def _fills_table(fills: list[dict[str, Any]]) -> str:
     )
 
 
+_SERIES_LABEL = {
+    "agent": "Agent (after guardrails)",
+    "llm_proposal": "LLM proposal",
+    "baseline": "Timestral rule",
+    "equal_weight": "Equal weight",
+    "spy": "SPY (market)",
+}
+_SERIES_DASH = {
+    "agent": "",
+    "llm_proposal": "6 3",
+    "baseline": "2 3",
+    "equal_weight": "9 3 2 3",
+    "spy": "1 4",
+}
+_LEVEL_LABEL = {
+    "alert": "alert",
+    "reduce_only": "reduce-only mode",
+    "cap_exposure_60": "exposure capped at 60%",
+    "baseline_half_exposure_and_pause": "baseline at half exposure, LLM paused",
+}
+
+
+def _when(moment: datetime) -> str:
+    return moment.strftime("%a %d %b, %H:%M").replace(" 0", " ") + " ET"
+
+
+def _next_run(started: datetime, mode: str) -> datetime:
+    """The next scheduled run (holidays are not modelled, so this is approximate)."""
+    if mode == "morning":
+        return started.replace(hour=15, minute=0, second=0, microsecond=0)
+    day = started + timedelta(days=1)
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    return day.replace(hour=10, minute=0, second=0, microsecond=0)
+
+
+def _alerts(run: dict[str, Any], fills: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    """What deserves attention at the last run: shown at the top, never folded away."""
+    out: list[tuple[str, str]] = []
+    attempt = _last_attempt(run)
+    outcome = run["decision"]["outcome"]
+    if outcome == "fallback_hold":
+        reason = attempt["guardrails"]["rejection_reason"]
+        out.append(("crit", f"LLM proposal rejected ({reason}): positions held"))
+    if outcome == "overridden":
+        out.append(("crit", "Circuit breaker override: the LLM was bypassed"))
+    if n := len(_corrections(run)):
+        out.append(("warn", f"{n} guardrail correction(s) at the last run"))
+    actions = [a for a in attempt["guardrails"]["drawdown_actions"] if a != "alert"]
+    if actions:
+        out.append(
+            ("crit", "Circuit breaker active: " + ", ".join(_LEVEL_LABEL[a] for a in actions))
+        )
+    elif attempt["guardrails"]["drawdown_actions"]:
+        out.append(("warn", "Drawdown alert level reached"))
+    for f in fills:
+        s = f["summary"]
+        if f["run_id"] == run["run_id"] and (
+            s["n_not_sent"] or s["n_not_found"] or s["n_unfilled"]
+        ):
+            out.append(("warn", f"{s['n_unfilled']} unfilled, {s['n_not_sent']} unsent order(s)"))
+    return out
+
+
+def _status(runs: list[dict[str, Any]], fills: list[dict[str, Any]]) -> str:
+    last = runs[-1]
+    started = datetime.fromisoformat(last["started_at"])
+    attempt = _last_attempt(last)
+    upcoming = _when(_next_run(started, last["mode"]))
+    prompt = last["decision"]["prompt_version"]
+    chips = [
+        _execution(last),
+        f'<span class="chip">Last run <b>{_e(_when(started))}</b> ({_e(last["mode"])})</span>',
+        f'<span class="chip">Next run about <b>{_e(upcoming)}</b></span>',
+        f'<span class="chip">{_e(attempt["model"])} · prompt {_e(prompt)}'
+        f" · code {_e(last['git_sha'][:7])}</span>",
+    ]
+    alerts = _alerts(last, fills)
+    if alerts:
+        lines = "".join(
+            f"<li>{_badge(text, kind, '!' if kind == 'warn' else '✕')}</li>"
+            for kind, text in alerts
+        )
+    else:
+        lines = f"<li>{_badge('No alert at the last run', 'good', '✓')}</li>"
+    return f'<div class="status">{"".join(chips)}</div><ul class="alerts">{lines}</ul>'
+
+
+def _today(run: dict[str, Any], fills: list[dict[str, Any]]) -> str:
+    p = run["portfolios"]
+    cur, fin = p["current"], p["final"]
+    proposed = p["proposed"] or {}
+    moves = sorted(
+        ((s, fin[s] - cur[s]) for s in fin if abs(fin[s] - cur[s]) >= 0.005),
+        key=lambda m: -abs(m[1]),
+    )
+    rows = []
+    for symbol, delta in moves[:6]:
+        view = proposed.get(symbol)
+        why = view["rationale"] if view else ""
+        short = why if len(why) <= 150 else why[:147] + "..."
+        origin = "cash" if cur[symbol] == 0 else _pct(cur[symbol])
+        why_cell = f"<td {_tip(why)}>{_e(short)}</td>" if why else "<td></td>"
+        rows.append(
+            f"<tr><td><b>{_e(symbol)}</b></td><td>{origin} → {_pct(fin[symbol])}</td>"
+            f"<td class='num'>{100 * delta:+.1f} pts</td>{why_cell}</tr>"
+        )
+    if rows:
+        more = (
+            f'<p class="sec-sub">+ {len(moves) - 6} smaller move(s)</p>' if len(moves) > 6 else ""
+        )
+        table = (
+            "<div class='scroll'><table><tr><th>Asset</th><th>Weight</th>"
+            "<th class='num'>Change</th>"
+            f"<th>Reason given by the LLM</th></tr>{''.join(rows)}</table></div>{more}"
+        )
+    else:
+        table = "<p>No change: positions held.</p>"
+    statuses = Counter(o["status"] for o in run["orders"])
+    sent = ", ".join(f"{n} {_e(s)}" for s, n in statuses.items()) or "none"
+    summary = next((f["summary"] for f in fills if f["run_id"] == run["run_id"]), None)
+    done = ""
+    if summary:
+        done = f" · {summary['n_filled']}/{summary['n_orders']} filled"
+        if summary["slippage_bps_weighted"] is not None:
+            done += f", average slippage {summary['slippage_bps_weighted']:+.1f} bps"
+    analysis = _analysis(run)
+    if not analysis:
+        note = "<p>No parsable analysis.</p>"
+    else:
+        note = (
+            f'<p class="read">{_e(analysis[:317] + "..." if len(analysis) > 320 else analysis)}</p>'
+        )
+        if len(analysis) > 320:
+            note += (
+                f'<details><summary>Full analysis</summary><pre class="txt">{_e(analysis)}</pre>'
+                "</details>"
+            )
+    return (
+        f'<div class="card"><h2>At the last run</h2><p class="sec-sub">{_e(run["run_id"])} · '
+        f"{_outcome(run)}</p>{table}"
+        f'<p class="sec-sub">Orders: {sent}{_e(done)}</p>'
+        f"<h3>The LLM's reading</h3>{note}</div>"
+    )
+
+
+def _cumulative(daily: list[dict[str, Any]], series: str) -> list[float]:
+    out, wealth = [0.0], 1.0
+    for row in daily:
+        wealth *= 1 + row[series]
+        out.append(wealth - 1)
+    return out
+
+
+def _series_chart(report: dict[str, Any]) -> str:
+    daily = report["daily"]
+    width, height, left, right, top, bottom = 720, 260, 56, 24, 16, 36
+    curves = {s: _cumulative(daily, s) for s in SERIES}
+    values = [v for c in curves.values() for v in c]
+    lo, hi = min([*values, 0.0]), max([*values, 0.0])
+    pad = max((hi - lo) * 0.15, 0.002)
+    lo, hi = lo - pad, hi + pad
+    n = len(daily) + 1
+
+    def x(i: int) -> float:
+        return left + (width - left - right) * i / (n - 1)
+
+    def y(v: float) -> float:
+        return top + (height - top - bottom) * (1 - (v - lo) / (hi - lo))
+
+    parts = []
+    for tick in _nice_ticks(lo, hi, 6):
+        label = "0%" if abs(tick) < 1e-12 else _spct(tick, 1)
+        parts.append(
+            f'<line class="grid" x1="{left}" x2="{width - right}" y1="{y(tick):.1f}" '
+            f'y2="{y(tick):.1f}"/><text x="{left - 8}" y="{y(tick) + 4:.1f}" '
+            f'text-anchor="end">{label}</text>'
+        )
+    parts.append(
+        f'<line class="axis" x1="{left}" x2="{width - right}" y1="{y(0):.1f}" y2="{y(0):.1f}"/>'
+    )
+    parts.append(f'<text x="{x(0):.1f}" y="{height - 12}" text-anchor="start">start</text>')
+    for i, row in enumerate(daily, start=1):
+        if i == n - 1 or i % max(1, (n - 1) // 6) == 0:
+            parts.append(
+                f'<text x="{x(i):.1f}" y="{height - 12}" text-anchor="middle">'
+                f"{_e(row['session'][5:])}</text>"
+            )
+    for series in reversed(SERIES):  # the agent is drawn last, on top
+        points = " ".join(f"{x(i):.1f},{y(v):.1f}" for i, v in enumerate(curves[series]))
+        dash = f' stroke-dasharray="{_SERIES_DASH[series]}"' if _SERIES_DASH[series] else ""
+        parts.append(
+            f'<g data-series="{series}">'
+            f'<polyline class="sline s-{series}" points="{points}"{dash}/>'
+            f'<circle class="sdot s-{series}" cx="{x(n - 1):.1f}" cy="{y(curves[series][-1]):.1f}" '
+            f'r="4"/></g>'
+        )
+    band = (width - left - right) / max(n - 1, 1)
+    for i, row in enumerate(daily, start=1):
+        tip = _tip(
+            f"{row['session']}: agent {_spct(curves['agent'][i], 2)} since the start",
+            *(f"{_SERIES_LABEL[s]} {_spct(curves[s][i], 2)}" for s in SERIES if s != "agent"),
+        )
+        parts.append(
+            f'<g class="pt" tabindex="0" {tip}><line class="xhair" x1="{x(i):.1f}" '
+            f'x2="{x(i):.1f}" y1="{top}" y2="{height - bottom}"/>'
+            f'<rect class="hit" x="{x(i) - band / 2:.1f}" y="{top}" width="{band:.1f}" '
+            f'height="{height - top - bottom}"/></g>'
+        )
+    legend = "".join(
+        f'<button type="button" class="key" data-toggle="{s}" aria-pressed="true">'
+        f'<svg width="26" height="10" aria-hidden="true"><line x1="0" x2="26" y1="5" y2="5" '
+        f'class="sline s-{s}"'
+        + (f' stroke-dasharray="{_SERIES_DASH[s]}"' if _SERIES_DASH[s] else "")
+        + f"/></svg> {_e(_SERIES_LABEL[s])}</button>"
+        for s in SERIES
+    )
+    rows = "".join(
+        f"<tr><td>{_e(row['session'])}</td>"
+        + "".join(f"<td class='num'>{_spct(curves[s][i], 2)}</td>" for s in SERIES)
+        + "</tr>"
+        for i, row in enumerate(daily, start=1)
+    )
+    head = "".join(f"<th class='num'>{_e(_SERIES_LABEL[s])}</th>" for s in SERIES)
+    return (
+        f'<div class="chart"><svg viewBox="0 0 {width} {height}" role="img" '
+        f'aria-label="Cumulative return of the agent and four references over {len(daily)} '
+        f'sessions">{"".join(parts)}</svg></div>'
+        f'<div class="legend">{legend}</div>'
+        '<details><summary>Table view</summary><div class="scroll"><table><tr><th>Session</th>'
+        f"{head}</tr>{rows}</table></div></details>"
+    )
+
+
+def _comparisons(report: dict[str, Any]) -> str:
+    rows = []
+    for c in report["comparisons"]:
+        n = c["sessions"]
+        if c["conclusive"]:
+            verdict = _badge("conclusive: the 95% interval excludes zero", "good", "✓")
+        elif c["ci95_mean_daily"] is None:
+            verdict = _badge(f"too early ({n} of {MIN_SESSIONS_FOR_CI} sessions)", "mute", "○")
+        else:
+            verdict = _badge("not distinguishable from zero", "mute", "○")
+        rows.append(
+            f"<tr><td>{_e(c['label'])}</td>"
+            f"<td class='num'>{100 * c['cumulative_difference']:+.2f} pts"
+            f"</td><td class='num'>{n}</td><td>{verdict}</td></tr>"
+        )
+    return (
+        "<div class='scroll'><table><tr><th>Question</th><th class='num'>Difference since the "
+        "start</th><th class='num'>Sessions</th><th>Can we tell?</th></tr>"
+        f"{''.join(rows)}</table></div>"
+    )
+
+
+def _exposure(run: dict[str, Any]) -> str:
+    invested = 1 - run["portfolios"]["final_cash"]
+    drawdown = run["account"]["drawdown_from_peak"]
+    levels = sorted(run["config"]["drawdown_levels"], key=lambda lv: -lv["threshold"])
+    scale = abs(levels[-1]["threshold"])
+    upcoming = next((lv for lv in levels if drawdown > lv["threshold"]), None)
+    nxt = (
+        f"next safeguard at {_pct(upcoming['threshold'], 0)} ({_LEVEL_LABEL[upcoming['action']]})"
+        if upcoming
+        else "every safeguard level has been reached"
+    )
+    ticks = "".join(
+        f'<i style="left:{100 * abs(lv["threshold"]) / scale:.1f}%" '
+        f"{_tip(_pct(lv['threshold'], 0) + ': ' + _LEVEL_LABEL[lv['action']])}></i>"
+        for lv in levels
+    )
+    fill = min(abs(drawdown) / scale, 1.0) * 100
+    names = " · ".join(f"{_pct(lv['threshold'], 0)} {_LEVEL_LABEL[lv['action']]}" for lv in levels)
+    return (
+        f'<p class="sec-sub">{_pct(invested, 0)} invested in the latest target · drawdown '
+        f"{_pct(drawdown)} from peak · {_e(nxt)}</p>"
+        f'<div class="meter" role="img" aria-label="Drawdown against the circuit-breaker levels">'
+        f'<span class="fill" style="width:{fill:.1f}%"></span>{ticks}</div>'
+        f'<p class="sec-sub">Safeguards: {names}.</p>'
+    )
+
+
+def _performance(runs: list[dict[str, Any]], report: dict[str, Any] | None) -> str:
+    equity, start = runs[-1]["account"]["equity"], runs[0]["account"]["equity"]
+    hero = (
+        f'<div class="hero">{_usd(equity)}</div><div class="delta">{_spct(equity / start - 1, 2)} '
+        f"since the first run ({_usd(start)}) · account value at the latest run</div>"
+    )
+    if report is None or report["sessions"] < 1:
+        body = (
+            '<p class="sec-sub">No trading session has closed since the first run, so the '
+            "performance of the agent and its references cannot be measured yet. The chart and the "
+            "comparisons appear after the first session's closing prices are recorded.</p>"
+        )
+    else:
+        first, last = report["first_session"], report["last_session"]
+        body = (
+            f'<p class="sec-sub">Cumulative return of the agent against four references, '
+            f"{report['sessions']} session(s), {_e(first)} to {_e(last)}. "
+            "Positions are valued as if "
+            "executed exactly, without costs: the real account is the figure above.</p>"
+            f"{_series_chart(report)}<h3>What does each layer add?</h3>{_comparisons(report)}"
+            '<p class="sec-sub">A difference is only called conclusive when its 95% interval '
+            f"(from {MIN_SESSIONS_FOR_CI} sessions on) excludes zero: a few days of returns cannot "
+            "separate skill from noise.</p>"
+        )
+    definitions = (
+        "<details><summary>Definitions</summary><ul>"
+        "<li><b>Agent</b>: the final target after the guardrails.</li>"
+        "<li><b>LLM proposal</b>: the weights the LLM asked for, before the guardrails.</li>"
+        "<li><b>Timestral rule</b>: weights inversely proportional to the width of Timestral's "
+        "forecast interval, no LLM.</li>"
+        "<li><b>Equal weight</b>: the same share in each of the 15 assets, same cash.</li>"
+        "<li><b>SPY</b>: the S&amp;P 500 ETF, the market.</li></ul></details>"
+    )
+    exposure = _exposure(runs[-1])
+    return f'<div class="card"><h2>Performance</h2>{hero}{body}{exposure}{definitions}</div>'
+
+
+def _evidence(title: str, note: str, body: str) -> str:
+    return (
+        f'<details class="ev"><summary><b>{_e(title)}</b> '
+        f'<span class="sec-sub">{_e(note)}</span></summary>{body}</details>'
+    )
+
+
+def _table(head: list[str], rows: list[list[str]]) -> str:
+    cells = "".join(f"<th>{_e(h)}</th>" for h in head)
+    body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>" for row in rows)
+    return f"<div class='scroll'><table><tr>{cells}</tr>{body}</table></div>"
+
+
+def _risk_calibration(report: dict[str, Any] | None) -> str:
+    rows = (report or {}).get("risk_calibration", [])
+    if not rows:
+        return "<p>No forecast is resolved yet: the first horizon needs one closed session.</p>"
+    return _table(
+        [
+            "Horizon (days)",
+            "Resolved forecasts",
+            "Inside the 80% band (target 80%)",
+            "RMS ratio (1 is exact)",
+        ],
+        [
+            [str(r["horizon"]), str(r["n"]), _pct(r["inside_80"], 0), f"{r['rms_z']:.2f}"]
+            for r in rows
+        ],
+    ) + (
+        '<p class="sec-sub">Forecast portfolio volatility (Timestral volatilities with historical '
+        "correlations) against the move that followed. A ratio above 1 means risk was "
+        "underestimated.</p>"
+    )
+
+
+def _confidence(report: dict[str, Any] | None) -> str:
+    c = (report or {}).get("confidence")
+    if not c:
+        return (
+            "<p>No deviation from the baseline is resolved yet: the 5-day outcome of a tilt needs "
+            "5 closed sessions.</p>"
+        )
+    bins = _table(
+        ["Stated confidence", "Tilts", "Average stated", "Paid off"],
+        [
+            [b["range"], str(b["n"]), f"{b['mean_confidence']:.2f}", _pct(b["hit_rate"], 0)]
+            for b in c["bins"]
+        ],
+    )
+    return (
+        f"<p>{c['n']} tilt(s) resolved · average confidence {c['mean_confidence']:.2f} · "
+        f"paid off {_pct(c['hit_rate'], 0)} · Brier score {c['brier']:.3f}</p>{bins}"
+        '<p class="sec-sub">A tilt "paid off" when the extra weight earned a positive return over '
+        "5 days. A calibrated LLM pays off about as often as it says. Brier: 0 is perfect, always "
+        "answering 0.5 scores 0.25.</p>"
+    )
+
+
+def _guardrails(runs: list[dict[str, Any]]) -> str:
+    rules = Counter(c["rule"] for r in runs for c in _corrections(r))
+    outcomes = Counter(r["decision"]["outcome"] for r in runs)
+    held, overridden = outcomes["fallback_hold"], outcomes["overridden"]
+    if not rules and not held and not overridden:
+        return f"<p>No correction, rejection or override in {len(runs)} run(s).</p>"
+    table = (
+        _table(["Rule", "Corrections"], [[_e(r), str(n)] for r, n in rules.most_common()])
+        if rules
+        else ""
+    )
+    return (
+        f"<p>{len(runs)} run(s) · {held} rejected proposal(s) · {overridden} circuit-breaker "
+        f"override(s)</p>{table}"
+    )
+
+
+def _run_history(runs: list[dict[str, Any]], repo: str) -> str:
+    items = []
+    for r in reversed(runs):
+        link = f"{repo}/blob/{AUDIT_BRANCH}/runs/{r['run_id']}.json"
+        fixes = "".join(
+            f"<li>{_e(c['rule'])} {_e(c['symbol'] or '')}: "
+            f"{c['before']:.4f} → {c['after']:.4f}</li>"
+            for c in _corrections(r)
+        )
+        orders = (
+            _table(
+                ["Asset", "Side", "Quantity", "Limit", "Status"],
+                [
+                    [
+                        _e(o["symbol"]),
+                        _e(o["side"]),
+                        f"{o['quantity']:,.4f}",
+                        "n/a" if o["limit_price"] is None else f"{o['limit_price']:,.2f}",
+                        _e(o["status"]),
+                    ]
+                    for o in r["orders"]
+                ],
+            )
+            if r["orders"]
+            else "<p>No order.</p>"
+        )
+        analysis = _analysis(r)
+        items.append(
+            f'<details class="run"><summary>{_e(r["run_id"])} · {_outcome(r)} · {_execution(r)} · '
+            f"{_usd(r['account']['equity'])}</summary>"
+            + (f"<h3>Corrections</h3><ul>{fixes}</ul>" if fixes else "")
+            + f"<h3>Orders</h3>{orders}<h3>The LLM's analysis</h3>"
+            + (
+                f'<pre class="txt">{_e(analysis)}</pre>'
+                if analysis
+                else "<p>No parsable analysis.</p>"
+            )
+            + f'<p><a href="{_e(link)}">Full immutable record</a></p></details>'
+        )
+    return "".join(items)
+
+
 def _downloads(repo: str, tables: list[str]) -> str:
     links = "".join(f'<li><a href="data/{_e(t)}">{_e(t)}</a></li>' for t in tables)
     return (
@@ -607,19 +989,39 @@ def render(
     repo: str = DEFAULT_REPO,
     tables: list[str] | None = None,
     scores: list[dict[str, Any]] | None = None,
+    report: dict[str, Any] | None = None,
 ) -> str:
+    intro = (
+        '<h1>Timestral Trading Agent</h1><p class="sub">An autonomous paper-trading agent: '
+        "Timestral forecasts risk, a Mistral LLM adjusts a rule-based baseline, deterministic "
+        "guardrails decide what reaches the broker. Paper money only. Read-only view generated "
+        f'from the immutable <a href="{_e(repo)}/tree/{AUDIT_BRANCH}">audit log</a>.</p>'
+    )
     if runs:
+        evidence = [
+            _evidence("Timestral's forecasts", "the risk behind the weights", _forecasts(runs[-1])),
+            *(
+                [_evidence("Forecast calibration", "do the intervals hold?", _calibration(scores))]
+                if scores
+                else []
+            ),
+            _evidence(
+                "Forecast risk against what happened", "portfolio level", _risk_calibration(report)
+            ),
+            _evidence("The LLM's confidence", "is it calibrated?", _confidence(report)),
+            _evidence("Guardrail activity", "corrections and rejections", _guardrails(runs)),
+            _evidence("Executions and slippage", "what the broker did", _fills_table(fills)),
+            _evidence("Account value per run", "the real account", _equity_chart(runs)),
+            _evidence("History of runs", "click a run for its detail", _run_history(runs, repo)),
+        ]
         body = "".join(
             [
-                _hero(runs),
-                _kpis(runs, fills),
-                _equity_chart(runs),
+                _status(runs, fills),
+                _today(runs[-1], fills),
+                _performance(runs, report),
                 _allocation(runs[-1]),
-                _forecasts(runs[-1]),
-                _calibration(scores) if scores else "",
-                _decision(runs[-1]),
-                _runs_table(runs, fills, repo),
-                _fills_table(fills),
+                '<div class="card"><h2>Can we trust it?</h2><p class="sec-sub">The evidence behind '
+                "the figures above. Click a line to open it.</p>" + "".join(evidence) + "</div>",
             ]
         )
     else:
@@ -635,8 +1037,7 @@ def render(
         '<meta name="description" content="Read-only view of an autonomous paper-trading agent: '
         'Timestral forecasts, Mistral LLM decisions, guardrails and audit log.">'
         f'<style>{CSS}</style></head><body><div class="viz-root"><div class="wrap">'
-        f"{_header(runs, generated_at, repo)}{body}"
-        f"{_downloads(repo, tables or [])}"
+        f"{intro}{body}{_downloads(repo, tables or [])}"
         f'<p class="foot">Generated {_e(stamp)} from the audit log. Paper trading, not financial '
         f"advice.</p></div></div><script>{SCRIPT}</script></body></html>"
     )
@@ -660,8 +1061,12 @@ def build(audit_dir: Path, out_dir: Path, generated_at: datetime, repo: str = DE
             shutil.copy(csv_file, out_dir / "data" / csv_file.name)
             tables.append(csv_file.name)
     page = out_dir / "index.html"
-    scores = score_forecasts(runs, store.read_observations())
-    page.write_text(render(runs, fills, generated_at, repo, tables, scores), encoding="utf-8")
+    observations = store.read_observations()
+    scores = score_forecasts(runs, observations)
+    report = performance_report(runs, observations)
+    page.write_text(
+        render(runs, fills, generated_at, repo, tables, scores, report), encoding="utf-8"
+    )
     return page
 
 
