@@ -62,15 +62,29 @@ def test_kill_switch(env: dict[str, str], enabled: bool) -> None:
 # --------------------------------------------------------------------------- planning
 
 
-def test_first_deployment_is_throttled_by_the_turnover_cap() -> None:
-    p = plan(BASELINE)  # from all cash to 90% invested: 90% turnover, cap is 30%
+def test_the_first_deployment_from_cash_is_not_throttled() -> None:
+    p = plan(BASELINE)  # from all cash to 90% invested in one run
     assert p.turnover == pytest.approx(0.90)
-    assert p.scale == pytest.approx(0.30 / 0.90)
+    assert p.scale == 1.0
     assert len(p.orders) == 15
     assert all(o.side == "buy" for o in p.orders)
-    assert all(o.quantity == pytest.approx(20.0) for o in p.orders)  # 6% / 3 of 100k at $100
-    assert sum(p.post_weights.values()) == pytest.approx(0.30)
+    assert all(o.quantity == pytest.approx(60.0) for o in p.orders)  # 6% of 100k at $100
+    assert sum(p.post_weights.values()) == pytest.approx(0.90)
     final_check(p.post_weights, p.post_cash, CFG)
+
+
+def test_later_large_changes_are_throttled_by_the_turnover_cap() -> None:
+    # 10% invested (above the 5% "from cash" threshold): rotating into the baseline is capped.
+    current = {"TLT": 0.10}
+    p = plan(BASELINE, current=current)
+    assert p.turnover == pytest.approx(0.04 + 0.84)
+    assert p.scale == pytest.approx(0.30 / 0.88)
+    final_check(p.post_weights, p.post_cash, CFG)
+
+
+def test_a_small_residual_position_still_counts_as_starting_from_cash() -> None:
+    p = plan(BASELINE, current={"TLT": 0.04})  # 4% invested: still the initial deployment
+    assert p.scale == 1.0
 
 
 def test_orders_are_marketable_limits_at_the_configured_tolerance() -> None:
@@ -162,9 +176,15 @@ def test_a_plan_that_leaves_the_portfolio_unsafe_is_refused() -> None:
 
 
 def test_a_throttled_plan_stays_safe_even_for_an_unsafe_target() -> None:
-    # The turnover cap only moves 30% of equity towards the target, which is itself safe.
-    p = plan({**BASELINE, "SPY": 0.20})
+    # Already invested: the turnover cap only moves 30% of equity towards the target.
+    p = plan({**BASELINE, "SPY": 0.20}, current={"TLT": 0.10})
     final_check(p.post_weights, p.post_cash, CFG)
+
+
+def test_an_unsafe_target_from_cash_is_refused_outright() -> None:
+    # No cap on the first deployment, so nothing dilutes an unsafe target: the plan is refused.
+    with pytest.raises(ExecutionError, match="no safe plan"):
+        plan({**BASELINE, "SPY": 0.20})
 
 
 @settings(max_examples=400, deadline=None)
