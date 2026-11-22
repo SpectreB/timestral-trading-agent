@@ -771,6 +771,14 @@ The live window before submission is about three trading days: far too few decis
 ### Rationale
 Recent data minimises look-ahead bias, and anonymisation plus a leakage probe make the remaining risk visible rather than assumed away. Keeping the agent identical to the live one means the replay and the live run measure the same thing, so their results can be read together. Three months of daily decisions balances sample size (63 decisions, 63 sessions of returns, enough for the bootstrap intervals of D-014) against a duration that fits before submission.
 
+### Implementation notes (2026-11-22, T-05)
+- **Same agent, in alias space.** Rather than hiding names in the payload, the whole decision runs on an anonymised configuration (`anonymise`): aliases `A01`..`A15` in a seeded shuffled order, generic names, type and sector group kept. Prompt, guardrails, baseline rule and planner are the production code, unchanged. The benchmark (SPY) became a config parameter (`benchmark`) because it has an alias too.
+- **Strict point in time.** A decision at session t receives the 512 closes before t (`point_in_time`); the portfolio weights it sees are valued at the previous close too. A test rewrites the future and checks that no decision changes. Fills happen at the open of session t plus 5 bps per side, using the production order planner (no-trade band, turnover cap, waiver for the initial deployment).
+- **Records and metrics are those of the live system.** Run records, observations and CSV tables use the audit structures, with real dates and alias symbols, so the D-014 report applies unchanged. The mapping, the cost and the versions are in `manifest.json`.
+- **Resumable.** A restart skips the sessions already recorded and rebuilds the simulated portfolio from the stored targets, with no new LLM call.
+- **Leakage probe** (`replay probe`): the LLM is shown a few anonymised payloads and asked to identify the assets and the period; answers and scores are kept. Sector groups stay in the payload (the guardrails need them), so bonds and gold are easier to name than the others; this is stated in the report.
+- **Run:** 63 sessions, 2026-08-25 to 2026-11-20, 558 sessions of history before the first decision; roughly 3 to 5 minutes per decision, sequential, so several hours.
+
 ### Impact on further development
 - Caveat to state in the results: the Timestral configuration (D-006) was evaluated on origins that overlap the test period. Its choice did not change from the value fixed before the backtest, so selection bias is minimal, but it is not zero.
 - Reuses the metrics of D-014 (T-03), so T-03 comes first.
