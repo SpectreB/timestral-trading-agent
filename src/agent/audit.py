@@ -219,6 +219,10 @@ class FileAuditStore:
         _write_once(path, _dump({"schema_version": SCHEMA_VERSION, "name": name, **payload}))
         return path
 
+    def read_run(self, rid: str) -> dict[str, Any]:
+        record: dict[str, Any] = json.loads(self._run_path(rid).read_text(encoding="utf-8"))
+        return record
+
     def has_observation(self, name: str) -> bool:
         return (self.root / "observations" / f"{name}.json").exists()
 

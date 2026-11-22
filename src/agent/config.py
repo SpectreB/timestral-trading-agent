@@ -120,6 +120,7 @@ class AgentConfig:
     risk: RiskLimits = field(default_factory=RiskLimits)
     drawdown_levels: tuple[DrawdownLevel, ...] = DRAWDOWN_LEVELS
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    benchmark: str = "SPY"  # the market reference of the performance comparisons (D-014)
 
     @property
     def symbols(self) -> tuple[str, ...]:
