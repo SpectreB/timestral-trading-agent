@@ -29,7 +29,7 @@ The single place to see where the project stands. Details of each decision are i
 | ID | Question | Recommendation |
 |---|---|---|
 | P-1 | Replay design: test period, decision frequency, how the earlier period informs the agent | Most recent months as test period; daily decisions (cost is not a constraint, see below); earlier period used to tune parameters and write a "lessons" note for the prompt |
-| P-2 | When to switch `TRADING_ENABLED` to `true` | Before Mon 16:00 Paris, once T-01 has passed |
+| P-2 | When to switch `TRADING_ENABLED` to `true` | Before Mon 16:00 Paris (T-01 has passed) |
 | P-3 | Confirm or revise D-012 and D-013 | |
 | P-4 | Accept D-002 formally | Accept |
 
@@ -37,7 +37,7 @@ The single place to see where the project stands. Details of each decision are i
 
 | ID | Task | Owner | Status |
 |---|---|---|---|
-| T-01 | Unpublished test of the trade workflow on GitHub (new reconcile and observation steps) | Claude | Running (2026-11-22) |
+| T-01 | Unpublished test of the trade workflow on GitHub (new reconcile and observation steps) | Claude | Done 2026-11-22: every step passed (decision accepted, 14 orders planned in dry run, reconciliation and observation OK), nothing published |
 | T-02 | Switch the kill switch on | Owner | Before Mon 16:00 Paris |
 | T-03 | Metrics: forecast risk module, shadow portfolios (agent, LLM proposal, baseline, equal weight, SPY), comparisons with confidence intervals, risk and LLM-confidence calibration; record D-014 | Claude | In progress: code written on `feat/metrics`, tests to write |
 | T-04 | Dashboard redesign, user-first: one page answering four questions (is it running, how is it doing, what does it hold and why, can we trust it), evidence collapsed, metrics from T-03 | Claude | To do (after T-03) |
