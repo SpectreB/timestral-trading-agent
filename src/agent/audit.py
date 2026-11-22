@@ -63,7 +63,7 @@ class RunRecord(BaseModel):
     forecasts: dict[str, Any]
     portfolios: dict[str, Any]
     decision: dict[str, Any]
-    messages: list[dict[str, str]]
+    messages: list[dict[str, Any]]
     orders: list[OrderRecord]
     execution_status: str
     reasoning_file: str
@@ -125,8 +125,16 @@ def build_record(
         for a in decision.attempts
     ]
     reasoning = "\n\n".join(
-        f"===== attempt {i + 1} =====\n{a.response.reasoning}"
-        for i, a in enumerate(decision.attempts)
+        [
+            *(
+                f"===== exploration turn {i + 1} =====\n{s.reasoning}"
+                for i, s in enumerate(decision.steps)
+            ),
+            *(
+                f"===== attempt {i + 1} =====\n{a.response.reasoning}"
+                for i, a in enumerate(decision.attempts)
+            ),
+        ]
     )
     record = RunRecord(
         run_id=rid,
@@ -153,9 +161,22 @@ def build_record(
             "final_cash": decision.cash,
         },
         decision={
+            "agent": cfg.agent,
             "prompt_version": decision.prompt_version,
             "outcome": decision.outcome,
             "attempts": attempts,
+            # Tool agent (D-018): exploration turns and every tool call with its result.
+            "steps": [
+                {
+                    "model": s.model,
+                    "prompt_tokens": s.prompt_tokens,
+                    "completion_tokens": s.completion_tokens,
+                    "text": s.text,
+                    "tool_calls": [c.model_dump() for c in s.tool_calls],
+                }
+                for s in decision.steps
+            ],
+            "tool_calls": decision.tool_calls,
         },
         messages=decision.messages,
         orders=list(orders),

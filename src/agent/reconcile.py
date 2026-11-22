@@ -153,13 +153,15 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the trade workflow
     from dotenv import load_dotenv
 
     from agent.execute import AlpacaBroker
+    from agent.run import AGENTS, alpaca_keys
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--audit-dir", default="audit", type=Path)
+    parser.add_argument("--agent", choices=AGENTS, default="pipeline")
     args = parser.parse_args()
 
     load_dotenv()
-    broker = AlpacaBroker(os.environ["ALPACA_API_KEY"], os.environ["ALPACA_SECRET_KEY"])
+    broker = AlpacaBroker(*alpaca_keys(args.agent, os.environ))
     store = FileAuditStore(args.audit_dir)
     result = reconcile_runs(store, broker, datetime.now(UTC))
     print(f"reconciled: {result.written} | pending: {result.pending} | errors: {result.errors}")

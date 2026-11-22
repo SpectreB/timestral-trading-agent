@@ -2,7 +2,7 @@
 
 The single place to see where the project stands. Details of each decision are in [decisions.md](decisions.md); this file only tracks status. Updated with every change of status.
 
-**Key dates:** live trading from **Mon 2026-11-23** (first run 10:00 ET = 16:00 Paris) · submission **Wed 2026-11-25** (no development after it) · review booked by the owner (the agent keeps trading until then).
+**Key dates:** live trading from **Mon 2026-11-23** (first run 10:00 ET = 16:00 Paris) · submission **Wed 2026-11-25** (no development after it) · review on **3 or 4 December** (both agents keep trading until then).
 
 ## Decisions
 
@@ -13,7 +13,7 @@ The single place to see where the project stands. Details of each decision are i
 | D-003 | pip + venv | Accepted |
 | D-004 | Timestral = risk engine for a baseline rule; the LLM adjusts it (asymmetric bounds) | Accepted |
 | D-005 | Universe: 10 ETFs + 5 stocks | Accepted |
-| D-006 | Timestral 28M, prices, 512-day context | Accepted after the backtest (2026-11-21) |
+| D-006 | Timestral prices, 512-day context; the four sizes are indistinguishable (backtest completed 2026-11-22): 28M for the pipeline agent, 209M for the tool agent | Accepted |
 | D-007 | Two runs a day (10:00 and 15:00 ET), 5-day horizon | Accepted |
 | D-008 | Mistral Large 4 (pinned), strict JSON, analysis first | Accepted |
 | D-009 | Development guardrails (tests, coverage gate, secret scan, CI, branch protection) | Accepted |
@@ -25,6 +25,7 @@ The single place to see where the project stands. Details of each decision are i
 | D-015 | Historical replay (test case 1): ~63 recent sessions (Aug to Nov 2026), daily, same agent as live, anonymised, point-in-time, simulated fills | Accepted 2026-11-22 |
 | D-016 | LLM soundness checks: seven behaviour scenarios on the proposal, plus stability over repeated calls | Accepted; first results 5 of 7 (fails: calm market, tempting median); prompt v1 kept for the test window, decided with the owner 2026-11-22 |
 | D-017 | Simulations requested by the evaluators through a GitHub issue (option B; full app, option D, kept in mind) | Accepted 2026-11-22 |
+| D-018 | A second agent that uses Timestral as a tool ("bounded freedom", 3 tools), on its own paper account; the final agent, the pipeline agent kept as reference | Accepted 2026-11-22 |
 
 ## Waiting for the owner
 
@@ -41,21 +42,23 @@ The single place to see where the project stands. Details of each decision are i
 |---|---|---|---|
 | T-01 | Unpublished test of the trade workflow on GitHub (new reconcile and observation steps) | Claude | Done 2026-11-22: every step passed (decision accepted, 14 orders planned in dry run, reconciliation and observation OK), nothing published |
 | T-02 | Switch the kill switch on | Claude, on the owner's instruction | Done 2026-11-22 |
-| T-03 | Performance metrics: forecast risk module, shadow portfolios (agent, LLM proposal, Timestral rule, equal weight, SPY), comparisons with confidence intervals, risk and LLM-confidence calibration (D-014) | Claude | Code and tests done (237 tests, 15 modules at 100%); in review (PR) |
-| T-04 | Dashboard redesign, user-first (structure validated by the owner, reversible; see the redesign note in D-012) | Claude | Code and tests done (255 tests, 15 modules at 100%); in review (PR). Replay results (T-05) will take their place under Performance |
+| T-03 | Performance metrics: forecast risk module, shadow portfolios (agent, LLM proposal, Timestral rule, equal weight, SPY), comparisons with confidence intervals, risk and LLM-confidence calibration (D-014) | Claude | Done 2026-11-22 (merged) |
+| T-04 | Dashboard redesign, user-first (structure validated by the owner, reversible; see the redesign note in D-012) | Claude | Done 2026-11-22 (merged). Replay results (T-05) will take their place under Performance |
 | T-05 | Replay harness (test case 1) as specified in D-015 | Claude | Code and tests done (278 tests, 16 modules at 100%); **the 63-session replay is running** (started 2026-11-22, several hours, resumable); results to commit as `docs/replay` and to show on the dashboard when done |
 | T-06 | LLM soundness checks (D-016): behaviour scenarios and stability | Claude | Done 2026-11-22: 5 of 7 scenarios pass, stability measured; report in `docs/evals` |
-| T-08 | Simulations requested by the evaluators (D-017): simulation run type, issue-triggered workflow with throttling, reply in the issue, dashboard button and list | Claude | Code and tests done (303 tests, 18 modules at 100%); in review (PR); first real request to test after merge |
+| T-08 | Simulations requested by the evaluators (D-017): simulation run type, issue-triggered workflow with throttling, reply in the issue, dashboard button and list | Claude | Done 2026-11-22: merged (#18), tested end to end with issue #20 (reply in 3 min 19, issue closed, simulation listed on the dashboard) |
+| T-09 | Tool agent (D-018): the three Timestral tools, the decision loop, its prompt, both agents in the run, replay, evaluations, reconciliation and Trade workflow | Claude | Code and tests done (353 tests, 20 modules at 100%), first real run accepted; in review (PR) |
+| T-10 | Second Alpaca paper account for the tool agent: create it at 100,000 USD, add the secrets `ALPACA_TOOLS_API_KEY` and `ALPACA_TOOLS_SECRET_KEY`, then the variable `TRADING_ENABLED_TOOLS` | Owner | To do |
+| T-11 | Dashboard with both agents, the tool agent first, and the comparison of the two approaches | Claude | To do |
+| T-12 | Soundness checks (D-016) and replay (D-015) on the tool agent | Claude | To do |
+| T-13 | News as covariates for Timestral (the bonus of the brief): source, construction, backtest with and without, used only if it improves the forecasts | Claude, with the owner | To do (after T-11) |
 | T-07 | Final pass before submission: README, CLAUDE.md, decision statuses, release `v1.0` | Claude | Wed 2026-11-25 morning |
 
-Done (most recent first): LLM outage handling, no crash on a timeout (#19) · turnover cap waiver and no-publish test option (#12) · forecast scoring and backtest (#11) · dashboard on Pages (#10) · README (#9) · reconciliation (#8) · workflows (#7) · execution and full cycle (#6) · audit log (#5) · decision stage (#4) · forecast stage (#3) · guardrails (#2) · tooling and docs (#1).
+Done (most recent first): evaluator simulations (#18) · LLM outage handling, no crash on a timeout (#19) · turnover cap waiver and no-publish test option (#12) · forecast scoring and backtest (#11) · dashboard on Pages (#10) · README (#9) · reconciliation (#8) · workflows (#7) · execution and full cycle (#6) · audit log (#5) · decision stage (#4) · forecast stage (#3) · guardrails (#2) · tooling and docs (#1).
 
 ## Not before submission (documented as future work)
 
-Optional, if time allows: re-basing detection between consecutive observations (D-013 hybrid).
-
-
-Timestral as a tool the LLM calls (portfolio risk, scenarios; D-004 option D, prepared by T-03) · news covariates (bonus) · more asset types. See *Future work* in [decisions.md](decisions.md).
+More asset types · volatility targeting · re-basing detection (D-013 hybrid, dropped: dividends move prices by less than 1%, splits are rare) · `pip-audit` (last, if time allows). See *Future work* in [decisions.md](decisions.md).
 
 ## Mistral API budget (checked 2026-11-22)
 
