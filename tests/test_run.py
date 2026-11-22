@@ -157,3 +157,16 @@ def test_a_non_paper_account_stops_the_run_before_any_llm_call(tmp_path: Path) -
     with pytest.raises(ExecutionError, match="paper"):
         cycle(tmp_path, broker=FakeBroker(is_paper=False), llm=llm)
     assert llm.calls == []
+
+
+def test_an_llm_outage_is_recorded_as_a_held_run(tmp_path: Path) -> None:
+    class Down:
+        def complete(self, messages: Any, schema: Any) -> Any:
+            raise ConnectionError("Mistral API unreachable")
+
+    result, broker, _, store = cycle(tmp_path, live=True, env=LIVE_ENV, llm=Down())  # type: ignore[arg-type]
+    assert result.outcome == "fallback_hold" and result.execution_status == "hold"
+    assert broker.submitted == []
+    record = store.read_runs()[0]
+    reasons = [a["guardrails"]["rejection_reason"] for a in record["decision"]["attempts"]]
+    assert reasons == ["llm_call_failed", "llm_call_failed"]
