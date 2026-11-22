@@ -1,0 +1,347 @@
+===== attempt 1 =====
+Let me analyze this portfolio situation carefully.
+
+Key facts:
+- As of 2102-05-17 morning, last completed session 2102-05-16
+- Portfolio equity: $97,053.47, current cash 12.3%, baseline cash 10%
+- Drawdown from peak: -3.06%, drawdown_actions: ["alert"] — so only "alert", not reduce_only or cap_exposure_60. So normal rules apply but I should be mindful of drawdown.
+- 15 assets: 9 ETFs + 5 stocks (A01, A15, A13, A07, A14) + cash
+
+Let me list the assets with key data:
+
+ETFs:
+- A02 (us_broad): current 10.35%, baseline 6.37%, max 25%. 5d width 0.07101, median +0.00858. Recent: 1d -1.91%, 5d -1.69%, 20d -3.46%, vol 23.2%
+- A11 (tech_growth): current 2.48%, baseline 4.35%, max 25%. 5d width 0.10397, median +0.00357. Recent: 1d -2.67%, 5d -2.59%, 20d -7.88%, vol 36.5%
+- A10 (us_broad): current 6.54%, baseline 6.20%, max 25%. 5d width 0.07296, median +0.0022. Recent: 1d -1.66%, 5d -3.39%, 20d +0.61%, vol 25.9%
+- A06 (intl_developed): current 12.47%, baseline 8.74%, max 25%. 5d width 0.05174, median +0.0029. Recent: 1d -1.47%, 5d -2.21%, 20d -0.22%, vol 20.4%
+- A12 (emerging): current 0%, baseline 3.77%, max 25%. 5d width 0.11979 (widest), median +0.00285. Recent: 1d -3.33%, 5d -3.51%, 20d -6.98%, vol 34.3%
+- A03 (energy): current 3.97%, baseline 5.18%, max 25%. 5d width 0.0873, median +0.00031. Recent: 1d -1.96%, 5d +2.83%, 20d -6.06%, vol 31.5%
+- A04 (health): current 10.59%, baseline 8.32%, max 25%. 5d width 0.05434, median +0.00038. Recent: 1d -0.51%, 5d -0.24%, 20d +6.96%, vol 20.8%
+- A08 (financials): current 11.05%, baseline 9.81%, max 25%. 5d width 0.04606 (narrowest among ETFs), median -0.00079. Recent: 1d -0.85%, 5d +0.33%, 20d +5.67%, vol 21.6%
+- A09 (bonds): current 13.5%, baseline 11.01%, max 25%. 5d width 0.04106 (narrowest overall), median +0.00171. Recent: 1d 0.0%, 5d -3.15%, 20d +0.32%, vol 12.2%
+- A05 (gold): current 4.71%, baseline 4.89%, max 25%. 5d width 0.0924, median +0.00084. Recent: 1d -0.71%, 5d -7.01%, 20d -7.05%, vol 28.1%
+
+Stocks:
+- A01 (tech_growth): current 0%, baseline 2.04%, max 10%. 5d width 0.2218 (very wide), median +0.0011. Recent: 1d -4.12%, 5d -12.61%, 20d -28.08%, vol 53.9% — very weak, high vol
+- A15 (financials): current 6.04%, baseline 6.13%, max 10%. 5d width 0.07373, median +0.00056. Recent: 1d -2.31%, 5d -1.13%, 20d +1.40%, vol 27.9%
+- A13 (energy): current 0%, baseline 4.84%, max 10%. 5d width 0.09343, median +0.00042. Recent: 1d -1.56%, 5d +1.94%, 20d -5.81%, vol 31.4%
+- A07 (health): current 3.07%, baseline 4.46%, max 10%. 5d width 0.10137, median -0.00424 (negative). Recent: 1d -0.82%, 5d +1.52%, 20d +15.57%, vol 37.6%
+- A14 (tech_growth): current 2.93%, baseline 3.91%, max 10%. 5d width 0.11572, median -0.00303 (negative). Recent: 1d -3.34%, 5d -3.44%, 20d -1.79%, vol 40.1%
+
+Current weights sum check: 0.1035+0.0248+0.0654+0.1247+0+0.0397+0.1059+0.1105+0.135+0.0471+0+0.0604+0+0.0307+0.0293 = let me add:
+0.1035+0.0248 = 0.1283
++0.0654 = 0.1937
++0.1247 = 0.3184
++0 = 0.3184
++0.0397 = 0.3581
++0.1059 = 0.4640
++0.1105 = 0.5745
++0.135 = 0.7095
++0.0471 = 0.7566
++0 = 0.7566
++0.0604 = 0.8170
++0 = 0.8170
++0.0307 = 0.8477
++0.0293 = 0.8770
+Cash = 0.123. Total = 0.8770 + 0.123 = 1.0000. Good.
+
+Baseline weights sum: 0.0637+0.0435+0.062+0.0874+0.0377+0.0518+0.0832+0.0981+0.1101+0.0489+0.0204+0.0613+0.0484+0.0446+0.0391 = 
+0.0637+0.0435=0.1072
++0.062=0.1692
++0.0874=0.2566
++0.0377=0.2943
++0.0518=0.3461
++0.0832=0.4293
++0.0981=0.5274
++0.1101=0.6375
++0.0489=0.6864
++0.0204=0.7068
++0.0613=0.7681
++0.0484=0.8165
++0.0446=0.8611
++0.0391=0.9002
+Baseline cash = 0.1. Total = 1.0002 (rounding). OK.
+
+Group constraints (<=30%):
+- us_broad: A02 + A10. Current: 0.1035+0.0654 = 0.1689. Baseline: 0.0637+0.062=0.1257.
+- tech_growth: A11 + A01 + A14. Current: 0.0248+0+0.0293 = 0.0541. Baseline: 0.0435+0.0204+0.0391=0.1030.
+- intl_developed: A06 only = 0.1247 current.
+- emerging: A12 = 0 current.
+- energy: A03 + A13. Current: 0.0397+0=0.0397. Baseline: 0.0518+0.0484=0.1002.
+- health: A04 + A07. Current: 0.1059+0.0307=0.1366. Baseline: 0.0832+0.0446=0.1278.
+- financials: A08 + A15. Current: 0.1105+0.0604=0.1709. Baseline: 0.0981+0.0613=0.1594.
+- bonds: A09 = 0.135.
+- gold: A05 = 0.0471.
+
+All groups well under 30%.
+
+Drawdown: -3.06%, action "alert" only. So no reduce_only, no cap_exposure_60. I can still increase positions up to baseline+15pp, but should be cautious given drawdown alert.
+
+Key considerations:
+1. The market has been weak recently: most assets down over 1d, 5d, 20d. A01 (tech stock) is crushed (-28% over 20d), A05 gold down -7% over 5d/20d, A11 tech ETF down -7.9% over 20d, A12 emerging down -7% over 20d.
+2. Forecast medians are all near zero (no directional skill) — so I should rely on interval widths (risk) and cross-asset reasoning, not medians.
+3. Narrowest intervals (lowest risk): A09 bonds (0.04106), A08 financials (0.04606), A06 intl dev (0.05174), A04 health (0.05434). These are the "safe" assets per the model.
+4. Widest intervals (highest risk): A01 stock (0.2218), A12 emerging (0.11979), A14 stock (0.11572), A11 tech ETF (0.10397), A07 stock (0.10137). These get low baseline weights.
+5. Current portfolio is already overweight vs baseline in: A02 (+4pp), A06 (+3.7pp), A04 (+2.3pp), A08 (+1.2pp), A09 (+2.5pp), A15 (-0.1pp ~ in line), A05 (-0.2pp). Underweight: A11 (-1.9pp), A10 (+0.3pp ~ in line), A03 (-1.2pp), A07 (-1.4pp), A14 (-1pp), A12 (-3.8pp), A01 (-2pp), A13 (-4.8pp).
+
+The baseline already concentrates in low-width assets. The current portfolio is even more concentrated in the low-width assets (A02, A06, A04, A08, A09) and has zero in the high-width ones (A12, A01, A13).
+
+Given drawdown alert (-3.06%), the prudent move is to not add risk. The asymmetric freedom lets me reduce freely. I should consider:
+- Trimming the assets that have done relatively well but are now extended? Actually recent performance: A04 health +6.96% 20d, A08 financials +5.67% 20d, A07 health stock +15.57% 20d. These have positive momentum but the model says median ~0.
+- The weak ones: A01 (-28% 20d) already at 0 — keep at 0. A05 gold (-7% 20d) — gold is a hedge but recently weak; its interval is wide (0.0924). A12 emerging at 0 — wide interval, keep 0 or small. A13 energy stock at 0 — keep 0.
+
+What concrete edge do I have? The instructions say median has no skill; width is reliable risk info. So the baseline (inverse width) is already sensible. My job: cross-asset relationships, regime, events, concentration.
+
+Observations:
+- us_broad group: A02 and A10 are both us_broad. A02 current 10.35% vs baseline 6.37% — that's +3.98pp above baseline, within the +15pp allowance but it's a big overweight. A02's 5d width 0.07101 is wider than A10's 0.07296? Actually A02 width 0.07101 < A10 0.07296, so A02 is slightly lower risk. But A02 recent 20d -3.46% vs A10 +0.61%. Hmm.
+- The portfolio is 87.7% invested, 12.3% cash. With drawdown alert, maybe raise cash a bit toward 15%? Cash must be >=10%. Raising cash is always allowed (asymmetric freedom). Given the broad market weakness (everything down 1-3% in 1d, most down over 5d), and drawdown, holding more cash is defensible. But I shouldn't overdo it — the baseline cash is 10%, current 12.3%.
+
+Let me think about what deviations make sense:
+
+1. A01 (tech stock, -28% 20d, vol 54%, width 0.2218): baseline 2.04%, current 0. Keep at 0. Rationale: extreme realized vol and drawdown, widest forecast interval; no reason to add. Confidence high (0.8) that 0 is better than baseline.
+
+2. A12 (emerging, width 0.11979, 20d -6.98%): baseline 3.77%, current 0. Keep 0. High vol, weak trend. Confidence 0.75.
+
+3. A13 (energy stock, width 0.09343, current 0, baseline 4.84%): Keep 0? Energy ETF A03 has positive 5d (+2.83%) but 20d -6.06%. A13's interval is wide. Keep 0. Confidence 0.7.
+
+4. A05 (gold): current 4.71%, baseline 4.89%. Gold down -7% over 5d and 20d — unusual (gold usually hedges equity selloffs, but here it's falling too). Width 0.0924 is wide. In a drawdown with everything falling, gold isn't hedging. Could trim gold to raise cash. Reduce to ~3%? That's a -1.7pp change from current, and -1.9pp from baseline. Rationale: gold's recent momentum is negative and its forecast interval is wide; in a risk-off tape where gold is also falling, the hedge isn't working. Confidence 0.6.
+
+5. A11 (tech_growth ETF): current 2.48%, baseline 4.35%. Tech is weak (20d -7.88%), width 0.104 wide. Keep below baseline, maybe at current 2.48% or trim slightly. Actually current is already below baseline. Keep at ~2.5%. Confidence 0.65.
+
+6. A14 (tech stock): current 2.93%, baseline 3.91%, median negative (-0.00303), width 0.1157, 1d -3.34%. Trim to ~2%? Or keep. Tech growth group total: A11+A01+A14 = 0.0248+0+0.0293 = 5.41%, well under 30%. Could trim A14 to 2% given negative median and high vol. Confidence 0.6.
+
+7. A07 (health stock): current 3.07%, baseline 4.46%, but 20d +15.57% (strong), median 5d negative (-0.00424), width 0.1014 wide, vol 37.6%. Mixed. Health group: A04+A07 = 13.66%. A04 is the low-risk health ETF (width 0.0543). Maybe trim A07 given wide interval and negative median, keep A04. Reduce A07 to ~2%? Confidence 0.55.
+
+8. A02 (us_broad): current 10.35% vs baseline 6.37%. It's the largest overweight. Width 0.071, 20d -3.46%. us_broad group = 16.89%. Could trim A02 toward baseline, e.g., to 8%? That frees ~2.35pp. Rationale: reduce concentration in the largest position during drawdown; A02's recent trend is negative. But A02 has the highest median among broad assets (+0.00858 5d) — but median has no skill, so ignore. Width is moderate. Trimming to ~8% seems reasonable. Confidence 0.6.
+
+9. A06 (intl_developed): current 12.47%, baseline 8.74%. Low width (0.0517), low vol (20.4%), 20d -0.22% (flat). This is the "safest" equity per the model. Keep or trim slightly? It's the largest single position at 12.47% (under 25% cap). Given drawdown, maybe trim to ~11%? Or keep. The model likes it (low width). I'd keep near current, maybe 11.5%. Actually, let me think about overall equity exposure.
+
+10. A09 (bonds): current 13.5%, baseline 11.01%. Narrowest width (0.0411), lowest vol (12.2%), 1d return 0.0% (flat while everything fell). Bonds are the defensive anchor. In a drawdown, overweight bonds is good. Could increase to ~15%? Increase above baseline by at most 15pp — baseline 11.01%, so up to 26.01% allowed, but ETF cap 25%. Current 13.5% → 15% is +1.5pp from current, +3.99pp from baseline. Allowed. Rationale: bonds have the narrowest forecast interval and were flat while equities fell; in a -3% drawdown, add ballast. Confidence 0.7.
+
+11. A08 (financials ETF): current 11.05%, baseline 9.81%. Narrow width (0.0461), 20d +5.67%. Keep or slight trim. Financials group with A15 = 17.09%. Keep ~11%. Confidence 0.6.
+
+12. A04 (health ETF): current 10.59%, baseline 8.32%. Width 0.0543, 20d +6.96%, 1d -0.51% (resilient). Keep ~10.5%. Confidence 0.65.
+
+13. A10 (us_broad): current 6.54%, baseline 6.20%. Keep ~6.5%. us_broad group would be A02+A10.
+
+14. A03 (energy ETF): current 3.97%, baseline 5.18%. Width 0.0873 (wide-ish), 5d +2.83% but 20d -6.06%. Keep ~4% or trim to 3.5%. Energy group = A03+A13. Keep at 4%. Confidence 0.55.
+
+15. A15 (financials stock): current 6.04%, baseline 6.13%. Width 0.0737, 20d +1.40%. Keep ~6%. Confidence 0.6.
+
+Cash: current 12.3%. If I trim A02 (-2.35), A05 (-1.7), A14 (-0.9), A07 (-1), A11 (keep), and add to A09 (+1.5), the net change to cash: let me compute.
+
+Let me design target weights:
+
+- A02: 0.0800 (from 0.1035, -2.35pp; baseline 0.0637, +1.63pp above baseline — fine)
+- A11: 0.0250 (from 0.0248, ~flat; baseline 0.0435, -1.85pp)
+- A10: 0.0650 (from 0.0654, flat; baseline 0.062)
+- A06: 0.1150 (from 0.1247, -0.97pp; baseline 0.0874, +2.76pp)
+- A12: 0.0000 (from 0; baseline 0.0377, -3.77pp)
+- A03: 0.0400 (from 0.0397, flat; baseline 0.0518, -1.18pp)
+- A04: 0.1050 (from 0.1059, flat; baseline 0.0832, +2.18pp)
+- A08: 0.1100 (from 0.1105, flat; baseline 0.0981, +1.19pp)
+- A09: 0.1500 (from 0.135, +1.5pp; baseline 0.1101, +3.99pp)
+- A05: 0.0300 (from 0.0471, -1.71pp; baseline 0.0489, -1.89pp)
+- A01: 0.0000 (from 0; baseline 0.0204, -2.04pp)
+- A15: 0.0600 (from 0.0604, flat; baseline 0.0613, -0.13pp)
+- A13: 0.0000 (from 0; baseline 0.0484, -4.84pp)
+- A07: 0.0200 (from 0.0307, -1.07pp; baseline 0.0446, -2.46pp)
+- A14: 0.0200 (from 0.0293, -0.93pp; baseline 0.0391, -1.91pp)
+
+Sum of positions: 0.08+0.025+0.065+0.115+0+0.04+0.105+0.11+0.15+0.03+0+0.06+0+0.02+0.02 = 
+0.08+0.025=0.105
++0.065=0.17
++0.115=0.285
++0=0.285
++0.04=0.325
++0.105=0.43
++0.11=0.54
++0.15=0.69
++0.03=0.72
++0=0.72
++0.06=0.78
++0=0.78
++0.02=0.80
++0.02=0.82
+Cash = 0.18. Total = 1.00. 
+
+Cash 18% >= 10%. OK. Invested 82%.
+
+Check group constraints:
+- us_broad: A02+A10 = 0.08+0.065 = 0.145 <= 0.30 ✓
+- tech_growth: A11+A01+A14 = 0.025+0+0.02 = 0.045 <= 0.30 ✓
+- intl_developed: 0.115 ✓
+- emerging: 0 ✓
+- energy: A03+A13 = 0.04 ✓
+- health: A04+A07 = 0.105+0.02 = 0.125 ✓
+- financials: A08+A15 = 0.11+0.06 = 0.17 ✓
+- bonds: 0.15 ✓
+- gold: 0.03 ✓
+
+ETF caps <=25%: max is A09 0.15 ✓
+Stock caps <=10%: max A15 0.06 ✓
+Cash >= 10%: 0.18 ✓
+
+Increase limits: may increase a position by at most 15pp above baseline.
+- A09: 0.15 vs baseline 0.1101 → +3.99pp ✓ (only increase)
+- All others are at or below baseline+15pp trivially since most are below baseline. A02 0.08 vs 0.0637 = +1.63 ✓. A06 0.115 vs 0.0874 = +2.76 ✓. A04 0.105 vs 0.0832 = +2.18 ✓. A08 0.11 vs 0.0981 = +1.19 ✓. A10 0.065 vs 0.062 = +0.3 ✓. A15 0.06 vs 0.0613 = -0.13 ✓. A03 0.04 vs 0.0518 = -1.18 ✓. A05 0.03 vs 0.0489 = -1.89 ✓. A11 0.025 vs 0.0435 = -1.85 ✓. A07 0.02 vs 0.0446 = -2.46 ✓. A14 0.02 vs 0.0391 = -1.91 ✓. A12 0 vs 0.0377 ✓. A01 0 vs 0.0204 ✓. A13 0 vs 0.0484 ✓.
+
+Deviations from baseline > 0.5pp need rationale — I'll provide rationale for all.
+
+Drawdown actions: only "alert" — no reduce_only, so increases allowed. Good.
+
+Changes from current < 2pp are not traded anyway — but I should still propose targets; the system handles that. My changes: A02 -2.35pp (trade), A06 -0.97 (no trade), A09 +1.5 (no trade? <2pp so not traded), A05 -1.71 (no trade), A07 -1.07 (no), A14 -0.93 (no), others flat. Hmm, only A02 would actually trade. That's fine — avoid churn. But maybe I want more decisive moves. Let me reconsider.
+
+Actually, the "changes smaller than 2 points from the current weight are not traded anyway" — so my proposal mostly results in only A02 trimming. That's OK; staying near current with a modest de-risking is legitimate. But maybe I should make the cash raise more decisive: e.g., A02 to 0.075 (-2.85pp) and cash to 0.185? Let me reconsider whether raising cash to 18% is right.
+
+Market regime: everything fell 1-3% yesterday; 5d returns mostly negative; 20d mixed but tech/emerging/gold weak. Drawdown -3.06% with "alert". The model's intervals are wide for risk assets. The safest assets (bonds A09, financials A08, intl A06, health A04) have narrow intervals. The current portfolio is already tilted toward those. 
+
+Given the drawdown alert and broad weakness, raising cash from 12.3% to ~18% and trimming the weakest/most concentrated positions (A02 overweight, gold A05, tech A14/A07) while adding a bit to bonds A09 is a coherent risk-reduction move. But I must be careful: the guardrail says if in drawdown, stricter limits apply per drawdown_actions — here only "alert", so no hard limits. Still, prudence suggests not increasing equity risk.
+
+Alternatively, keep it simpler: stay close to current, trim A02 to 8%, raise cash to ~17-18%, small trims to A05/A07/A14, small add to A09. That's what I have.
+
+Let me reconsider A06: current 12.47% is the largest position. Its interval is narrow (0.0517) and vol low, 20d flat. It's the model's safest equity. Keeping it high is fine, but concentration-wise, trimming to 11.5% is mild. Since <2pp changes aren't traded, it doesn't matter much. I'll set 0.115.
+
+Actually, let me reconsider whether to trim A02 more aggressively. A02 current 10.35% vs baseline 6.37% — it's +3.98pp above baseline, the biggest active overweight. Its 20d return is -3.46%, 1d -1.91%. In a drawdown, trimming the largest overweight to ~8% is sensible. I'll keep 0.08.
+
+Should I add to A09 bonds more? A09 current 13.5%, cap 25%, baseline 11.01%. Increase to 15% is +1.5pp from current (not traded since <2pp) but +3.99pp from baseline. Hmm, if changes <2pp from current aren't traded, then setting A09 to 15% won't execute. To actually add to bonds, I'd need +2pp → 15.5%. Let me set A09 to 0.155 (+2.05pp from current) so it trades. Then cash adjusts.
+
+Recompute: positions sum with A09=0.155: 0.82 + 0.005 = 0.825. Cash = 0.175. Total 1.0. Cash 17.5% ✓.
+
+Check A09 vs baseline: 0.155 - 0.1101 = 4.49pp <= 15 ✓. ETF cap 25% ✓.
+
+Alternatively, keep A09 at 0.15 and cash 0.18 — the difference is minor. But to make the bond add executable, 0.155 is better. Let me finalize:
+
+- A02: 0.0800
+- A11: 0.0250
+- A10: 0.0650
+- A06: 0.1150
+- A12: 0.0000
+- A03: 0.0400
+- A04: 0.1050
+- A08: 0.1100
+- A09: 0.1550
+- A05: 0.0300
+- A01: 0.0000
+- A15: 0.0600
+- A13: 0.0000
+- A07: 0.0200
+- A14: 0.0200
+Sum = 0.825, cash = 0.175.
+
+Wait, let me re-add: 0.08+0.025+0.065+0.115+0.04+0.105+0.11+0.155+0.03+0.06+0.02+0.02 = 
+0.08+0.025=0.105
++0.065=0.17
++0.115=0.285
++0.04=0.325
++0.105=0.43
++0.11=0.54
++0.155=0.695
++0.03=0.725
++0.06=0.785
++0.02=0.805
++0.02=0.825
+Yes, 0.825. Cash 0.175. Total 1.0 ✓.
+
+Groups:
+- us_broad: 0.08+0.065=0.145 ✓
+- tech_growth: 0.025+0+0.02=0.045 ✓
+- health: 0.105+0.02=0.125 ✓
+- financials: 0.11+0.06=0.17 ✓
+- energy: 0.04 ✓
+All fine.
+
+Deviations from baseline >0.5pp (need rationale — I'll give for all anyway):
+- A02: +1.63pp
+- A11: -1.85pp
+- A10: +0.30pp (no rationale needed but give brief)
+- A06: +2.76pp
+- A12: -3.77pp
+- A03: -1.18pp
+- A04: +2.18pp
+- A08: +1.19pp
+- A09: +4.49pp
+- A05: -1.89pp
+- A01: -2.04pp
+- A15: -0.13pp
+- A13: -4.84pp
+- A07: -2.46pp
+- A14: -1.91pp
+
+All within increase cap (only increases are A02, A06, A04, A08, A09, A10 — all well under +15pp). ✓
+
+Drawdown: -3.06% with "alert" only — no reduce_only, so increases are permitted. But I'm mostly reducing, which is always allowed.
+
+Confidence: overall, my edge is modest — I'm de-risking in a drawdown based on realized weakness and interval widths, not on median skill. I'd say confidence ~0.55-0.6 that this beats baseline on a risk-adjusted basis over 5 days. Per-position confidence: higher for the zeroed high-vol names (0.75-0.8), moderate for trims (0.55-0.65), 0.5-ish for flat ones. The schema wants a confidence per position. I'll assign sensible values.
+
+Actually, re-reading: "confidence (0 to 1) is your probability that your deviation from the baseline will turn out better..." — it's per position in the schema. I'll set per-position confidences reflecting how confident I am that the deviation from baseline for that asset is better.
+
+Let me also double check the "more than 3 assets corrected or more than 20 points total → rejected" — that's about guardrail corrections, not my proposal. My proposal respects all hard limits, so no corrections needed.
+
+One more consideration: should I keep A12/A01/A13 at zero? Baseline gives them 3.77%, 2.04%, 4.84%. Their intervals are the widest (0.12, 0.22, 0.093) and recent trends are negative (A01 -28% 20d, A12 -7% 20d, A13 -5.8% 20d). Zeroing them is well justified. ✓
+
+A05 gold: trim from 4.71% to 3%. Gold fell -7% over 5d and 20d — in this tape it's not acting as a hedge; wide interval (0.0924). Trim. ✓
+
+A07 health stock: 20d +15.57% (strong momentum) but 5d median negative and widest-ish interval among stocks held (0.1014), vol 37.6%. Trim to 2% — take some profit, keep health exposure via A04 ETF (narrow interval). ✓
+
+A14 tech stock: negative median, 1d -3.34%, width 0.1157. Trim to 2%. ✓
+
+A11 tech ETF: keep at 2.5% (below baseline 4.35%) — tech weak, wide interval. ✓
+
+A02: trim to 8% — largest overweight, negative 20d trend, moderate width. ✓
+
+A09: add to 15.5% — narrowest interval, flat 1d while equities fell, defensive ballast in drawdown. ✓
+
+A06: 11.5% — keep as core low-vol equity (slight trim from 12.47%). ✓
+
+A04: 10.5% — resilient (1d -0.51%, 20d +6.96%), narrow interval. Keep. ✓
+
+A08: 11% — narrow interval, positive 20d. Keep. ✓
+
+A10: 6.5% — in line. ✓
+
+A03: 4% — energy mixed; keep small. ✓
+
+A15: 6% — in line with baseline. ✓
+
+Cash: 17.5% — up from 12.3%, reflecting drawdown alert and broad 1d/5d weakness. ✓
+
+Now write the analysis and JSON. Analysis should come first in the JSON (it's a field). Keep it concise but complete.
+
+Confidence values per position:
+- A02: 0.60 (trim largest overweight in drawdown)
+- A11: 0.65 (stay underweight weak tech)
+- A10: 0.50 (in line)
+- A06: 0.60 (keep low-vol core, slight trim)
+- A12: 0.75 (zero — widest interval, weak trend)
+- A03: 0.55 (small, in line-ish)
+- A04: 0.65 (keep resilient low-width health)
+- A08: 0.60 (keep narrow-interval financials)
+- A09: 0.70 (add ballast — narrowest interval, defensive)
+- A05: 0.60 (trim — hedge not working, wide interval)
+- A01: 0.80 (zero — extreme vol/drawdown, widest interval)
+- A15: 0.50 (in line)
+- A13: 0.70 (zero — wide interval, negative trend)
+- A07: 0.55 (trim — take profit, wide interval, negative median)
+- A14: 0.60 (trim — negative median, high vol)
+
+Overall this is a modest de-risk. Good.
+
+Format: strict JSON, no markdown. The analysis field first, then positions array with all 15 symbols in the enum order (A02, A11, A10, A06, A12, A03, A04, A08, A09, A05, A01, A15, A13, A07, A14), then cash_weight.
+
+Let me write the analysis text:
+
+"Market regime: broad risk-off. Nearly all assets fell 1-3% in the last session and most are negative over 5d; the portfolio is in a -3.06% drawdown (alert). Forecast medians are all near zero (no directional skill), so I lean on interval widths and realized trends. The narrowest 5d intervals are A09 bonds (0.041), A08 financials (0.046), A06 intl developed (0.052), A04 health (0.054) — the model's low-risk core, which the portfolio already favors. The widest are A01 (0.222), A12 (0.120), A14 (0.116), A11 (0.104), A07 (0.101) — all with negative recent momentum except A07. Actions: trim the largest active overweight A02 (10.35% vs 6.37% baseline, 20d -3.5%) to 8%; raise cash from 12.3% to 17.5% given the drawdown alert and synchronized 1d/5d declines; add to A09 bonds (15.5%) as ballast — narrowest interval, flat while equities fell; keep the high-vol, weak-trend names A01, A12, A13 at zero; trim gold A05 (falling with equities, wide interval) and the health/tech stocks A07, A14 (wide intervals, negative 5d medians) while keeping the lower-risk ETFs A04, A08, A06, A10, A15 near current. Group caps all respected (max financials 17%, us_broad 14.5%); no position increased more than 4.5pp above baseline; cash 17.5% >= 10%."
+
+That's good. Now the JSON.
+
+Double-check numbers once more:
+positions sum: 0.08+0.025+0.065+0.115+0+0.04+0.105+0.11+0.155+0.03+0+0.06+0+0.02+0.02 = 0.825. cash 0.175. Sum 1.0 ✓.
+
+All weights >= 0 ✓. Cash 0.175 >= 0.10 ✓. ETFs max 0.155 <= 0.25 ✓. Stocks max 0.06 <= 0.10 ✓. Groups: us_broad 0.145, tech_growth 0.045, intl_developed 0.115, emerging 0, energy 0.04, health 0.125, financials 0.17, bonds 0.155, gold 0.03 — all <= 0.30 ✓.
+
+Increases vs baseline: A02 +0.0163, A10 +0.003, A06 +0.0276, A04 +0.0218, A08 +0.0119, A09 +0.0449 — all <= 0.15 ✓. Others are decreases ✓.
+
+Drawdown_actions = ["alert"] only, so no reduce_only constraint. ✓
+
+Output JSON only.
