@@ -40,6 +40,10 @@ Data (Alpaca) -> Forecast (Timestral) -> Baseline rule -> Decide (Mistral LLM) -
 
 All parameters live in [src/agent/config.py](src/agent/config.py), each traced to its decision.
 
+## Roadmap
+
+**Start here:** [docs/roadmap.md](docs/roadmap.md) lists every decision with its status, the questions waiting for the owner and the remaining tasks. Keep it up to date with every change of status. Work point by point with the owner.
+
 ## Decisions
 
 Recorded in [docs/decisions.md](docs/decisions.md): D-001 to D-010 accepted or provisional. The file ends with the open decisions and a **Future work** section (options deliberately deferred).

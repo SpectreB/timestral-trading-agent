@@ -593,7 +593,7 @@ Immutability is the strongest argument for the "are decisions sound" question: t
 ## D-012 — Dashboard: a static page generated from the audit log, published on GitHub Pages
 
 - **Date:** 2026-11-21
-- **Status:** Accepted. **Taken autonomously** while the project owner was away, on the instruction to choose the best option and report the alternatives: to be confirmed or revised.
+- **Status:** Accepted. Taken autonomously on 2026-11-21 while the project owner was away, then **confirmed by the owner on 2026-11-22** after reviewing the pros and cons, who judged the static page sufficient as it is. The dashboard is a replaceable layer: all its data comes from the derived CSV tables, so a different front end could be built on them without touching the agent.
 
 ### Context
 The assignment asks for a read-only view of the trading activity (export or dashboard). It must be viewable by reviewers without installing anything, must always agree with the audit log, and must not become a second system to operate.
@@ -631,7 +631,7 @@ Design checks done on the rendered page (headless Chrome, light, dark and a 390 
 ## D-013 — Forecast scoring: record observed closes as facts, derive the scores
 
 - **Date:** 2026-11-21
-- **Status:** Accepted. **Taken autonomously** (project owner away), alternatives below: to be confirmed or revised.
+- **Status:** Accepted. Taken autonomously on 2026-11-21, then **confirmed by the owner on 2026-11-22**: record the observed closes, do not query the broker on demand. A hybrid was discussed (see the last row of the options table) and kept as an optional improvement.
 
 ### Context
 To know whether Timestral is useful live, each forecast must be compared with the prices that followed: how often the outcome falls inside the 80% interval, and how the median did. Forecasts are made at 10:00 ET from completed sessions, and a horizon of up to 5 sessions means the outcome is only known days later. The audit log is immutable (D-011), so the scores need a home that respects that.
@@ -643,6 +643,7 @@ To know whether Timestral is useful live, each forecast must be compared with th
 | Write a score file per run once all 5 horizons are known | Simple, immutable | Nothing visible for 5 sessions, past the submission deadline; or up to 10 small files a day if written per horizon |
 | Store scores as events in the log | Immutable | Scores are derived data: storing them freezes any bug in the scoring code |
 | **Record observed closes as immutable facts, derive the scores** | Facts are recorded once and never change; scores are a pure function of run records plus observations, regenerated at any time, testable offline; the 1-day outcomes show up the next day | One more file type (`observations/`) |
+| Hybrid: record, plus an automatic check that compares each new window with the previous one to flag a dividend or split re-basing (no extra API call) | Makes the re-basing risk visible instead of hidden, at no extra cost in calls | About 20 lines and their tests; does not change the scores (they already use one basis per observation). **Optional, not scheduled** |
 
 **Price basis.** Alpaca's adjusted closes are re-based when a dividend or split occurs, so closes recorded on different days can sit on different bases. Each observation therefore holds a **window of the last 12 sessions taken at one time**; a return is only computed between two dates of the same file. The earliest observation containing both dates is used, which keeps the choice deterministic.
 
@@ -658,6 +659,63 @@ The log stays append-only and the scores can never disagree with the facts they 
 - Scores appear from the second trading day (1-day horizon) and complete a run after 5 sessions.
 - The same join is the basis for the evaluation of the LLM's contribution: the baseline, the LLM proposal and the final portfolio can be valued against these observed closes.
 - A stored pinball loss would need the full 21 quantiles in the run record (today only q10, median and q90 are kept); revisit if the evaluation needs it.
+
+---
+
+## D-015 — Historical replay of the agent (test case 1)
+
+- **Date:** 2026-11-22
+- **Status:** Accepted with the project owner
+
+### Context
+The live window before submission is about three trading days: far too few decisions to judge the agent statistically. A replay over past data gives a larger sample, but carries one specific risk: **look-ahead bias**. Mistral Large 4 was trained on data that very likely includes 2024-2025 markets; shown real names and dates, it may "remember" what happened next, and the replay would flatter it without anyone noticing. Mistral API cost is not a constraint (roadmap budget check: about one cent per decision on the sponsored plan's free tier); time is, because decisions are sequential (each depends on the portfolio left by the previous one) and a call takes 2 to 5 minutes.
+
+### Options
+**a) Test period**
+| Option | Pros | Cons |
+|---|---|---|
+| **Most recent months (2026)** | Least likely to be in the LLM's training data | A single market regime |
+| Part of 2025 (initial idea) | More history before it | The LLM very likely saw 2025 |
+| Both, compared | The gap between them measures the leakage itself | Twice as long |
+
+**b) Decision frequency**
+| Option | Decisions | Duration |
+|---|---|---|
+| **Daily over 3 months** | ~63 | ~2.5 h |
+| Daily over 6 months | ~125 | ~5 h |
+| Weekly over 6 months | ~26 | ~1 h, too few decisions to judge the LLM |
+
+**c) Role of the earlier period** (the LLM is not retrained)
+| Option | Pros | Cons |
+|---|---|---|
+| **Parameters fixed beforehand, same prompt as live** | The replay tests exactly the agent that trades live | The LLM "learns" nothing from the period |
+| A "lessons" note from 2024-2025 added to the prompt | The LLM benefits from the past | Another prompt, hence another agent than the live one |
+| Past decisions with their outcomes as examples | Concrete | Very long prompt; risk of overfitting |
+
+### Decision
+- **Test period:** the ~63 most recent sessions whose outcomes are fully known (about mid-August to mid-November 2026), one decision per session.
+- **Same agent as live:** prompt `decide_v1`, Mistral Large 4 pinned, guardrails and parameters as in D-004 to D-010, frozen. The earlier period (2024-2026 before each decision date) feeds Timestral's 512-session context and the correlation window, exactly as live.
+- The "lessons note" variant is optional, only if time allows, and would be reported as a different agent.
+
+### Rules of the replay (rights and actions differ from live)
+| | Replay (test case 1) | Live (test case 2) |
+|---|---|---|
+| Data | **Point-in-time, enforced in code**: a decision at session t only receives data up to t-1 | Alpaca, completed sessions |
+| What the LLM sees | **Anonymised**: assets renamed (type and sector group kept), prices rebased, no dates, no news | Real names and dates |
+| Leakage probe | The LLM is asked to identify assets and period from a payload; answers recorded | Not applicable |
+| Execution | **Simulated**, at the next open plus a stated cost assumption; **no broker access at all** | Alpaca paper, marketable limit orders |
+| Runs per day | One (the morning decision) | Two (morning and afternoon) |
+| Comparison | Shadow portfolios of D-014: baseline alone, LLM proposal, final, equal weight, SPY | Same, live |
+| Log | Separate experiment output in the repository (`docs/replay/`), never the `audit-log` branch | Immutable audit log |
+| Kill switch | Not applicable | Yes |
+
+### Rationale
+Recent data minimises look-ahead bias, and anonymisation plus a leakage probe make the remaining risk visible rather than assumed away. Keeping the agent identical to the live one means the replay and the live run measure the same thing, so their results can be read together. Three months of daily decisions balances sample size (63 decisions, 63 sessions of returns, enough for the bootstrap intervals of D-014) against a duration that fits before submission.
+
+### Impact on further development
+- Caveat to state in the results: the Timestral configuration (D-006) was evaluated on origins that overlap the test period. Its choice did not change from the value fixed before the backtest, so selection bias is minimal, but it is not zero.
+- Reuses the metrics of D-014 (T-03), so T-03 comes first.
+- The afternoon reassessment run is not replayed (it would need intraday data).
 
 ---
 
