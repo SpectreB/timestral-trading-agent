@@ -48,8 +48,20 @@ class LLMClient(Protocol):
 class MistralLLM:  # pragma: no cover - network adapter, exercised by the smoke test
     def __init__(self, api_key: str, cfg: AgentConfig) -> None:
         from mistralai.client import Mistral
+        from mistralai.client.utils import BackoffStrategy, RetryConfig
 
-        self._client = Mistral(api_key=api_key)
+        # Transient failures (connection, 429, 5xx) are retried by the SDK with a backoff;
+        # anything that still fails is handled by decide() (an unavailable LLM never crashes a run).
+        self._client = Mistral(
+            api_key=api_key,
+            timeout_ms=cfg.llm.timeout_s * 1000,
+            retry_config=RetryConfig(
+                "backoff",
+                BackoffStrategy(2_000, 60_000, 2.0, 300_000),
+                retry_connection_errors=True,
+                status_codes_override=["429", "500", "502", "503", "504"],
+            ),
+        )
         self._cfg = cfg.llm
 
     def complete(self, messages: list[dict[str, str]], schema: dict[str, Any]) -> LLMResponse:
@@ -233,7 +245,15 @@ def _retry_message(result: GuardrailResult) -> str:
 # --------------------------------------------------------------------------- decision
 
 
-def decide(inp: DecisionInput, llm: LLMClient, cfg: AgentConfig) -> Decision:
+def decide(
+    inp: DecisionInput,
+    llm: LLMClient,
+    cfg: AgentConfig,
+    on_llm_failure: Literal["hold", "raise"] = "hold",
+) -> Decision:
+    """`on_llm_failure`: live, a call that fails (timeout, outage) counts as a rejected attempt,
+    so the agent ends up holding its positions and the run is still recorded; the replay
+    raises instead, because an outage must not be recorded as a decision to hold."""
     messages = [
         {"role": "system", "content": load_system_prompt(cfg)},
         {"role": "user", "content": json.dumps(build_payload(inp, cfg), indent=1)},
@@ -242,7 +262,27 @@ def decide(inp: DecisionInput, llm: LLMClient, cfg: AgentConfig) -> Decision:
     attempts: list[Attempt] = []
 
     for _ in range(1 + cfg.llm.max_retries):
-        response = llm.complete(messages, schema)
+        try:
+            response = llm.complete(messages, schema)
+        except Exception as error:  # an unavailable LLM must not crash a run (D-010)
+            if on_llm_failure == "raise":
+                raise
+            failed = LLMResponse(
+                text="",
+                reasoning=f"LLM call failed: {type(error).__name__}: {str(error)[:300]}",
+                model=cfg.llm.model,
+                prompt_tokens=0,
+                completion_tokens=0,
+            )
+            rejected = GuardrailResult(
+                status="rejected",
+                weights=None,
+                cash=None,
+                corrections=[],
+                rejection_reason="llm_call_failed",
+            )
+            attempts.append(Attempt(response=failed, guardrails=rejected))
+            continue  # ask again, with the same messages
         result = apply_guardrails(response.text, inp.baseline, inp.current, inp.drawdown, cfg)
         attempts.append(Attempt(response=response, guardrails=result))
         if result.status != "rejected":

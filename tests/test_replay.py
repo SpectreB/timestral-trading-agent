@@ -352,3 +352,18 @@ def test_an_unsafe_plan_without_a_logger_is_simply_skipped(
         model=FakeTimestral([0.02] * 15), llm=ScriptedLLM(), store=FileAuditStore(tmp_path),
     )  # fmt: skip
     assert result.execution_errors == 1
+
+
+def test_an_llm_outage_stops_the_replay_without_recording_a_decision(tmp_path: Path) -> None:
+    class Down(ScriptedLLM):
+        def complete(self, messages: list[dict[str, str]], schema: dict[str, Any]) -> Any:
+            raise ConnectionError("Mistral API unreachable")
+
+    closes, opens = history()
+    store = FileAuditStore(tmp_path)
+    with pytest.raises(ConnectionError):
+        run_replay(
+            closes=closes, opens=opens, sessions=SESSIONS, cfg=CFG,
+            model=FakeTimestral([0.02] * 15), llm=Down(), store=store,
+        )  # fmt: skip
+    assert store.read_runs() == []  # resumable: nothing half-done was recorded

@@ -223,7 +223,7 @@ def run_replay(
                 drawdown=min(0.0, equity_prev / peak - 1.0),
                 equity=equity_prev,
             )
-            decision = decide(inp, llm, alias_cfg)
+            decision = decide(inp, llm, alias_cfg, on_llm_failure="raise")
             outcome, target = decision.outcome, decision.target_weights
             if outcome != "fallback_hold":
                 final_check(decision.target_weights, decision.cash, alias_cfg)

@@ -46,7 +46,7 @@ The single place to see where the project stands. Details of each decision are i
 | T-06 | LLM soundness checks (D-016): behaviour scenarios and stability | Claude | Code and tests done (290 tests, 17 modules at 100%); **the real run is in progress** (started 2026-11-22); results to commit as `docs/evals` |
 | T-07 | Final pass before submission: README, CLAUDE.md, decision statuses, release `v1.0` | Claude | Wed 2026-11-25 morning |
 
-Done (most recent first): turnover cap waiver and no-publish test option (#12) · forecast scoring and backtest (#11) · dashboard on Pages (#10) · README (#9) · reconciliation (#8) · workflows (#7) · execution and full cycle (#6) · audit log (#5) · decision stage (#4) · forecast stage (#3) · guardrails (#2) · tooling and docs (#1).
+Done (most recent first): LLM outage handling, no crash on a timeout (#19) · turnover cap waiver and no-publish test option (#12) · forecast scoring and backtest (#11) · dashboard on Pages (#10) · README (#9) · reconciliation (#8) · workflows (#7) · execution and full cycle (#6) · audit log (#5) · decision stage (#4) · forecast stage (#3) · guardrails (#2) · tooling and docs (#1).
 
 ## Not before submission (documented as future work)
 
