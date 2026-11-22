@@ -1,0 +1,220 @@
+"""Simulations requested by the evaluators (D-017).
+
+An evaluator clicks "Run a simulation" on the dashboard, which opens a pre-filled GitHub issue.
+The `Simulate` workflow picks it up and calls this module, which:
+
+1. throttles requests (one at a time is enforced by the workflow; here: at least 10 minutes
+   between two simulations and at most 20 a day), answering a refusal politely;
+2. runs one full cycle on the current portfolio, **never sending an order**: dry run forced and
+   the kill switch forced off, whatever the environment says;
+3. stores the record apart from the real agent's (`simulations/`), so the metrics of the real
+   agent are untouched, with the requester's GitHub login;
+4. writes the reply posted in the issue: the decision, the main moves and the LLM's reading.
+
+Everything that comes from outside is untrusted: the issue text is never used, and the LLM's
+text posted back is neutralised (no @-mention, no HTML) and length-limited.
+
+Usage (in the workflow):
+    python -m agent.simulate --audit-dir audit --requested-by LOGIN --comment-out comment.md
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+from collections.abc import Mapping
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from agent.audit import FileAuditStore
+from agent.config import AgentConfig
+from agent.data import NEW_YORK, MarketData
+from agent.decide import LLMClient
+from agent.execute import Broker
+from agent.forecast import QuantileModel
+from agent.run import CycleResult, run_cycle
+
+TITLE = "Simulation request"  # the workflow only reacts to issues whose title starts so
+COOLDOWN = timedelta(minutes=10)
+DAILY_CAP = 20
+ANALYSIS_LIMIT = 1200
+REASON_LIMIT = 140
+DASHBOARD = "https://spectreb.github.io/timestral-trading-agent/"
+REPO = "https://github.com/SpectreB/timestral-trading-agent"
+SIMULATIONS = "simulations"
+AUDIT_BRANCH = "audit-log"
+
+
+def label_for(now: datetime) -> str:
+    return f"sim-{now.astimezone(NEW_YORK):%H%M%S}"
+
+
+def throttle(store: FileAuditStore, now: datetime) -> str | None:
+    """Why a new simulation must wait, or None if it may run now."""
+    times = [datetime.fromisoformat(r["started_at"]) for r in store.read_runs()]
+    today = now.astimezone(NEW_YORK).date()
+    if sum(t.astimezone(NEW_YORK).date() == today for t in times) >= DAILY_CAP:
+        return f"The limit of {DAILY_CAP} simulations a day is reached. Please try again tomorrow."
+    if times and now - max(times) < COOLDOWN:
+        wait = COOLDOWN - (now - max(times))
+        minutes = max(1, int(wait.total_seconds() // 60) + 1)
+        return (
+            "Another simulation ran less than 10 minutes ago. Please try again in about "
+            f"{minutes} minute(s)."
+        )
+    return None
+
+
+def neutralise(text: str, limit: int) -> str:
+    """LLM text made safe to post: no HTML, no @-mention, no Markdown structure, bounded."""
+    clean = html.escape(" ".join(text.split()), quote=False).replace("@", "@​")
+    for char in "`*_#|[]":
+        clean = clean.replace(char, "\\" + char)
+    return clean if len(clean) <= limit else clean[: limit - 1].rstrip() + "…"
+
+
+def _analysis(record: Mapping[str, Any]) -> str:
+    try:
+        text = json.loads(record["decision"]["attempts"][-1]["answer"])["analysis"]
+    except (ValueError, KeyError, TypeError):
+        return ""
+    return text if isinstance(text, str) else ""
+
+
+def comment(record: Mapping[str, Any], requester: str) -> str:
+    """The reply posted in the issue once the simulation is recorded."""
+    p = record["portfolios"]
+    cur, fin = p["current"], p["final"]
+    proposed = p["proposed"] or {}
+    moves = sorted(
+        ((s, fin[s] - cur[s]) for s in fin if abs(fin[s] - cur[s]) >= 0.005),
+        key=lambda m: -abs(m[1]),
+    )[:6]
+    rows = "\n".join(
+        f"| {s} | {100 * cur[s]:.1f}% → {100 * fin[s]:.1f}% | {100 * d:+.1f} pts | "
+        f"{neutralise(proposed[s]['rationale'], REASON_LIMIT) if s in proposed else ''} |"
+        for s, d in moves
+    )
+    table = (
+        f"| Asset | Weight | Change | Reason given by the LLM |\n|---|---|---|---|\n{rows}"
+        if moves
+        else "No change: the agent would keep its positions."
+    )
+    corrections = [
+        c for c in record["decision"]["attempts"][-1]["guardrails"]["corrections"] if c["counted"]
+    ]
+    fixes = (
+        "\n".join(
+            f"- `{c['rule']}` {c['symbol'] or ''}: {c['before']:.3f} → {c['after']:.3f}"
+            for c in corrections
+        )
+        if corrections
+        else "None: the proposal respected every rule."
+    )
+    analysis = _analysis(record)
+    reading = f"> {neutralise(analysis, ANALYSIS_LIMIT)}" if analysis else "_No readable analysis._"
+    rid = record["run_id"]
+    model = record["decision"]["attempts"][-1]["model"]
+    prompt = record["decision"]["prompt_version"]
+    link = f"{REPO}/blob/{AUDIT_BRANCH}/{SIMULATIONS}/runs/{rid}.json"
+    return f"""### Simulation finished: {record["decision"]["outcome"].replace("_", " ")}
+
+Requested by @{requester}. A full cycle ran on the agent's current portfolio: live market data,
+Timestral forecasts, the LLM's decision and the guardrails.
+**No order was sent**: simulations never trade.
+
+**What the agent would do**
+
+{table}
+
+**Guardrail corrections**
+
+{fixes}
+
+**The LLM's reading**
+
+{reading}
+
+Model {model}, prompt {prompt}, code `{record["git_sha"][:7]}`.
+[Full record]({link}) · [Dashboard]({DASHBOARD}) (updated in a minute or two)
+"""
+
+
+def refusal(reason: str) -> str:
+    return f"### Simulation not started\n\n{reason}\n\n[Dashboard]({DASHBOARD})\n"
+
+
+def simulate(
+    *,
+    now: datetime,
+    cfg: AgentConfig,
+    market: MarketData,
+    broker: Broker,
+    model: QuantileModel,
+    llm: LLMClient,
+    root: Path,
+    requester: str,
+    env: Mapping[str, str],
+) -> tuple[str, CycleResult | None]:
+    """Run one throttled simulation and return the reply to post (and the cycle result)."""
+    store = FileAuditStore(root / SIMULATIONS)
+    reason = throttle(store, now)
+    if reason:
+        return refusal(reason), None
+    result = run_cycle(
+        mode="morning",
+        now=now,
+        cfg=cfg,
+        market=market,
+        broker=broker,
+        model=model,
+        llm=llm,
+        store=store,
+        live=False,  # a simulation never trades...
+        env={**env, "TRADING_ENABLED": "false"},  # ...even if live were requested by mistake
+        label=label_for(now),
+        requested_by=requester,
+        history=FileAuditStore(root),
+    )
+    return comment(store.read_run(result.run_id), requester), result
+
+
+def main() -> None:  # pragma: no cover - CLI wiring, runs in the Simulate workflow
+    import os
+    from datetime import UTC
+
+    from dotenv import load_dotenv
+
+    from agent.data import AlpacaMarketData
+    from agent.decide import MistralLLM
+    from agent.execute import AlpacaBroker
+    from agent.forecast import load_model
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--audit-dir", default="audit", type=Path)
+    parser.add_argument("--requested-by", required=True)
+    parser.add_argument("--comment-out", default="comment.md", type=Path)
+    args = parser.parse_args()
+
+    load_dotenv()
+    cfg = AgentConfig()
+    key, secret = os.environ["ALPACA_API_KEY"], os.environ["ALPACA_SECRET_KEY"]
+    reply, _ = simulate(
+        now=datetime.now(UTC),
+        cfg=cfg,
+        market=AlpacaMarketData(key, secret),
+        broker=AlpacaBroker(key, secret),
+        model=load_model(cfg.forecast.model_id),
+        llm=MistralLLM(os.environ["MISTRAL_API_KEY"], cfg),
+        root=args.audit_dir,
+        requester=args.requested_by,
+        env=os.environ,
+    )
+    args.comment_out.write_text(reply, encoding="utf-8")
+    print(reply)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
