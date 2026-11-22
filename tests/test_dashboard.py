@@ -14,8 +14,17 @@ import pytest
 from agent.audit import FileAuditStore
 from agent.dashboard import _nice_ticks, build, chronological, render
 from agent.reconcile import OrderState, reconcile_runs
-from tests.helpers import BASELINE, CFG, FakeBroker, as_json, proposal
-from tests.test_decide import BROKEN, FakeLLM
+from tests.helpers import (
+    BASELINE,
+    CFG,
+    FakeBroker,
+    FakeMarketData,
+    FakeTimestral,
+    as_json,
+    make_closes,
+    proposal,
+)
+from tests.test_decide import BROKEN, NOW, FakeLLM
 from tests.test_reconcile import LATER, Lookup, live_run, states_for
 from tests.test_run import cycle
 
@@ -494,3 +503,32 @@ def test_a_long_series_labels_the_time_axis_sparingly(tmp_path: Path) -> None:
     labels = re.findall(r'text-anchor="middle">(12-\d\d)</text>', html)
     assert 3 <= len(labels) < len(rows)  # a handful of dates, the last one always shown
     assert labels[-1] == "12-14"
+
+
+def test_evaluators_can_request_a_simulation_from_the_page(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    html = page(store)
+    assert "Run it yourself" in html and 'class="btn"' in html
+    assert "/issues/new?title=Simulation+request&amp;body=" in html
+    assert "Simulations never send an order." in html
+    assert "No simulation has been requested yet." in html
+
+
+def test_requested_simulations_are_listed_with_their_requester(tmp_path: Path) -> None:
+    from agent.simulate import simulate
+
+    cycle(tmp_path)
+    simulate(
+        now=NOW, cfg=CFG, market=FakeMarketData(make_closes(520)), broker=FakeBroker(),
+        model=FakeTimestral([0.02] * 15), llm=FakeLLM([json.dumps(proposal())] * 2),
+        root=tmp_path, requester="<b>evil</b>", env={},
+    )  # fmt: skip
+    html = build(tmp_path, tmp_path / "site", STAMP).read_text(encoding="utf-8")
+    assert "2026-11-23_sim-100000" in html and "requested by &lt;b&gt;evil&lt;/b&gt;" in html
+    assert "order(s) planned, none sent" in html
+    assert "simulations/runs/2026-11-23_sim-100000.json" in html
+
+
+def test_the_empty_page_still_offers_a_simulation(tmp_path: Path) -> None:
+    html = page(FileAuditStore(tmp_path))
+    assert "No runs yet" in html and "Run a simulation" in html
