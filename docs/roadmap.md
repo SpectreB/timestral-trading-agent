@@ -23,7 +23,8 @@ The single place to see where the project stands. Details of each decision are i
 | D-013 | Forecast scoring from recorded closes | Accepted, confirmed by the owner 2026-11-22 (a hybrid was discussed, kept optional) |
 | D-014 | Performance metrics: shadow portfolios, forecast risk (Timestral volatilities x historical correlation) | Accepted 2026-11-22 |
 | D-015 | Historical replay (test case 1): ~63 recent sessions (Aug to Nov 2026), daily, same agent as live, anonymised, point-in-time, simulated fills | Accepted 2026-11-22 |
-| D-016 | LLM soundness checks: seven behaviour scenarios on the proposal, plus stability over repeated calls | Taken on the owner's instruction to do T-06; to confirm |
+| D-016 | LLM soundness checks: seven behaviour scenarios on the proposal, plus stability over repeated calls | Accepted; first results 5 of 7 (fails: calm market, tempting median); prompt v1 kept for the test window, decided with the owner 2026-11-22 |
+| D-017 | Simulations requested by the evaluators through a GitHub issue (option B; full app, option D, kept in mind) | Accepted 2026-11-22 |
 
 ## Waiting for the owner
 
@@ -43,7 +44,8 @@ The single place to see where the project stands. Details of each decision are i
 | T-03 | Performance metrics: forecast risk module, shadow portfolios (agent, LLM proposal, Timestral rule, equal weight, SPY), comparisons with confidence intervals, risk and LLM-confidence calibration (D-014) | Claude | Code and tests done (237 tests, 15 modules at 100%); in review (PR) |
 | T-04 | Dashboard redesign, user-first (structure validated by the owner, reversible; see the redesign note in D-012) | Claude | Code and tests done (255 tests, 15 modules at 100%); in review (PR). Replay results (T-05) will take their place under Performance |
 | T-05 | Replay harness (test case 1) as specified in D-015 | Claude | Code and tests done (278 tests, 16 modules at 100%); **the 63-session replay is running** (started 2026-11-22, several hours, resumable); results to commit as `docs/replay` and to show on the dashboard when done |
-| T-06 | LLM soundness checks (D-016): behaviour scenarios and stability | Claude | Code and tests done (290 tests, 17 modules at 100%); **the real run is in progress** (started 2026-11-22); results to commit as `docs/evals` |
+| T-06 | LLM soundness checks (D-016): behaviour scenarios and stability | Claude | Done 2026-11-22: 5 of 7 scenarios pass, stability measured; report in `docs/evals` |
+| T-08 | Simulations requested by the evaluators (D-017): simulation run type, issue-triggered workflow with throttling, reply in the issue, dashboard button and list | Claude | In progress |
 | T-07 | Final pass before submission: README, CLAUDE.md, decision statuses, release `v1.0` | Claude | Wed 2026-11-25 morning |
 
 Done (most recent first): turnover cap waiver and no-publish test option (#12) · forecast scoring and backtest (#11) · dashboard on Pages (#10) · README (#9) · reconciliation (#8) · workflows (#7) · execution and full cycle (#6) · audit log (#5) · decision stage (#4) · forecast stage (#3) · guardrails (#2) · tooling and docs (#1).
