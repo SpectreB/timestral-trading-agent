@@ -620,6 +620,19 @@ The page is derived data: the audit log stays the single source of truth, and th
 
 Design checks done on the rendered page (headless Chrome, light, dark and a 390 px viewport): this caught a real bug (an interval wider than the axis overflowed its card), fixed and covered by a test. On phones the charts keep a minimum width and scroll instead of shrinking their text.
 
+### Redesign (2026-11-22, T-04): user-first structure, validated by the owner
+The first version stacked nine sections by type of data. The owner asked for readability first, few options and robust metrics, so the page is now **one page grouped by the reader's questions**, with the evidence folded away:
+
+| Block | Answers | Content |
+|---|---|---|
+| Status banner and alerts | Is it running, and is anything wrong? | Live or simulation, last and next run, model, prompt and code version; alerts (rejected proposal, corrections, circuit breaker, unfilled orders) are never folded |
+| At the last run | What did it do, and why? | The largest moves with the LLM's reason, orders and fills, the LLM's reading |
+| Performance | How is it doing? | Account value, one chart of the agent against four references (click a legend entry to hide a curve), what each layer adds with its sample size and 95% interval, drawdown against the circuit-breaker levels |
+| What it holds | What does it hold? | Allocation against the baseline, each asset's share of the forecast risk |
+| Can we trust it? | Does it hold up? | Folded: forecasts, forecast and risk calibration, the LLM's confidence, guardrail activity, executions, account value, history of runs (each run opens in place) |
+
+Interactivity is deliberately light: tooltips, folding, clicking a run or a legend entry. No filter, tab or date range: with a few weeks of data they would only add places to get lost in. The structure is reversible.
+
 ### Impact on further development
 - The dashboard reads only what the audit module writes: any new section needs its data in the records first.
 - Two sections are intentionally absent until their data exists: forecast calibration against realised prices, and the evaluation of the LLM's stated confidence (see Open decisions).
