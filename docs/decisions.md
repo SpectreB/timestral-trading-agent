@@ -263,11 +263,14 @@ Script: [scripts/backtest_timestral.py](../scripts/backtest_timestral.py); raw n
 | Timestral 28M, 1024 / 2048 days | 0.0085 | 0.764 / 0.749 | 0.385 / 0.387 |
 | Timestral 123M, 512 days | 0.0085 | 0.782 | 0.384 |
 | Timestral 123M, 1024 days | 0.0085 | 0.757 | 0.389 |
+| Timestral 5M, 512 days (added 2026-11-22) | 0.0085 | 0.784 | 0.382 |
+| Timestral 209M, 512 days (added 2026-11-22) | 0.0085 | 0.781 | 0.386 |
+| Timestral 209M, 1024 days (added 2026-11-22) | 0.0085 | 0.770 | 0.387 |
 
 \* Spearman correlation between the forecast interval width and the realised absolute return, pooled over assets and origins. This is the property the baseline rule relies on.
 
 Findings:
-- **Model size does not matter here.** 28M and 123M are indistinguishable on every metric, and the 123M is about 3 to 4 times slower. No reason to upgrade; 209M was not downloaded for the same reason (and for disk space).
+- **Model size does not matter here.** 28M and 123M are indistinguishable on every metric, and the 123M is about 3 to 4 times slower. No reason to upgrade. *Completed on 2026-11-22 with the two other sizes:* 5M, 28M, 123M and 209M are all indistinguishable (same pinball loss, coverage 0.781 to 0.784, rank correlation 0.382 to 0.386, differences far inside the standard error of about 0.05). The 209M takes 56 s for the 1,875 forecasts against 11 s for the 28M, i.e. about 0.5 s for one run of 15 assets: its cost is negligible.
 - **A longer context hurts calibration.** At 1024 and 2048 days the intervals are too narrow (coverage 0.75 to 0.76 against a target of 0.80). 512 days is the best calibrated configuration, confirming the provisional value.
 - **Prices or log returns: no difference** (1-day coverage 0.808 versus 0.802, same pinball loss). The 5-day return input could not be compared fairly because quantiles of a sum are not the sum of quantiles, so prices stay.
 - **Where Timestral earns its place is risk ranking, not accuracy.** Pinball loss is identical to four decimals for every configuration including the no-model baseline. But its interval width ranks the realised risk better than the empirical baseline does (0.38 versus 0.33 at 5 days, 0.33 versus 0.31 at 1 day), which is what the baseline rule uses. This supports D-004.
@@ -275,9 +278,12 @@ Findings:
 
 Caveats, stated plainly: one year of origins in a single market regime; origins two sessions apart have overlapping 5-day windows, so the effective sample is much smaller than 1,875 (roughly 400 independent 5-day periods per asset-pooled estimate, i.e. a standard error of about 0.05 on a correlation). The ranking advantage is therefore **consistent in sign across every configuration but not conclusive**. The live scoring of D-013 is the cleaner, out-of-sample test.
 
+### Model of each agent (owner's decision, 2026-11-22)
+The pipeline agent keeps the **28M** for the whole test window, so it stays identical to the agent of the replay (D-015). The tool agent (D-018) uses the **209M**: not because it measured better (it did not), but because it costs nothing here and is the best of the four on Mistral's public benchmarks. A reasonable default, not a measured gain; stated as such.
+
 ### Impact on further development
 - Model name, input type and context length are config parameters.
-- Backtest to run: 28M vs 123M (vs 209M), prices vs returns, 512 vs 1024 vs 2048 days, on the 15 assets.
+- Backtest done: the four sizes, prices vs returns, 512 vs 1024 vs 2048 days, on the 15 assets (`scripts/backtest_timestral.py`, results in `docs/timestral_backtest.csv`).
 - Covariate slots are reserved for genuinely new information (VIX, volume, news sentiment, earnings dates), not transforms of the price.
 
 ---
@@ -860,6 +866,55 @@ B gives the evaluators the experience they need (run the agent and see its reaso
 
 ---
 
+## D-018 — A second agent that uses Timestral as a tool, on its own paper account
+
+- **Date:** 2026-11-22
+- **Status:** Accepted (owner's decisions: option B for the freedom, the three tools, two accounts, the tool agent as the final agent)
+
+### Context
+In the pipeline agent (D-004), Timestral always runs, a rule turns its intervals into a baseline and the LLM adjusts that baseline within +15 points. The LLM never chooses what to ask Timestral. D-004 kept "the LLM orchestrates Timestral as a tool" (option D) for later, and D-014 wrote the risk functions so that they could become tools. With the review on 3 or 4 December, there is time to build it properly and to compare the two approaches on real days. The owner wants the tool agent to be the final, most advanced agent, with the pipeline agent kept as the point of comparison.
+
+### Options: how much freedom relative to the baseline
+| Option | Principle | Pros | Cons |
+|---|---|---|---|
+| A. Same anchor | The LLM starts from the baseline with the same +15 pt bound; the tools only help it justify its deviations | Minimal risk | The two agents would be almost the same: little to compare |
+| **B. Bounded freedom** | The baseline is **one tool among others**, consulted not imposed; the LLM builds the portfolio with Timestral; only absolute limits apply (per-asset and group caps, cash floor, drawdown circuit breaker, turnover cap, severity) | A real comparison between "Timestral imposes" and "the LLM drives Timestral"; risk still bounded by the absolute limits | Choices can be further from the baseline: precisely what we want to measure |
+| C. In between | Anchor on the baseline with a wider bound (e.g. ±30 pts) | Compromise | Arbitrary threshold, blurred difference between the approaches |
+
+### Options: how to run the two agents
+| Option | Pros | Cons |
+|---|---|---|
+| Replace the pipeline agent | One agent, the most advanced | Mixes two agents in the same results; a new agent trades with no history |
+| The new agent runs beside it without orders | Clean comparison on the same days | The final agent never really trades |
+| **Two paper accounts, one per agent** | Each agent places its own real (paper) orders, on the same universe, at the same time, with the same data; a clean comparison of both approaches until the review | A second account and second keys; the dashboard shows two agents |
+
+### Decision
+- **Option B**, with three tools (`agent/tools.py`):
+  1. `get_forecasts(symbols, horizon)`: Timestral's quantiles q05 to q95, interval width and implied volatility, for the assets and the horizon (1 to 5 days) the LLM chooses.
+  2. `evaluate_portfolio(weights, horizon)`: for a candidate allocation, **Timestral forecasts the portfolio itself**: the value history of the candidate holdings is rebuilt over the context window and given to Timestral as one more series, so its quantiles describe the portfolio's own distribution, correlations included, with no normal assumption (probability of a loss, 5% quantile). Also the D-014 decomposition (forecast volatility, each asset's share of the risk) and whether the **production guardrails** would accept the allocation as it is, so the LLM can correct itself before answering.
+  3. `get_baseline()`: the rule-based portfolio, as a reference.
+- **Two paper accounts.** The pipeline agent keeps the existing account (keys `ALPACA_API_KEY`, kill switch `TRADING_ENABLED`); the tool agent gets its own (`ALPACA_TOOLS_API_KEY`, kill switch `TRADING_ENABLED_TOOLS`) and its own audit folder (`agents/tools/` on the `audit-log` branch). Both run in the same Trade workflow, each even if the other fails.
+- **The tool agent is the final agent**: put first on the dashboard and in the README. The pipeline agent is kept unchanged as the reference.
+- Timestral 209M for the tool agent, 28M kept for the pipeline agent (see D-006).
+
+### Guardrails of the tool agent
+- Its final answer has the **same strict JSON schema** and goes through **the same guardrails** (the four layers of D-010), the same independent final check, the same retry and the same fallback (hold the current positions). The only difference is the +15 pt bound relative to the baseline, off by construction of option B (`max_increase_vs_baseline = 1.0` in `tool_agent_config`).
+- Specific to the tools: at most 6 turns and 12 calls per decision (`ToolConfig`); every argument validated (assets of the universe, integer horizon 1 to 5, finite non-negative weights summing to at most 1); a bad call returns a readable error to the LLM, never an exception; an LLM failure while exploring goes straight to the final answer and its fallback.
+- Everything is recorded: each exploration turn (tokens, text, tool calls), each tool call with its arguments and result, all reasoning traces.
+
+### Rationale
+Option B is the only one in which the two agents differ in how Timestral is used, which is what the comparison is for. The absolute limits are what protects the portfolio, and they are unchanged. Forecasting the portfolio's own value series uses Timestral for what D-006 showed it does well (calibrated uncertainty) and answers the question the pipeline answers only with a normal approximation and historical correlations. Checking the guardrails inside a tool turns "respect the limits yourself" from an instruction into something the LLM can verify.
+
+### First real run (2026-11-22, offline)
+On the closes of 2026-11-20, all cash: 5 tool calls in 4 turns (forecasts of all assets, the baseline, three candidate portfolios evaluated), 2 min 43 s, decision **accepted without any correction**. The LLM explicitly ignored the medians ("no reliable directional skill"), chose among its three candidates the lowest-volatility one the guardrails accepted, and tilted towards TLT (19.5% against 14.9% at the baseline) in a sharp sell-off. The two risk views disagree, as expected: forecast volatility 1.6% from the decomposition, about 2.9% implied by Timestral's direct forecast of the portfolio, which sees the recent sell-off. Logging both lets the risk calibration of D-014 tell later which one was right.
+
+### Impact on further development
+- Both agents go through `decide_agent()`, so the run, the replay and the evaluations treat them identically (`--agent tools` on `agent.run`, `agent.replay`, `agent.evals`, `agent.reconcile`).
+- To do: the second paper account and its secrets (owner), the dashboard with both agents, the soundness checks (D-016) and the replay (D-015) on the tool agent.
+- Limitation: in the soundness scenarios that shift forecasts without changing prices, `evaluate_portfolio`'s direct portfolio forecast does not see the shift (the decomposition does).
+
+---
+
 ## Open decisions
 
 - Fallback when the LLM proposal is rejected: keep positions (provisional) vs apply baseline vs do nothing (D-010)
@@ -873,7 +928,7 @@ Options deliberately set aside for this one-week assignment. Each would make sen
 
 | Item | From | Why deferred | When it would make sense |
 |---|---|---|---|
-| LLM orchestrating Timestral and news as tools (function calling) | D-004 option D | Hard to bound, reproduce and evaluate in one week | Once the v1 pipeline and its evaluation are stable; the modules are already written as separate functions to allow it |
+| LLM orchestrating Timestral and news as tools (function calling) | D-004 option D | Hard to bound, reproduce and evaluate in one week | **Done for Timestral on 2026-11-22: see D-018.** News remains |
 | Variable LLM freedom based on its confidence | D-004 (1a) | LLM self-reported confidence is unproven | If the logged confidence proves calibrated against outcomes |
 | Baseline rule using forecast direction (width + median) | D-004 (1b) | No measured directional skill | If news covariates improve Timestral's directional accuracy |
 | Volatility targeting with Timestral forecasts | D-010 | More code; the graduated circuit breaker covers the urgent need | Natural next step: makes Timestral act before losses rather than after |

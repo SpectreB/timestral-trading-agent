@@ -35,7 +35,8 @@ import pandas as pd
 from agent.baseline import baseline_weights
 from agent.config import AgentConfig
 from agent.data import NEW_YORK
-from agent.decide import DecisionInput, LLMClient, decide
+from agent.decide import DecisionInput, LLMClient
+from agent.decide_tools import decide_agent
 from agent.forecast import AssetForecast, QuantileModel, forecast_assets
 from agent.schemas import Proposal
 
@@ -125,8 +126,11 @@ class Outcome:
         return None if self.proposed is None else self.proposed[symbol] - self.baseline[symbol]
 
 
-def outcome_of(inp: DecisionInput, cfg: AgentConfig, llm: LLMClient) -> Outcome:
-    decision = decide(inp, llm, cfg)
+def outcome_of(
+    inp: DecisionInput, cfg: AgentConfig, llm: LLMClient, model: QuantileModel | None = None
+) -> Outcome:
+    """`model` is needed by the tool agent only (its portfolio tool calls Timestral)."""
+    decision = decide_agent(inp, llm, model, cfg)
     last = decision.attempts[-1]
     proposed = proposed_cash = None
     analysis, confidences = "", {}
@@ -312,13 +316,14 @@ def run_scenarios(
     scenarios: Sequence[Scenario] = SCENARIOS,
     repeats: int = 2,
     workers: int = 8,
+    model: QuantileModel | None = None,
 ) -> list[dict[str, Any]]:
     """Every scenario `repeats` times, in parallel (each call is independent)."""
     tasks = [(s, r) for s in scenarios for r in range(repeats)]
 
     def run(task: tuple[Scenario, int]) -> tuple[Scenario, int, Outcome]:
         scenario, repeat = task
-        return scenario, repeat, outcome_of(scenario.build(base, cfg), cfg, llm_factory())
+        return scenario, repeat, outcome_of(scenario.build(base, cfg), cfg, llm_factory(), model)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         done = list(pool.map(run, tasks))
@@ -388,9 +393,12 @@ def run_stability(
     llm_factory: Callable[[], LLMClient],
     calls: int = 5,
     workers: int = 8,
+    model: QuantileModel | None = None,
 ) -> dict[str, Any]:
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        outcomes = list(pool.map(lambda _: outcome_of(base, cfg, llm_factory()), range(calls)))
+        outcomes = list(
+            pool.map(lambda _: outcome_of(base, cfg, llm_factory(), model), range(calls))
+        )
     return stability(outcomes)
 
 
@@ -458,6 +466,7 @@ def main() -> None:  # pragma: no cover - CLI wiring, calls the real model
 
     from agent.decide import MistralLLM
     from agent.forecast import load_model
+    from agent.run import AGENTS, config_for
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prices", default="replay_out/data/closes.csv", type=Path)
@@ -465,20 +474,26 @@ def main() -> None:  # pragma: no cover - CLI wiring, calls the real model
     parser.add_argument("--repeats", default=2, type=int)
     parser.add_argument("--stability", default=5, type=int)
     parser.add_argument("--workers", default=8, type=int)
+    parser.add_argument("--agent", choices=AGENTS, default="pipeline")
     args = parser.parse_args()
 
     load_dotenv()
-    cfg = AgentConfig()
+    cfg = config_for(args.agent)
     closes = pd.read_csv(args.prices, index_col=0, parse_dates=True)
-    base = base_input(closes, cfg, load_model(cfg.forecast.model_id), datetime.now(NEW_YORK))
+    model = load_model(cfg.forecast.model_id)
+    base = base_input(closes, cfg, model, datetime.now(NEW_YORK))
     key = os.environ["MISTRAL_API_KEY"]
 
     def factory() -> LLMClient:
         return MistralLLM(key, cfg)
 
-    results = run_scenarios(base, cfg, factory, repeats=args.repeats, workers=args.workers)
-    stable = run_stability(base, cfg, factory, calls=args.stability, workers=args.workers)
-    meta = {"model": cfg.llm.model, "prompt": cfg.llm.prompt_version,
+    results = run_scenarios(
+        base, cfg, factory, repeats=args.repeats, workers=args.workers, model=model
+    )
+    stable = run_stability(base, cfg, factory, calls=args.stability, workers=args.workers,
+                           model=model)  # fmt: skip
+    meta = {"agent": cfg.agent, "model": cfg.llm.model, "prompt": cfg.llm.prompt_version,
+            "timestral": cfg.forecast.model_id,
             "temperature": cfg.llm.temperature, "repeats": args.repeats,
             "date": datetime.now(NEW_YORK).date().isoformat()}  # fmt: skip
     args.out.mkdir(parents=True, exist_ok=True)

@@ -170,3 +170,50 @@ def test_an_llm_outage_is_recorded_as_a_held_run(tmp_path: Path) -> None:
     record = store.read_runs()[0]
     reasons = [a["guardrails"]["rejection_reason"] for a in record["decision"]["attempts"]]
     assert reasons == ["llm_call_failed", "llm_call_failed"]
+
+
+# --------------------------------------------------------------------------- two agents (D-018)
+
+
+def test_each_agent_has_its_own_config_and_paper_account() -> None:
+    from agent.run import alpaca_keys, config_for
+
+    assert config_for("pipeline").agent == "pipeline"
+    assert config_for("tools").agent == "tools"
+    with pytest.raises(ValueError, match="unknown agent"):
+        config_for("oracle")
+    env = {"ALPACA_API_KEY": "k1", "ALPACA_SECRET_KEY": "s1",
+           "ALPACA_TOOLS_API_KEY": "k2", "ALPACA_TOOLS_SECRET_KEY": "s2"}  # fmt: skip
+    assert alpaca_keys("pipeline", env) == ("k1", "s1")
+    assert alpaca_keys("tools", env) == ("k2", "s2")
+    with pytest.raises(KeyError, match="ALPACA_TOOLS_API_KEY"):
+        alpaca_keys("tools", {"ALPACA_API_KEY": "k1", "ALPACA_SECRET_KEY": "s1"})
+
+
+def test_a_tool_agent_cycle_records_its_tool_calls(tmp_path: Path) -> None:
+    from agent.config import tool_agent_config
+    from tests.test_decide_tools import FakeToolLLM, step
+
+    llm = FakeToolLLM([step(("get_baseline", "{}")), step()], [as_json(proposal())])
+    store = FileAuditStore(tmp_path)
+    result = run_cycle(
+        mode="morning",
+        now=NOW,
+        cfg=tool_agent_config(),
+        market=FakeMarketData(CLOSES),
+        broker=FakeBroker(),
+        model=FakeTimestral([0.02] * 15),
+        llm=llm,  # type: ignore[arg-type]
+        store=store,
+        live=False,
+        env={},
+    )
+    assert result.outcome == "accepted"
+    record = store.read_runs()[0]
+    assert record["decision"]["agent"] == "tools"
+    assert record["decision"]["tool_calls"][0]["name"] == "get_baseline"
+    assert len(record["decision"]["steps"]) == 2
+    assert record["config"]["forecast"]["model_id"] == "mistralai/Timestral-209M"
+    assert any(m["role"] == "tool" for m in record["messages"])
+    reasoning = (tmp_path / "runs" / record["reasoning_file"]).read_text()
+    assert "exploration turn 1" in reasoning and "attempt 1" in reasoning

@@ -13,11 +13,11 @@ Every attempt (prompt, raw answer, reasoning, guardrail result) is returned for 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import resources
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, runtime_checkable
 
 import numpy as np
 import pandas as pd
@@ -42,7 +42,36 @@ class LLMResponse(BaseModel):
 
 
 class LLMClient(Protocol):
-    def complete(self, messages: list[dict[str, str]], schema: dict[str, Any]) -> LLMResponse: ...
+    def complete(self, messages: list[dict[str, Any]], schema: dict[str, Any]) -> LLMResponse: ...
+
+
+class ToolCall(BaseModel):
+    id: str
+    name: str
+    arguments: str  # JSON text, untrusted
+
+
+class LLMStep(BaseModel):
+    """One turn of the tool agent (D-018): either tool calls, or a plain text answer."""
+
+    text: str
+    reasoning: str
+    tool_calls: list[ToolCall]
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+
+
+@runtime_checkable
+class ToolLLMClient(LLMClient, Protocol):
+    def step(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMStep: ...
+
+    def finish(
+        self,
+        messages: list[dict[str, Any]],
+        schema: dict[str, Any],
+        tools: list[dict[str, Any]],
+    ) -> LLMResponse: ...
 
 
 class MistralLLM:  # pragma: no cover - network adapter, exercised by the smoke test
@@ -64,20 +93,13 @@ class MistralLLM:  # pragma: no cover - network adapter, exercised by the smoke 
         )
         self._cfg = cfg.llm
 
-    def complete(self, messages: list[dict[str, str]], schema: dict[str, Any]) -> LLMResponse:
-        from mistralai.client.models import JSONSchema, ResponseFormat
-
+    def _call(self, messages: list[dict[str, Any]], **extra: Any) -> LLMStep:
         response = self._client.chat.complete(
             model=self._cfg.model,
             messages=messages,  # type: ignore[arg-type]
             temperature=self._cfg.temperature,
             reasoning_effort=self._cfg.reasoning_effort,  # type: ignore[arg-type]
-            response_format=ResponseFormat(
-                type="json_schema",
-                json_schema=JSONSchema(
-                    name="portfolio_decision", schema_definition=schema, strict=True
-                ),
-            ),
+            **extra,
         )
         message = response.choices[0].message
         content = message.content if message is not None else None
@@ -91,14 +113,60 @@ class MistralLLM:  # pragma: no cover - network adapter, exercised by the smoke 
                     reasoning += "".join(getattr(t, "text", "") for t in chunk.thinking)  # type: ignore[union-attr]
                 elif kind == "TextChunk":
                     text += chunk.text  # type: ignore[union-attr]
+        calls = [
+            ToolCall(
+                id=c.id or f"call_{i}",
+                name=c.function.name,
+                arguments=(
+                    c.function.arguments
+                    if isinstance(c.function.arguments, str)
+                    else json.dumps(c.function.arguments)
+                ),
+            )
+            for i, c in enumerate((message.tool_calls if message is not None else None) or [])
+        ]
         usage = response.usage
-        return LLMResponse(
+        return LLMStep(
             text=text,
             reasoning=reasoning,
+            tool_calls=calls,
             model=response.model or self._cfg.model,
             prompt_tokens=usage.prompt_tokens or 0,
             completion_tokens=usage.completion_tokens or 0,
         )
+
+    @staticmethod
+    def _json_format(schema: dict[str, Any]) -> Any:
+        from mistralai.client.models import JSONSchema, ResponseFormat
+
+        return ResponseFormat(
+            type="json_schema",
+            json_schema=JSONSchema(
+                name="portfolio_decision", schema_definition=schema, strict=True
+            ),
+        )
+
+    @staticmethod
+    def _response(step: LLMStep) -> LLMResponse:
+        return LLMResponse(**step.model_dump(exclude={"tool_calls"}))
+
+    def complete(self, messages: list[dict[str, Any]], schema: dict[str, Any]) -> LLMResponse:
+        return self._response(self._call(messages, response_format=self._json_format(schema)))
+
+    def step(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMStep:
+        return self._call(messages, tools=tools, tool_choice="auto", parallel_tool_calls=True)
+
+    def finish(
+        self,
+        messages: list[dict[str, Any]],
+        schema: dict[str, Any],
+        tools: list[dict[str, Any]],
+    ) -> LLMResponse:
+        # The tools stay declared (the history contains tool calls) but can no longer be called.
+        step = self._call(
+            messages, tools=tools, tool_choice="none", response_format=self._json_format(schema)
+        )
+        return self._response(step)
 
 
 # --------------------------------------------------------------------------- inputs / outputs
@@ -125,20 +193,28 @@ class Attempt(BaseModel):
 
 class Decision(BaseModel):
     prompt_version: str
-    messages: list[dict[str, str]]
+    messages: list[dict[str, Any]]
     attempts: list[Attempt]
     outcome: Literal["accepted", "corrected", "overridden", "fallback_hold"]
     target_weights: dict[str, float]
     cash: float
+    # Tool agent only (D-018): every tool call with its result, and every exploration turn.
+    tool_calls: list[dict[str, Any]] = []
+    steps: list[LLMStep] = []
 
 
 # --------------------------------------------------------------------------- prompt
 
 
 def load_system_prompt(cfg: AgentConfig) -> str:
+    """The versioned system prompt, filled with the limits of `cfg` (unused keys are ignored,
+    so one function serves both agents' prompts)."""
     template = resources.files("agent.prompts").joinpath(f"{cfg.llm.prompt_version}.md").read_text()
     risk = cfg.risk
     return template.format(
+        max_turnover_pct=round(100 * cfg.execution.max_turnover_per_run),
+        max_calls=cfg.tools.max_calls,
+        max_rounds=cfg.tools.max_rounds,
         n_assets=len(cfg.universe),
         horizon=cfg.forecast.horizon,
         min_cash_pct=round(100 * risk.min_cash),
@@ -188,42 +264,50 @@ def _recent_stats(closes: pd.Series) -> dict[str, float]:
     }
 
 
-def build_payload(inp: DecisionInput, cfg: AgentConfig) -> dict[str, Any]:
+def build_payload(
+    inp: DecisionInput, cfg: AgentConfig, with_forecasts: bool = True
+) -> dict[str, Any]:
+    """The decision input sent to the LLM. Without forecasts (the tool agent, D-018), Timestral's
+    forecasts and the baseline are left out: the LLM asks for them through its tools."""
     h = cfg.forecast.horizon
     assets = []
     for a in cfg.universe:
-        fc = inp.forecasts[a.symbol].summary((1, h))
         last_close = float(inp.closes[a.symbol].iloc[-1])
         latest = inp.latest_prices.get(a.symbol)
-        assets.append(
-            {
-                "symbol": a.symbol,
-                "name": a.name,
-                "type": a.type.value,
-                "group": a.group,
-                "current_weight": round(inp.current[a.symbol], 4),
-                "baseline_weight": round(inp.baseline[a.symbol], 4),
-                "max_weight": cfg.max_weight(a.symbol),
-                "forecast": fc["horizons"],
-                "recent": _recent_stats(inp.closes[a.symbol]),
-                "latest_price": None if latest is None else round(latest, 4),
-                "move_since_last_close": (
-                    None if latest is None else round(latest / last_close - 1, 5)
-                ),
-            }
-        )
+        asset: dict[str, Any] = {
+            "symbol": a.symbol,
+            "name": a.name,
+            "type": a.type.value,
+            "group": a.group,
+            "current_weight": round(inp.current[a.symbol], 4),
+        }
+        if with_forecasts:
+            asset["baseline_weight"] = round(inp.baseline[a.symbol], 4)
+        asset["max_weight"] = cfg.max_weight(a.symbol)
+        if with_forecasts:
+            asset["forecast"] = inp.forecasts[a.symbol].summary((1, h))["horizons"]
+        asset |= {
+            "recent": _recent_stats(inp.closes[a.symbol]),
+            "latest_price": None if latest is None else round(latest, 4),
+            "move_since_last_close": None if latest is None else round(latest / last_close - 1, 5),
+        }
+        assets.append(asset)
+    portfolio: dict[str, Any] = {
+        "equity_usd": round(inp.equity, 2),
+        "current_cash": round(1 - sum(inp.current.values()), 4),
+    }
+    if with_forecasts:
+        portfolio["baseline_cash"] = round(1 - sum(inp.baseline.values()), 4)
+    portfolio |= {
+        "drawdown_from_peak": round(inp.drawdown, 4),
+        "drawdown_actions": drawdown_actions(inp.drawdown, cfg),
+    }
     return {
         "as_of": inp.now.isoformat(timespec="minutes"),
         "run": inp.mode,
         "last_completed_session": inp.closes.index[-1].date().isoformat(),
-        "forecast_horizons_trading_days": [1, h],
-        "portfolio": {
-            "equity_usd": round(inp.equity, 2),
-            "current_cash": round(1 - sum(inp.current.values()), 4),
-            "baseline_cash": round(1 - sum(inp.baseline.values()), 4),
-            "drawdown_from_peak": round(inp.drawdown, 4),
-            "drawdown_actions": drawdown_actions(inp.drawdown, cfg),
-        },
+        "forecast_horizons_trading_days": [1, h] if with_forecasts else list(range(1, h + 1)),
+        "portfolio": portfolio,
         "assets": assets,
         "news": inp.news,
     }
@@ -245,6 +329,10 @@ def _retry_message(result: GuardrailResult) -> str:
 # --------------------------------------------------------------------------- decision
 
 
+def failure_text(error: Exception) -> str:
+    return f"LLM call failed: {type(error).__name__}: {str(error)[:300]}"
+
+
 def decide(
     inp: DecisionInput,
     llm: LLMClient,
@@ -254,22 +342,36 @@ def decide(
     """`on_llm_failure`: live, a call that fails (timeout, outage) counts as a rejected attempt,
     so the agent ends up holding its positions and the run is still recorded; the replay
     raises instead, because an outage must not be recorded as a decision to hold."""
-    messages = [
+    messages: list[dict[str, Any]] = [
         {"role": "system", "content": load_system_prompt(cfg)},
         {"role": "user", "content": json.dumps(build_payload(inp, cfg), indent=1)},
     ]
+    return final_decision(messages, llm.complete, inp, cfg, on_llm_failure)
+
+
+def final_decision(
+    messages: list[dict[str, Any]],
+    complete: Callable[[list[dict[str, Any]], dict[str, Any]], LLMResponse],
+    inp: DecisionInput,
+    cfg: AgentConfig,
+    on_llm_failure: Literal["hold", "raise"],
+    **extra: Any,
+) -> Decision:
+    """Ask for the JSON decision, apply the guardrails, retry once if rejected, else hold.
+
+    Shared by both agents; `extra` fills the tool agent's fields of the Decision."""
     schema = response_schema(cfg)
     attempts: list[Attempt] = []
 
     for _ in range(1 + cfg.llm.max_retries):
         try:
-            response = llm.complete(messages, schema)
+            response = complete(messages, schema)
         except Exception as error:  # an unavailable LLM must not crash a run (D-010)
             if on_llm_failure == "raise":
                 raise
             failed = LLMResponse(
                 text="",
-                reasoning=f"LLM call failed: {type(error).__name__}: {str(error)[:300]}",
+                reasoning=failure_text(error),
                 model=cfg.llm.model,
                 prompt_tokens=0,
                 completion_tokens=0,
@@ -294,6 +396,7 @@ def decide(
                 outcome=result.status,
                 target_weights=result.weights,
                 cash=result.cash,
+                **extra,
             )
         messages = [
             *messages,
@@ -309,4 +412,5 @@ def decide(
         outcome="fallback_hold",
         target_weights=current,
         cash=1 - sum(current.values()),
+        **extra,
     )
