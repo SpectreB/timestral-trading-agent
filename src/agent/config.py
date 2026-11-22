@@ -67,6 +67,7 @@ class LLMConfig:
     reasoning_effort: str = "high"  # native reasoning; the trace is stored in the audit log
     prompt_version: str = "decide_v1"  # src/agent/prompts/<version>.md
     max_retries: int = 1  # one retry on invalid output, then fallback (D-010)
+    timeout_s: int = 600  # per call; a reasoning answer can take several minutes
 
 
 @dataclass(frozen=True)
