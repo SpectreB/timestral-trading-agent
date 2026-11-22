@@ -41,7 +41,7 @@ The single place to see where the project stands. Details of each decision are i
 | T-02 | Switch the kill switch on | Claude, on the owner's instruction | Done 2026-11-22 |
 | T-03 | Performance metrics: forecast risk module, shadow portfolios (agent, LLM proposal, Timestral rule, equal weight, SPY), comparisons with confidence intervals, risk and LLM-confidence calibration (D-014) | Claude | Code and tests done (237 tests, 15 modules at 100%); in review (PR) |
 | T-04 | Dashboard redesign, user-first (structure validated by the owner, reversible; see the redesign note in D-012) | Claude | Code and tests done (255 tests, 15 modules at 100%); in review (PR). Replay results (T-05) will take their place under Performance |
-| T-05 | Replay harness (test case 1) as specified in D-015: point-in-time data enforced in code, anonymisation, leakage probe, simulated fills, separate output, shadow portfolios | Claude | To do (after T-03) |
+| T-05 | Replay harness (test case 1) as specified in D-015 | Claude | Code and tests done (278 tests, 16 modules at 100%); **the 63-session replay is running** (started 2026-11-22, several hours, resumable); results to commit as `docs/replay` and to show on the dashboard when done |
 | T-06 | LLM soundness: stability across repeated calls, a few behaviour scenarios (simulated crash, very wide intervals) | Claude | To do (partly covered by T-03 and T-05) |
 | T-07 | Final pass before submission: README, CLAUDE.md, decision statuses, release `v1.0` | Claude | Wed 2026-11-25 morning |
 

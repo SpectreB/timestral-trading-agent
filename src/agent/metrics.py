@@ -86,7 +86,7 @@ def _weights(run: dict[str, Any], series: str) -> dict[str, float]:
         symbols = list(p["final"])
         invested = run["config"]["risk"]["max_invested"]
         return dict.fromkeys(symbols, invested / len(symbols))
-    return {"SPY": 1.0}
+    return {run["config"].get("benchmark", "SPY"): 1.0}
 
 
 def shadow_returns(
