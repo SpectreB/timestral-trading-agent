@@ -29,6 +29,7 @@ from pydantic import BaseModel, ValidationError
 
 from agent.config import AgentConfig
 from agent.decide import Decision, DecisionInput
+from agent.risk import risk_snapshot
 from agent.schemas import Proposal
 from agent.scoring import score_forecasts
 
@@ -65,6 +66,8 @@ class RunRecord(BaseModel):
     orders: list[OrderRecord]
     execution_status: str
     reasoning_file: str
+    # Forecast risk of every portfolio (D-014); absent in records written before it existed.
+    risk: dict[str, Any] | None = None
 
 
 def run_id(now: datetime, mode: str) -> str:
@@ -151,6 +154,19 @@ def build_record(
         orders=list(orders),
         execution_status=execution_status,
         reasoning_file=f"{rid}_reasoning.txt",
+        risk=risk_snapshot(
+            inp.forecasts,
+            inp.closes,
+            (1, cfg.forecast.horizon),
+            {
+                "current": dict(inp.current),
+                "baseline": dict(inp.baseline),
+                "proposed": (
+                    {s: v["weight"] for s, v in proposed.items()} if proposed is not None else None
+                ),
+                "final": decision.target_weights,
+            },
+        ),
     )
     return record, reasoning
 
