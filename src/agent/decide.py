@@ -103,6 +103,7 @@ class DecisionInput:
     drawdown: float  # from peak equity, <= 0
     equity: float
     latest_prices: Mapping[str, float] = field(default_factory=dict)  # live reference prices
+    news: str = "No news feed is connected yet."  # untrusted text: a prompt-injection surface
 
 
 class Attempt(BaseModel):
@@ -212,7 +213,7 @@ def build_payload(inp: DecisionInput, cfg: AgentConfig) -> dict[str, Any]:
             "drawdown_actions": drawdown_actions(inp.drawdown, cfg),
         },
         "assets": assets,
-        "news": "No news feed is connected yet.",
+        "news": inp.news,
     }
 
 
