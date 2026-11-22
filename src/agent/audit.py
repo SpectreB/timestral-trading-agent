@@ -29,6 +29,7 @@ from pydantic import BaseModel, ValidationError
 
 from agent.config import AgentConfig
 from agent.decide import Decision, DecisionInput
+from agent.metrics import SERIES, shadow_returns
 from agent.risk import risk_snapshot
 from agent.schemas import Proposal
 from agent.scoring import score_forecasts
@@ -257,6 +258,7 @@ class FileAuditStore:
             "orders.csv": _order_rows(runs),
             "fills.csv": _fill_rows(self.read_fills()),
             "forecast_scores.csv": _score_rows(score_forecasts(runs, self.read_observations())),
+            "shadow_portfolios.csv": _shadow_rows(shadow_returns(runs, self.read_observations())),
         }
         paths = []
         for name, (header, rows) in tables.items():
@@ -367,3 +369,9 @@ def _score_rows(scores: list[dict[str, Any]]) -> Rows:
               "abs_error_median"]  # fmt: skip
     rows = [[_blank(row[column]) for column in header] for row in scores]
     return header, rows
+
+
+def _shadow_rows(rows: list[dict[str, Any]]) -> Rows:
+    """Daily return of each shadow portfolio (D-014)."""
+    header = ["session", "run_id", *SERIES]
+    return header, [[row[column] for column in header] for row in rows]
