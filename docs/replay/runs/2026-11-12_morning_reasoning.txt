@@ -1,0 +1,548 @@
+===== attempt 1 =====
+The user wants me to act as a portfolio decision-maker for an autonomous paper-trading agent. I need to output a JSON object with analysis, positions (all 15 assets), and cash_weight.
+
+Let me analyze the data:
+
+**Portfolio state:**
+- Equity: $98,831.81
+- Current cash: 11.72%
+- Baseline cash: 10%
+- Drawdown from peak: -1.28% (small drawdown, no special actions triggered since drawdown_actions is empty)
+- Last completed session: 2102-05-11
+
+**Assets analysis:**
+
+1. **A02** (ETF, us_broad): Current 8.12%, Baseline 7.82%. Forecast width 5d: 5.60%. Recent: +1.32% 1d, -0.91% 5d, -1.27% 20d. Vol 22.6%. Median 5d: +0.35%.
+
+2. **A11** (ETF, tech_growth): Current 2.51%, Baseline 4.57%. Forecast width 5d: 9.58% (high uncertainty). Recent: +2.32% 1d, -0.23% 5d, -5.29% 20d. Vol 36.7%. This is much more uncertain than baseline suggests. Current weight is already below baseline.
+
+3. **A10** (ETF, us_broad): Current 8.67%, Baseline 6.73%. Forecast width 5d: 6.51%. Recent: +0.90% 1d, -0.33% 5d, +4.32% 20d. Vol 25.5%. Median 5d: -0.02% (slightly negative).
+
+4. **A06** (ETF, intl_developed): Current 10.03%, Baseline 8.32%. Forecast width 5d: 5.26% (narrowest among equities). Recent: +0.29% 1d, -1.00% 5d, +1.86% 20d. Vol 19.9% (lowest). Median 5d: -0.09%.
+
+5. **A12** (ETF, emerging): Current 0%, Baseline 4.22%. Forecast width 5d: 10.39% (very wide). Recent: +2.43% 1d, +0.68% 5d, -3.65% 20d. Vol 32.7%. High uncertainty, currently zero.
+
+6. **A03** (ETF, energy): Current 0%, Baseline 4.83%. Forecast width 5d: 9.08%. Recent: +1.87% 1d, -0.24% 5d, -6.30% 20d. Vol 31.9%. High uncertainty, currently zero.
+
+7. **A04** (ETF, health): Current 12.07%, Baseline 7.86%. Forecast width 5d: 5.58%. Recent: +0.04% 1d, -0.37% 5d, +8.62% 20d. Vol 21.4%. Strong 20d momentum. Narrow interval.
+
+8. **A08** (ETF, financials): Current 12.08%, Baseline 8.65%. Forecast width 5d: 5.06% (narrowest). Recent: +0.58% 1d, -0.96% 5d, +7.54% 20d. Vol 21.6%. Strong 20d momentum. Narrow interval.
+
+9. **A09** (ETF, bonds): Current 15.9%, Baseline 11.49%. Forecast width 5d: 3.81% (narrowest overall). Recent: +0.05% 1d, -1.03% 5d, +3.00% 20d. Vol 12.0% (lowest). Defensive asset. Median 5d: +0.11%.
+
+10. **A05** (ETF, gold): Current 6.79%, Baseline 4.69%. Forecast width 5d: 9.34%. Recent: -1.13% 1d, -1.97% 5d, -2.88% 20d. Vol 27.4%. Negative recent momentum. Wide interval.
+
+11. **A01** (Stock, tech_growth): Current 0%, Baseline 2.13%. Forecast width 5d: 20.59% (extremely wide). Recent: +2.87% 1d, -13.19% 5d, -21.50% 20d. Vol 52.8% (very high). High uncertainty, poor recent performance. Currently zero.
+
+12. **A15** (Stock, financials): Current 6.08%, Baseline 6.21%. Forecast width 5d: 7.05%. Recent: +0.39% 1d, -2.48% 5d, +2.42% 20d. Vol 27.5%. Median 5d: -0.03%.
+
+13. **A13** (Stock, energy): Current 0%, Baseline 4.57%. Forecast width 5d: 9.58%. Recent: +1.36% 1d, -1.52% 5d, -5.82% 20d. Vol 31.8%. Currently zero.
+
+14. **A07** (Stock, health): Current 3.05%, Baseline 4.04%. Forecast width 5d: 10.85%. Recent: +0.35% 1d, +1.36% 5d, +18.91% 20d. Vol 38.8%. Very strong 20d momentum but high vol and wide interval. Median 5d: -0.51% (negative).
+
+15. **A14** (Stock, tech_growth): Current 2.99%, Baseline 3.88%. Forecast width 5d: 11.30%. Recent: -1.74% 1d, +0.05% 5d, +4.76% 20d. Vol 42.4%. Wide interval.
+
+**Group constraints check:**
+- us_broad: A02 + A10 = 8.12% + 8.67% = 16.79% (max 30%) - OK
+- tech_growth: A11 + A01 + A14 = 2.51% + 0% + 2.99% = 5.50% (max 30%) - OK
+- intl_developed: A06 = 10.03% - OK
+- emerging: A12 = 0% - OK
+- energy: A03 + A13 = 0% + 0% = 0% - OK
+- health: A04 + A07 = 12.07% + 3.05% = 15.12% - OK
+- financials: A08 + A15 = 12.08% + 6.08% = 18.16% - OK
+- bonds: A09 = 15.9% - OK
+- gold: A05 = 6.79% - OK
+
+**Current sum check:**
+0.0812 + 0.0251 + 0.0867 + 0.1003 + 0 + 0 + 0.1207 + 0.1208 + 0.159 + 0.0679 + 0 + 0.0608 + 0 + 0.0305 + 0.0299 + 0.1172 (cash) = let's calculate:
+0.0812+0.0251=0.1063
++0.0867=0.193
++0.1003=0.2933
++0.1207=0.414
++0.1208=0.5348
++0.159=0.6938
++0.0679=0.7617
++0.0608=0.8225
++0.0305=0.853
++0.0299=0.8829
++0.1172=1.0001 (rounding error, close enough)
+
+**Baseline sum check:**
+0.0782+0.0457+0.0673+0.0832+0.0422+0.0483+0.0786+0.0865+0.1149+0.0469+0.0213+0.0621+0.0457+0.0404+0.0388+0.1 (cash) =
+0.0782+0.0457=0.1239
++0.0673=0.1912
++0.0832=0.2744
++0.0422=0.3166
++0.0483=0.3649
++0.0786=0.4435
++0.0865=0.53
++0.1149=0.6449
++0.0469=0.6918
++0.0213=0.7131
++0.0621=0.7752
++0.0457=0.8209
++0.0404=0.8613
++0.0388=0.9001
++0.1=1.0001 (OK)
+
+**Key observations:**
+1. The portfolio is currently overweight in defensive assets (bonds 15.9% vs baseline 11.49%) and cash (11.72% vs 10%).
+2. Several high-uncertainty assets (A11, A12, A03, A01, A13) have wide forecast intervals. The baseline gives them weight inversely proportional to width, but some are currently at zero (A12, A03, A01, A13) which is fine.
+3. A04 (health ETF) and A08 (financials ETF) have narrow intervals (low uncertainty) and strong 20d momentum (+8.62% and +7.54%). They are already overweight vs baseline (12.07% vs 7.86% and 12.08% vs 8.65%).
+4. A09 (bonds) has the narrowest interval (3.81%) and lowest vol (12%), acting as a stabilizer. Currently 15.9%.
+5. A06 (intl developed) has narrow interval (5.26%) and low vol (19.9%), currently 10.03% vs baseline 8.32%.
+6. Tech growth assets (A11, A01, A14) have wide intervals and high vol. A11 is underweight (2.51% vs 4.57%), A01 is at 0, A14 is slightly underweight.
+7. Gold (A05) has negative recent momentum and wide interval (9.34%), currently 6.79% vs baseline 4.69%.
+8. Drawdown is small (-1.28%), no special restrictions.
+
+**Decision framework:**
+- The median forecasts show no reliable skill, so I shouldn't chase positive medians.
+- Width is reliable risk info. Narrow width = lower risk = can hold more.
+- I should look at cross-asset relationships: A04 and A07 are both health group. A08 and A15 are financials. A02 and A10 are us_broad.
+- Current portfolio seems reasonable but let's see if I should adjust.
+
+**Potential adjustments:**
+1. **A09 (bonds)**: Narrowest interval, defensive. Currently 15.9%. Could keep or slightly reduce to fund riskier assets? But bonds provide stability. Given the small drawdown and no major risk-off signals, maybe keep or slightly trim. But baseline is 11.49%, so current is already above baseline. I could reduce toward baseline to free up cash for equities? But cash is already 11.72% > 10% minimum.
+
+2. **A04 (health ETF)**: Strong momentum, narrow interval. Currently 12.07% vs baseline 7.86%. Already +4.21pp above baseline. Can I increase more? Max increase is +15pp above baseline, so up to 22.86%. But group health max 30%, currently 15.12% with A07. If I increase A04, I need to watch the group limit. But I don't have a strong reason to increase further given median is near zero.
+
+3. **A08 (financials ETF)**: Similar to A04. Currently 12.08% vs baseline 8.65%. Narrow interval, strong momentum.
+
+4. **A06 (intl developed)**: Narrow interval, low vol. Currently 10.03% vs baseline 8.32%. Could increase slightly? But median is slightly negative.
+
+5. **A11 (tech_growth ETF)**: Currently underweight (2.51% vs 4.57%). Very wide interval (9.58%), high vol (36.7%). Recent 20d is -5.29%. Probably keep low or at current.
+
+6. **A05 (gold)**: Negative momentum, wide interval. Currently 6.79% vs baseline 4.69%. Could reduce toward baseline or lower? Gold often acts as hedge. But with negative recent returns and wide uncertainty, maybe reduce slightly.
+
+7. **Cash**: Currently 11.72%. Minimum 10%. I could reduce cash to 10% to deploy more, or keep higher for safety. Given the small drawdown and mixed signals, keeping cash around 11-12% seems reasonable.
+
+**Strategy:**
+Given that median has no skill, I should focus on risk (width) and diversification. The baseline already does inverse-width weighting. My job is to add judgement on cross-asset relationships and regime.
+
+Current portfolio vs baseline:
+- Overweight: A02 (+0.3pp), A10 (+1.94pp), A06 (+1.71pp), A04 (+4.21pp), A08 (+3.43pp), A09 (+4.41pp), A05 (+2.1pp), A15 (-0.13pp), A07 (-0.99pp), A14 (-0.89pp)
+- Underweight: A11 (-2.06pp), A12 (-4.22pp), A03 (-4.83pp), A01 (-2.13pp), A13 (-4.57pp)
+
+The current portfolio has shifted away from high-uncertainty assets (emerging, energy, tech stocks) toward lower-uncertainty assets (health, financials, bonds, intl developed). This seems like a risk-off tilt, which makes sense given the small drawdown.
+
+But wait, the drawdown is only -1.28%, which is minor. The "drawdown_actions" is empty, so no restrictions.
+
+Should I deviate from current? The instructions say "Staying at the baseline is a legitimate decision" but also "Avoid churn: changes smaller than 2 points from the current weight are not traded anyway."
+
+Let me check differences from current:
+- If I propose baseline weights, changes would be:
+  - A02: 7.82% vs 8.12% = -0.3pp (not traded)
+  - A11: 4.57% vs 2.51% = +2.06pp (would trade)
+  - A10: 6.73% vs 8.67% = -1.94pp (not traded, <2pp)
+  - A06: 8.32% vs 10.03% = -1.71pp (not traded)
+  - A12: 4.22% vs 0% = +4.22pp (would trade)
+  - A03: 4.83% vs 0% = +4.83pp (would trade)
+  - A04: 7.86% vs 12.07% = -4.21pp (would trade)
+  - A08: 8.65% vs 12.08% = -3.43pp (would trade)
+  - A09: 11.49% vs 15.9% = -4.41pp (would trade)
+  - A05: 4.69% vs 6.79% = -2.1pp (would trade)
+  - A01: 2.13% vs 0% = +2.13pp (would trade)
+  - A15: 6.21% vs 6.08% = +0.13pp (not traded)
+  - A13: 4.57% vs 0% = +4.57pp (would trade)
+  - A07: 4.04% vs 3.05% = +0.99pp (not traded)
+  - A14: 3.88% vs 2.99% = +0.89pp (not traded)
+  - Cash: 10% vs 11.72% = -1.72pp (not traded? cash changes might be treated differently, but likely <2pp)
+
+So moving to baseline would involve many changes >2pp. But the question is whether I should deviate from baseline or from current. The guardrails compare my proposal to baseline for the "increase by at most 15pp above baseline" rule, and deviations >0.5pp from baseline need rationale.
+
+Actually, looking at the rules: "Every deviation from the baseline larger than 0.5 percentage points needs a rationale." So I need to justify any weight that differs from baseline by >0.5pp.
+
+Also: "You may increase a position by at most 15 percentage points above its baseline weight." So max weight = baseline + 0.15 (capped by other limits like 25% for ETFs, 10% for stocks, 30% for groups).
+
+Let me think about what makes sense:
+
+**Market regime**: Mixed. Some assets have strong 20d momentum (A04, A08, A07), others are weak (A01, A03, A11). Volatility is moderate for broad markets, high for tech/energy.
+
+**Risk assessment**: The forecast widths suggest:
+- Low risk (narrow): A09 (3.81%), A08 (5.06%), A06 (5.26%), A04 (5.58%), A02 (5.60%), A10 (6.51%)
+- Medium risk: A15 (7.05%), A03 (9.08%), A05 (9.34%), A11 (9.58%), A13 (9.58%)
+- High risk: A12 (10.39%), A07 (10.85%), A14 (11.30%), A01 (20.59%)
+
+The baseline already downweights high-risk assets. The current portfolio has zero in A12, A03, A13, A01 (all high risk), which seems prudent.
+
+**My proposal**:
+I think the current portfolio is reasonably positioned, but I might make small adjustments:
+
+1. **Reduce A09 (bonds)** slightly from 15.9% toward baseline 11.49%? But bonds are the safest asset (narrowest interval). However, with cash at 11.72%, total defensive (bonds+cash) is 27.6%. That's quite high. Maybe reduce bonds a bit to 13-14% and increase cash or equities?
+
+Actually, looking at the groups:
+- us_broad: A02+A10 = 16.79% (baseline: 14.55%)
+- tech_growth: A11+A01+A14 = 5.5% (baseline: 10.58%)
+- intl_developed: A06 = 10.03% (baseline: 8.32%)
+- emerging: 0% (baseline: 4.22%)
+- energy: 0% (baseline: 9.4%)
+- health: A04+A07 = 15.12% (baseline: 11.9%)
+- financials: A08+A15 = 18.16% (baseline: 14.86%)
+- bonds: 15.9% (baseline: 11.49%)
+- gold: 6.79% (baseline: 4.69%)
+
+The portfolio is overweight defensive (bonds, gold, cash) and underweight cyclical/growth (tech, emerging, energy).
+
+Given the small drawdown (-1.28%) and no news, maybe I should stay close to current but make some rebalancing toward baseline for the extreme deviations, while respecting the "no churn <2pp" rule.
+
+But wait, the instruction says "Avoid churn: changes smaller than 2 points from the current weight are not traded anyway." This means if I propose a change <2pp from current, it won't be executed. So I should only propose changes >=2pp from current if I want them to happen.
+
+However, the guardrails validate against baseline, not current. The "deviation from baseline >0.5pp needs rationale" applies to my proposed weights vs baseline.
+
+Let me decide on target weights:
+
+**Cash**: Keep at 11.72% or adjust? Minimum 10%. Current 11.72%. I'll keep around 11.5% or 12%. Let's say 0.115 (11.5%). This is a -0.22pp change from current, which is <2pp so won't trade, but it's fine. Actually, if I want to deploy cash, I need to reduce it by >2pp to 9.72% or below, but that violates the 10% minimum. So cash must stay >=10%. I could reduce to 10% (change of -1.72pp, still <2pp, won't trade). So effectively cash stays at 11.72% unless I make a big move. But I can't go below 10%. So cash will likely remain ~11.72% unless I increase it.
+
+Actually, the "not traded" rule might mean that the system won't execute trades for changes <2pp, but the target weight is still recorded. But for practical purposes, I should assume small changes don't happen. So I should propose weights that are either equal to current (within 2pp) or meaningfully different.
+
+But the guardrails check my proposal against baseline for the +15pp rule and the >0.5pp rationale rule. So I need to provide rationale for any weight that differs from baseline by >0.5pp.
+
+Let me propose a portfolio that:
+- Keeps the defensive tilt but slightly reduces bonds to fund a small increase in high-quality equities?
+- Or stays close to current?
+
+Given that the median has no skill, and the current portfolio already reflects a risk-off stance (high bonds/cash, low high-vol assets), and the drawdown is small, I think staying close to current is reasonable. But I need to check if any current weights violate the "increase by at most 15pp above baseline" rule.
+
+Check current vs baseline + 15pp:
+- A02: 8.12% vs 7.82%+15%=22.82% - OK
+- A11: 2.51% vs 4.57%+15%=19.57% - OK (actually below baseline)
+- A10: 8.67% vs 6.73%+15%=21.73% - OK
+- A06: 10.03% vs 8.32%+15%=23.32% - OK
+- A12: 0% vs 4.22%+15%=19.22% - OK
+- A03: 0% vs 4.83%+15%=19.83% - OK
+- A04: 12.07% vs 7.86%+15%=22.86% - OK
+- A08: 12.08% vs 8.65%+15%=23.65% - OK
+- A09: 15.9% vs 11.49%+15%=26.49% - OK (but ETF max 25%, so 15.9% is fine)
+- A05: 6.79% vs 4.69%+15%=19.69% - OK
+- A01: 0% vs 2.13%+15%=17.13% - OK
+- A15: 6.08% vs 6.21%+15%=21.21% - OK
+- A13: 0% vs 4.57%+15%=19.57% - OK
+- A07: 3.05% vs 4.04%+15%=19.04% - OK
+- A14: 2.99% vs 3.88%+15%=18.88% - OK
+
+All current weights are within limits.
+
+Now, should I change anything? Let me look for concrete reasons:
+
+1. **A04 (health ETF)**: Strong 20d momentum (+8.62%), narrow interval (5.58%), low vol (21.4%). Currently 12.07%. Baseline 7.86%. I could increase it, but group health is at 15.12% (with A07 at 3.05%). Max group 30%, so room. But median 5d is +0.05%, not a signal. However, the narrow interval suggests lower risk. I could increase to 13% or 14%? But that's only +1-2pp from current, which might not trade. To make it trade, I'd need +2pp to 14.07%. But is there a reason? The momentum is strong, but the forecast median is flat. I'll keep it at current or slightly higher.
+
+2. **A08 (financials ETF)**: Similar to A04. Strong momentum (+7.54%), narrowest interval (5.06%). Currently 12.08%. Could increase.
+
+3. **A09 (bonds)**: Narrowest interval (3.81%), lowest vol. Currently 15.9%. This is the safest asset. In a risk-off environment, keeping it high makes sense. But 15.9% + 11.72% cash = 27.6% defensive. Maybe too much? But with no clear directional signal, keeping defensive is fine.
+
+4. **A11 (tech_growth ETF)**: Underweight at 2.51% vs baseline 4.57%. Very wide interval (9.58%), high vol (36.7%), negative 20d (-5.29%). I agree with being underweight. Keep at 2.51% or reduce to 0? But reducing to 0 is a -2.51pp change, which would trade. But is there a reason to cut it entirely? The wide interval suggests high risk, but it's an ETF, not a single stock. I'll keep it at current low level.
+
+5. **A05 (gold)**: Negative momentum (-2.88% 20d), wide interval (9.34%). Currently 6.79% vs baseline 4.69%. Could reduce toward baseline (4.69%) which is a -2.1pp change, would trade. Gold is a hedge, but with negative momentum and high uncertainty, reducing makes sense. But gold often moves inversely to equities. Given the portfolio is equity-heavy (besides bonds), maybe keep some gold. I'll reduce slightly to 5.5% or so? That's -1.29pp, won't trade. To trade, need to go to 4.79% or below. Let's say 4.7% (close to baseline). Change of -2.09pp, would trade.
+
+6. **A06 (intl developed)**: Narrow interval (5.26%), low vol (19.9%). Currently 10.03% vs baseline 8.32%. Slightly overweight. Could reduce to baseline (8.32%), change of -1.71pp, won't trade. Or keep.
+
+7. **A02 and A10 (us_broad)**: Combined 16.79%. Baseline combined 14.55%. Slightly overweight. A10 has positive 20d (+4.32%), A02 has negative (-1.27%). Maybe shift from A02 to A10? But both are us_broad. A10 has better momentum. Current A02 8.12%, A10 8.67%. I could reduce A02 to 7% (-1.12pp, won't trade) or to 6% (-2.12pp, would trade) and increase A10 to 10.67% (+2pp, would trade). But A10 baseline is 6.73%, so 10.67% is +3.94pp above baseline, within +15pp limit. Group us_broad would be 16.67%, under 30%. This seems reasonable: favor A10 over A02 due to momentum.
+
+But wait, A02 has narrower interval (5.60% vs 6.51%), so lower risk. A10 has wider interval. But A10 has better momentum. Given median has no skill, momentum might be the only signal, but the instructions say "Use only the data provided" and recent returns are provided. However, the instructions also say "The median has shown no reliable directional skill" but don't say anything about momentum. But typically, momentum is a known factor. However, I should be careful.
+
+Actually, looking at the data, A04 and A08 have strong momentum and narrow intervals - those are the best risk-adjusted opportunities. A10 has decent momentum but wider interval.
+
+Let me reconsider: maybe I should increase A04 and A08 (the strong momentum, low uncertainty assets) and reduce A09 (bonds) and A05 (gold) to fund them, while keeping cash at 11.72%.
+
+Proposed changes:
+- A04: 12.07% -> 14% (+1.93pp, won't trade... need +2pp to 14.07%). Let's say 14.5% (+2.43pp, trades). Baseline 7.86%, so 14.5% is +6.64pp above baseline, OK. Group health: 14.5% + 3.05% = 17.55% < 30%, OK.
+- A08: 12.08% -> 14% (+1.92pp, won't trade). Let's say 14.5% (+2.42pp, trades). Baseline 8.65%, +5.85pp above baseline, OK. Group financials: 14.5% + 6.08% = 20.58% < 30%, OK.
+- A09: 15.9% -> 13% (-2.9pp, trades). Baseline 11.49%, so 13% is +1.51pp above baseline, needs rationale.
+- A05: 6.79% -> 4.5% (-2.29pp, trades). Baseline 4.69%, so 4.5% is -0.19pp from baseline, no rationale needed (within 0.5pp).
+- Cash: 11.72% -> 11.72% (keep) or adjust to make sum 1.
+
+Let's calculate sum with these changes:
+Current sum of assets (excl cash): 0.8829
+Changes: A04 +0.0243, A08 +0.0242, A09 -0.029, A05 -0.0229 = -0.0034
+New asset sum: 0.8829 - 0.0034 = 0.8795
+Cash: 1 - 0.8795 = 0.1205 (12.05%)
+
+But cash was 11.72%, now 12.05%, change +0.33pp, won't trade. But cash must be >=10%, 12.05% is fine.
+
+Wait, I need to check if the sum of my proposed weights equals 1 (including cash).
+
+Let me list all 15 assets with proposed weights:
+
+1. A02: keep 0.0812 (no change)
+2. A11: keep 0.0251 (no change)
+3. A10: keep 0.0867 (no change)
+4. A06: keep 0.1003 (no change)
+5. A12: keep 0.0 (no change)
+6. A03: keep 0.0 (no change)
+7. A04: 0.145 (from 0.1207, +0.0243)
+8. A08: 0.145 (from 0.1208, +0.0242)
+9. A09: 0.13 (from 0.159, -0.029)
+10. A05: 0.045 (from 0.0679, -0.0229)
+11. A01: keep 0.0
+12. A15: keep 0.0608
+13. A13: keep 0.0
+14. A07: keep 0.0305
+15. A14: keep 0.0299
+
+Sum: 0.0812+0.0251+0.0867+0.1003+0+0+0.145+0.145+0.13+0.045+0+0.0608+0+0.0305+0.0299 =
+0.0812+0.0251=0.1063
++0.0867=0.193
++0.1003=0.2933
++0.145=0.4383
++0.145=0.5833
++0.13=0.7133
++0.045=0.7583
++0.0608=0.8191
++0.0305=0.8496
++0.0299=0.8795
+
+Cash = 1 - 0.8795 = 0.1205
+
+Check constraints:
+- All >=0: yes
+- Sum = 1: yes (0.8795 + 0.1205 = 1)
+- Cash >= 0.10: 0.1205 >= 0.10, yes
+- ETF <= 25%: max is A09 at 13%, A04 at 14.5%, A08 at 14.5%, all < 25%, yes
+- Stock <= 10%: max is A15 at 6.08%, yes
+- Group <= 30%:
+  - us_broad: 0.0812+0.0867=0.1679 < 0.30, yes
+  - tech_growth: 0.0251+0+0.0299=0.055 < 0.30, yes
+  - intl_developed: 0.1003 < 0.30, yes
+  - emerging: 0 < 0.30, yes
+  - energy: 0 < 0.30, yes
+  - health: 0.145+0.0305=0.1755 < 0.30, yes
+  - financials: 0.145+0.0608=0.2058 < 0.30, yes
+  - bonds: 0.13 < 0.30, yes
+  - gold: 0.045 < 0.30, yes
+- Increase above baseline <= 15pp:
+  - A04: 0.145 - 0.0786 = 0.0664 (6.64pp) < 15pp, yes
+  - A08: 0.145 - 0.0865 = 0.0585 (5.85pp) < 15pp, yes
+  - A09: 0.13 - 0.1149 = 0.0151 (1.51pp) < 15pp, yes
+  - Others are at or below baseline or unchanged.
+- Drawdown actions: empty, so no restrictions.
+
+Deviations from baseline > 0.5pp needing rationale:
+- A02: 0.0812 - 0.0782 = 0.003 (0.3pp) < 0.5pp, no rationale needed
+- A11: 0.0251 - 0.0457 = -0.0206 (-2.06pp) > 0.5pp, needs rationale
+- A10: 0.0867 - 0.0673 = 0.0194 (1.94pp) > 0.5pp, needs rationale
+- A06: 0.1003 - 0.0832 = 0.0171 (1.71pp) > 0.5pp, needs rationale
+- A12: 0 - 0.0422 = -0.0422 (-4.22pp) > 0.5pp, needs rationale
+- A03: 0 - 0.0483 = -0.0483 (-4.83pp) > 0.5pp, needs rationale
+- A04: 0.145 - 0.0786 = 0.0664 (6.64pp) > 0.5pp, needs rationale
+- A08: 0.145 - 0.0865 = 0.0585 (5.85pp) > 0.5pp, needs rationale
+- A09: 0.13 - 0.1149 = 0.0151 (1.51pp) > 0.5pp, needs rationale
+- A05: 0.045 - 0.0469 = -0.0019 (-0.19pp) < 0.5pp, no rationale needed
+- A01: 0 - 0.0213 = -0.0213 (-2.13pp) > 0.5pp, needs rationale
+- A15: 0.0608 - 0.0621 = -0.0013 (-0.13pp) < 0.5pp, no rationale needed
+- A13: 0 - 0.0457 = -0.0457 (-4.57pp) > 0.5pp, needs rationale
+- A07: 0.0305 - 0.0404 = -0.0099 (-0.99pp) > 0.5pp, needs rationale
+- A14: 0.0299 - 0.0388 = -0.0089 (-0.89pp) > 0.5pp, needs rationale
+- Cash: 0.1205 - 0.1 = 0.0205 (2.05pp) > 0.5pp, needs rationale (though cash might be treated differently, but I'll include it)
+
+So I need rationales for: A11, A10, A06, A12, A03, A04, A08, A09, A01, A13, A07, A14, and cash.
+
+Rationales:
+- A11 (tech_growth ETF): Underweight due to very wide forecast interval (9.58%) indicating high uncertainty and elevated volatility (36.7%), combined with negative 20d momentum (-5.29%).
+- A10 (us_broad): Overweight vs baseline due to positive 20d momentum (+4.32%) and moderate uncertainty, providing broad US exposure.
+- A06 (intl_developed): Overweight due to narrow forecast interval (5.26%) and lowest volatility among equity ETFs (19.9%), offering diversification with lower risk.
+- A12 (emerging): Zero weight due to extremely wide forecast interval (10.39%) and high volatility (32.7%), indicating excessive uncertainty.
+- A03 (energy): Zero weight due to wide interval (9.08%), high volatility (31.9%), and negative 20d momentum (-6.30%).
+- A04 (health): Overweight due to strong 20d momentum (+8.62%), narrow interval (5.58%), and low volatility (21.4%), indicating favorable risk-adjusted prospects.
+- A08 (financials): Overweight due to strongest 20d momentum (+7.54%), narrowest interval among equity ETFs (5.06%), and low volatility (21.6%).
+- A09 (bonds): Slightly overweight baseline but reduced from current to fund equity increases; narrowest interval overall (3.81%) and lowest volatility (12.0%) provide stability, but 13% maintains defensive ballast while allowing more equity exposure.
+- A01 (tech stock): Zero weight due to extreme forecast width (20.59%), very high volatility (52.8%), and severe recent decline (-21.50% 20d).
+- A13 (energy stock): Zero weight due to wide interval (9.58%), high volatility (31.8%), and negative momentum (-5.82% 20d).
+- A07 (health stock): Underweight due to wide interval (10.85%) and high volatility (38.8%) despite strong 20d momentum (+18.91%), as the risk is too high relative to the ETF alternative (A04).
+- A14 (tech stock): Underweight due to wide interval (11.30%) and high volatility (42.4%).
+- Cash: Increased to 12.05% to maintain liquidity buffer above the 10% minimum, given the small portfolio drawdown (-1.28%) and mixed market signals.
+
+Wait, I need to check if A07's deviation is >0.5pp: -0.99pp, yes. But I'm keeping it at current 3.05%, which is below baseline 4.04%. The rationale is that despite momentum, the risk (width 10.85%, vol 38.8%) is too high compared to A04.
+
+Similarly for A14: -0.89pp from baseline.
+
+Now, confidence values: I need to assign confidence (0-1) for each position, representing probability that deviation from baseline will be better. For positions at baseline or close, use 0.5. For my active deviations, I need to be calibrated. Given the median has no skill, my confidence should be modest, maybe 0.55-0.6 for the strong momentum/low risk assets, and 0.5 for others.
+
+Actually, the confidence is "your probability that your deviation from the baseline will turn out better". So for assets where I deviate from baseline, I assign confidence. For assets where I'm at baseline (within 0.5pp), confidence should be 0.5.
+
+Let me assign:
+- A02: 0.5 (close to baseline)
+- A11: 0.55 (underweight is justified by high risk)
+- A10: 0.55 (overweight justified by momentum)
+- A06: 0.55 (overweight justified by low risk)
+- A12: 0.6 (zero is clearly better given extreme uncertainty)
+- A03: 0.6 (zero is better)
+- A04: 0.6 (overweight justified by momentum + low risk)
+- A08: 0.6 (same)
+- A09: 0.5 (close to baseline, slight overweight)
+- A05: 0.5 (close to baseline)
+- A01: 0.6 (zero is better)
+- A15: 0.5 (close to baseline)
+- A13: 0.6 (zero is better)
+- A07: 0.55 (underweight justified by high risk)
+- A14: 0.55 (underweight justified by high risk)
+
+But wait, for A09 I proposed 0.13 vs baseline 0.1149, deviation +1.51pp. Confidence 0.5 or slightly higher? I'll say 0.52.
+
+Actually, looking at my proposal, I'm increasing A04 and A08 significantly. Is this justified? The instructions say "The median has shown no reliable directional skill... Do not treat a positive median as a buy signal on its own." But I'm using momentum (recent returns) and risk (width). The width is reliable. A04 and A08 have narrow widths (low risk) and strong momentum. This seems like a reasonable risk-adjusted bet.
+
+However, I should be careful not to over-concentrate. Health group would be 17.55%, financials 20.58%. Both under 30%, so OK.
+
+Alternative: Maybe I should not increase A04 and A08 so much, and instead just stay closer to current? But the current is already overweight them. If I stay at current, I don't need to justify the deviation from baseline as much? No, I still need to justify any deviation >0.5pp from baseline. Current A04 is 12.07% vs baseline 7.86%, deviation +4.21pp, which needs rationale anyway.
+
+So whether I keep current or increase to 14.5%, I need rationale. The question is whether 14.5% is better than 12.07%. Given the strong momentum and low risk, maybe yes, but the change from current is +2.43pp, which will trade. Is it worth the churn? The instructions say "Avoid churn". But if I believe 14.5% is better than 12.07%, I should do it.
+
+But actually, looking at the forecast medians: A04 median 5d is +0.05%, A08 is -0.13%. Not strong signals. The momentum is strong but could reverse. The width is narrow, meaning the outcome is more predictable, but the median is near zero. So the expected return is near zero, but with low variance. That's not necessarily a "buy" - it's just low risk. In a long-only portfolio, low risk assets are good for stability, but they don't offer high returns.
+
+Given that, maybe I shouldn't increase them further. Maybe I should keep them at current levels and not make big changes. The current portfolio already has them overweight.
+
+Let me reconsider: maybe the best decision is to stay close to the current portfolio, making only minor adjustments that are >2pp from current if needed, or just accept the current weights.
+
+But I need to output target weights. I can output the current weights (or close to them) with rationales for the deviations from baseline.
+
+Let me check if current weights sum to 1 with cash 0.1172: yes, approximately.
+
+So I could propose:
+- All assets at current weights
+- Cash at 0.1172
+
+But then I need rationales for all deviations from baseline >0.5pp. That's fine.
+
+However, the instructions say "You may increase a position by at most 15 percentage points above its baseline weight." Current weights satisfy this.
+
+And "Every deviation from the baseline larger than 0.5 percentage points needs a rationale." So I need to provide rationale for each position in the JSON.
+
+So I can simply keep the current portfolio and provide rationales. This avoids churn.
+
+But is there any reason to change? Let me look at A05 (gold). Current 6.79%, baseline 4.69%. Deviation +2.1pp. Gold has negative momentum and wide interval. Maybe reduce to baseline 4.69%? That's a -2.1pp change, which would trade. Rationale: negative 20d momentum (-2.88%) and wide forecast interval (9.34%) suggest poor risk-adjusted prospects; reducing toward baseline.
+
+Similarly, A09 (bonds) at 15.9% vs baseline 11.49%. Deviation +4.41pp. Bonds have narrow interval (good) but low returns. With cash at 11.72%, total defensive is high. Maybe reduce bonds to 13% (-2.9pp, trades) and increase cash to 12.05%? Or increase equities?
+
+But if I reduce bonds, where does the money go? I could increase A04 and A08 as I thought, or increase cash. Given the uncertainty, increasing cash is safer. But cash is already 11.72%, and I can only reduce it to 10% (change -1.72pp, won't trade). So I can't reduce cash much. I could increase cash to 13% (+1.28pp, won't trade). So effectively, if I reduce bonds by 2.9pp, cash goes up by 2.9pp to 14.62%, which is a big change (+2.9pp, trades). That might be too much cash.
+
+Alternatively, reduce bonds and increase A06 (intl developed) which has low risk? A06 is at 10.03%, baseline 8.32%. I could increase to 12% (+1.97pp, won't trade) or 13% (+2.97pp, trades). But A06 median is -0.09%, not great.
+
+Or increase A02/A10 (us broad)? A10 has momentum.
+
+Let me think about the overall regime. The portfolio is in a small drawdown (-1.28%). The forecast intervals are mostly wide for risky assets, narrow for safe ones. This suggests a "risk-off" or uncertain environment. In such environments, holding more defensive assets (bonds, cash) and high-quality low-vol assets (A04, A08, A06) makes sense. The current portfolio already does this.
+
+So my decision: **Stay close to current, with minor adjustments**:
+- Reduce A05 (gold) from 6.79% to 4.69% (baseline) due to negative momentum and high uncertainty. Change -2.1pp.
+- Reduce A09 (bonds) from 15.9% to 14% (-1.9pp, won't trade... need -2pp to trade, so 13.9% or lower). Let's say 13.5% (-2.4pp, trades).
+- Increase A04 from 12.07% to 13.5% (+1.43pp, won't trade... need +2pp). So 14.07% (+2pp). Let's say 14% (+1.93pp, won't trade). To trade, need 14.07%+. Let's say 14.5% (+2.43pp).
+- Increase A08 from 12.08% to 14.5% (+2.42pp).
+- Keep others at current.
+- Cash will adjust to make sum 1.
+
+Calculate:
+Current assets sum: 0.8829
+Changes: A05 -0.021, A09 -0.024, A04 +0.0243, A08 +0.0242 = +0.0035
+New assets sum: 0.8864
+Cash: 1 - 0.8864 = 0.1136 (11.36%)
+
+Cash change: 11.36% - 11.72% = -0.36pp (won't trade, but that's fine).
+
+Check group limits:
+- health: 14.5% + 3.05% = 17.55% < 30%, OK
+- financials: 14.5% + 6.08% = 20.58% < 30%, OK
+- bonds: 13.5% < 25%, OK
+- gold: 4.69% < 25%, OK
+
+Check baseline deviations:
+- A05: 4.69% vs baseline 4.69% = 0, no rationale needed (or 0.5 confidence)
+- A09: 13.5% vs 11.49% = +2.01pp, needs rationale
+- A04: 14.5% vs 7.86% = +6.64pp, needs rationale
+- A08: 14.5% vs 8.65% = +5.85pp, needs rationale
+- Others same as before.
+
+This seems like a reasonable active stance: trim gold and bonds, add to the two strongest low-risk momentum assets (health and financials ETFs).
+
+But wait, is A04 really "low risk"? Width 5.58% is moderate, vol 21.4% is moderate. A08 is narrower (5.06%) and lower vol (21.6%). A06 is even lower (5.26%, 19.9%). But A06 has no momentum (20d +1.86%). A04 and A08 have strong momentum.
+
+Given the median has no skill, momentum is the only directional signal available in the data. So using it is justified.
+
+Confidence: I'll set 0.58 for A04 and A08 (moderate confidence that overweight will help), 0.55 for A09 (reducing bonds might hurt if risk-off continues, but I think it's balanced), 0.5 for others.
+
+Actually, for A09, reducing bonds in a risk-off environment might be wrong. But the drawdown is small, and bonds have near-zero median. Keeping them at 13.5% vs 15.9% is a modest reduction.
+
+Alternative: Keep bonds at 15.9% and just reduce gold, using the proceeds to increase cash? But cash is already high. Or increase A04/A08 without reducing bonds, but then cash would drop below 10%? Let's check: if I only reduce gold by 2.1pp and increase A04 and A08 by 2.43pp and 2.42pp, total increase 4.85pp, decrease 2.1pp, net +2.75pp, so cash would drop by 2.75pp to 8.97%, which violates the 10% minimum. So I must reduce something else or increase cash. Reducing bonds is the logical choice.
+
+So my plan is sound.
+
+Let me finalize the weights:
+
+1. A02: 0.0812 (current), rationale: "Broad US exposure maintained; deviation from baseline within 0.5pp." Confidence 0.5
+2. A11: 0.0251 (current), rationale: "Underweight due to very wide forecast interval (9.58%) and high volatility (36.7%) indicating elevated uncertainty; negative 20d momentum (-5.29%)." Confidence 0.55
+3. A10: 0.0867 (current), rationale: "Overweight vs baseline supported by positive 20d momentum (+4.32%) and moderate uncertainty; provides broad US equity exposure." Confidence 0.55
+4. A06: 0.1003 (current), rationale: "Overweight due to narrow forecast interval (5.26%) and lowest volatility among equity ETFs (19.9%), offering diversification with lower risk profile." Confidence 0.55
+5. A12: 0.0 (current), rationale: "Zero weight due to extremely wide forecast interval (10.39%) and high volatility (32.7%), indicating excessive uncertainty for the horizon." Confidence 0.6
+6. A03: 0.0 (current), rationale: "Zero weight due to wide interval (9.08%), high volatility (31.9%), and negative 20d momentum (-6.30%)." Confidence 0.6
+7. A04: 0.145 (increased), rationale: "Overweight due to strong 20d momentum (+8.62%), narrow forecast interval (5.58%), and low volatility (21.4%), indicating favorable risk-adjusted prospects relative to baseline." Confidence 0.58
+8. A08: 0.145 (increased), rationale: "Overweight due to strongest 20d momentum (+7.54%), narrowest interval among equity ETFs (5.06%), and low volatility (21.6%)." Confidence 0.58
+9. A09: 0.135 (reduced), rationale: "Reduced from current but still above baseline; narrowest interval overall (3.81%) and lowest volatility (12.0%) provide stability, but trimming to fund higher-conviction equity positions while maintaining defensive ballast." Confidence 0.52
+10. A05: 0.0469 (reduced to baseline), rationale: "Reduced to baseline due to negative 20d momentum (-2.88%) and wide forecast interval (9.34%), suggesting poor risk-adjusted prospects." Confidence 0.55
+11. A01: 0.0 (current), rationale: "Zero weight due to extreme forecast width (20.59%), very high volatility (52.8%), and severe recent decline (-21.50% 20d)." Confidence 0.6
+12. A15: 0.0608 (current), rationale: "Maintained near baseline; moderate uncertainty and volatility." Confidence 0.5
+13. A13: 0.0 (current), rationale: "Zero weight due to wide interval (9.58%), high volatility (31.8%), and negative momentum (-5.82% 20d)." Confidence 0.6
+14. A07: 0.0305 (current), rationale: "Underweight vs baseline due to wide interval (10.85%) and high volatility (38.8%) despite strong 20d momentum (+18.91%); risk too high relative to health ETF (A04)." Confidence 0.55
+15. A14: 0.0299 (current), rationale: "Underweight vs baseline due to wide interval (11.30%) and high volatility (42.4%)." Confidence 0.55
+
+Cash: 0.1136 (calculated as 1 - sum of above)
+
+Let me verify sum:
+0.0812 + 0.0251 + 0.0867 + 0.1003 + 0 + 0 + 0.145 + 0.145 + 0.135 + 0.0469 + 0 + 0.0608 + 0 + 0.0305 + 0.0299 =
+0.0812+0.0251=0.1063
++0.0867=0.193
++0.1003=0.2933
++0.145=0.4383
++0.145=0.5833
++0.135=0.7183
++0.0469=0.7652
++0.0608=0.826
++0.0305=0.8565
++0.0299=0.8864
+Cash = 1 - 0.8864 = 0.1136
+
+Check cash >= 0.10: yes.
+Check sum = 1: 0.8864 + 0.1136 = 1.0, yes.
+
+Check group sums:
+- us_broad: 0.0812+0.0867=0.1679 < 0.3
+- tech_growth: 0.0251+0+0.0299=0.055 < 0.3
+- intl_developed: 0.1003 < 0.3
+- emerging: 0 < 0.3
+- energy: 0 < 0.3
+- health: 0.145+0.0305=0.1755 < 0.3
+- financials: 0.145+0.0608=0.2058 < 0.3
+- bonds: 0.135 < 0.3
+- gold: 0.0469 < 0.3
+
+All good.
+
+Check max weights:
+- ETFs: max is 0.145 < 0.25, OK
+- Stocks: max is 0.0608 < 0.10, OK
+
+Check increase above baseline <= 0.15:
+- A04: 0.145 - 0.0786 = 0.0664 < 0.15, OK
+- A08: 0.145 - 0.0865 = 0.0585 < 0.15, OK
+- A09: 0.135 - 0.1149 = 0.0201 < 0.15, OK
+- A10: 0.0867 - 0.0673 = 0.0194 < 0.15, OK
+- A06: 0.1003 - 0.0832 = 0.0171 < 0.15, OK
+- A02: 0.0812 - 0.0782 = 0.003 < 0.15, OK
+- Others are below baseline.
+
+All good.
+
+Now, the analysis string should summarize the market reading and changes.
+
+Analysis:
+"The portfolio is in a modest drawdown (-1.28%) with no restrictive actions triggered. Forecast intervals indicate elevated uncertainty in cyclical and growth assets (emerging, energy, tech stocks) with widths of 9-20%, while defensive and quality assets (bonds, financials, health, intl developed) show narrow intervals of 3.8-5.6%, signaling lower risk. Recent momentum is divergent: health (A04) and financials (A08) ETFs show strong 20d gains (+8.6%, +7.5%) with low volatility, while gold and tech/energy assets show negative momentum. Given the lack of directional skill in median forecasts, I focus on risk-adjusted positioning: trimming gold (A05) to baseline and reducing bonds (A09) slightly to fund increases in A04 and A08, which offer the best combination of momentum and low forecast uncertainty. High-uncertainty assets (A12, A03, A01, A13) remain at zero. Cash is maintained at 11.36%, above the 10% minimum, providing a buffer."
+
+Now, format as JSON.
+
+One thing: the schema requires "positions" to be an array of objects with symbol, target_weight, rationale, confidence. All 15 assets must be included.
+
+Also, cash_weight is a separate field.
+
+Let me double-check the symbols: A02, A11, A10, A06, A12, A03, A04, A08, A09, A05, A01, A15, A13, A07, A14. That's 15.
+
+Order doesn't matter but I'll keep the order from the input.
+
+Confidence values: I need to make sure they are between 0 and 1.
+
+Let me write the JSON.
