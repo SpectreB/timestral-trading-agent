@@ -106,6 +106,9 @@ class ExecutionConfig:
 
     no_trade_band: float = 0.02  # skip orders that move a weight by less than 2 pts
     max_turnover_per_run: float = 0.30
+    # The cap brakes sudden *changes*; the initial deployment from cash is a different case.
+    # At most this share invested counts as "starting from cash": the cap is waived once.
+    initial_deployment_max_invested: float = 0.05
     limit_price_tolerance: float = 0.003  # marketable limit: +/-0.3% beyond current price
 
 

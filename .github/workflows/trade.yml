@@ -26,6 +26,10 @@ on:
         description: Request live orders (still requires TRADING_ENABLED=true)
         type: boolean
         default: false
+      publish:
+        description: Push the records to the audit-log branch (untick for a test run)
+        type: boolean
+        default: true
 
 # One trading run at a time, never cancelled midway.
 concurrency:
@@ -126,7 +130,8 @@ jobs:
 
       - name: Publish the audit log
         # Also after a failure: the record is written before any order is sent.
-        if: always()
+        # A manual test run can opt out, so the public log only holds the agent's real activity.
+        if: always() && (github.event_name != 'workflow_dispatch' || inputs.publish)
         run: |
           [ -d audit/.git ] || exit 0
           python -c "from pathlib import Path; from agent.audit import FileAuditStore; FileAuditStore(Path('audit')).build_tables()" || true
