@@ -143,3 +143,42 @@ def test_corrections_are_reported() -> None:
     d = decide(make_input(), FakeLLM([json.dumps(proposal(NVDA=0.15, SPY=0.01))]), CFG)
     assert d.outcome == "corrected"
     assert d.target_weights["NVDA"] == pytest.approx(0.10)
+
+
+class FlakyLLM(FakeLLM):
+    """Raises on the calls listed in `fail_on` (1-based), answers normally otherwise."""
+
+    def __init__(self, answers: list[str], fail_on: set[int]) -> None:
+        super().__init__(answers)
+        self.fail_on = fail_on
+        self.seen = 0
+
+    def complete(self, messages: list[dict[str, str]], schema: dict[str, Any]) -> LLMResponse:
+        self.seen += 1
+        if self.seen in self.fail_on:
+            self.calls.append(messages)
+            raise TimeoutError("The read operation timed out")
+        self.answers.insert(len(self.calls), self.answers[0])
+        return super().complete(messages, schema)
+
+
+def test_a_failed_llm_call_is_retried_with_the_same_question() -> None:
+    llm = FlakyLLM([GOOD], fail_on={1})
+    d = decide(make_input(), llm, CFG)
+    assert d.outcome == "accepted" and len(d.attempts) == 2
+    first = d.attempts[0]
+    assert first.guardrails.rejection_reason == "llm_call_failed"
+    assert "TimeoutError" in first.response.reasoning and first.response.text == ""
+    assert llm.calls[1] == llm.calls[0]  # no "you were rejected" feedback after an outage
+
+
+def test_an_unavailable_llm_makes_the_agent_hold_instead_of_crashing() -> None:
+    current = dict(BASELINE)
+    d = decide(make_input(current=current), FlakyLLM([GOOD], fail_on={1, 2}), CFG)
+    assert d.outcome == "fallback_hold" and d.target_weights == current
+    assert [a.guardrails.rejection_reason for a in d.attempts] == ["llm_call_failed"] * 2
+
+
+def test_the_replay_raises_on_an_outage_instead_of_recording_a_hold() -> None:
+    with pytest.raises(TimeoutError):
+        decide(make_input(), FlakyLLM([GOOD], fail_on={1}), CFG, on_llm_failure="raise")
