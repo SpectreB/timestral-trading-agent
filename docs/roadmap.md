@@ -22,13 +22,13 @@ The single place to see where the project stands. Details of each decision are i
 | D-012 | Dashboard: static page on GitHub Pages | Taken autonomously; **to confirm by the owner** |
 | D-013 | Forecast scoring from recorded closes | Taken autonomously; **to confirm by the owner** |
 | D-014 | Performance metrics: shadow portfolios, forecast risk (Timestral volatilities x historical correlation) | Agreed in principle 2026-11-22; to record with T-03 |
-| D-015 | Historical replay (test case 1) | Agreed in principle 2026-11-22 (recent test period, anonymised assets); details open (P-1) |
+| D-015 | Historical replay (test case 1): ~63 recent sessions (Aug to Nov 2026), daily, same agent as live, anonymised, point-in-time, simulated fills | Accepted 2026-11-22 |
 
 ## Waiting for the owner
 
 | ID | Question | Recommendation |
 |---|---|---|
-| P-1 | Replay design: test period, decision frequency, how the earlier period informs the agent | Most recent months as test period; daily decisions (cost is not a constraint, see below); earlier period used to tune parameters and write a "lessons" note for the prompt |
+| P-1 | ~~Replay design~~ | Resolved 2026-11-22: see D-015 |
 | P-2 | When to switch `TRADING_ENABLED` to `true` | Before Mon 16:00 Paris (T-01 has passed) |
 | P-3 | Confirm or revise D-012 and D-013 | |
 | P-4 | Accept D-002 formally | Accept |
@@ -41,7 +41,7 @@ The single place to see where the project stands. Details of each decision are i
 | T-02 | Switch the kill switch on | Owner | Before Mon 16:00 Paris |
 | T-03 | Metrics: forecast risk module, shadow portfolios (agent, LLM proposal, baseline, equal weight, SPY), comparisons with confidence intervals, risk and LLM-confidence calibration; record D-014 | Claude | In progress: code written on `feat/metrics`, tests to write |
 | T-04 | Dashboard redesign, user-first: one page answering four questions (is it running, how is it doing, what does it hold and why, can we trust it), evidence collapsed, metrics from T-03 | Claude | To do (after T-03) |
-| T-05 | Replay harness (test case 1): point-in-time data enforced in code, anonymisation, leakage probe, simulated fills, separate store, same guardrails, variants compared; record D-015 | Claude | To do (after P-1) |
+| T-05 | Replay harness (test case 1) as specified in D-015: point-in-time data enforced in code, anonymisation, leakage probe, simulated fills, separate output, shadow portfolios | Claude | To do (after T-03) |
 | T-06 | LLM soundness: stability across repeated calls, a few behaviour scenarios (simulated crash, very wide intervals) | Claude | To do (partly covered by T-03 and T-05) |
 | T-07 | Final pass before submission: README, CLAUDE.md, decision statuses, release `v1.0` | Claude | Wed 2026-11-25 morning |
 
