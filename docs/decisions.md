@@ -662,6 +662,52 @@ The log stays append-only and the scores can never disagree with the facts they 
 
 ---
 
+## D-014 — Performance metrics: shadow portfolios and forecast portfolio risk
+
+- **Date:** 2026-11-22
+- **Status:** Accepted with the project owner (principle agreed 2026-11-22); implemented in `metrics.py` and `risk.py`
+
+### Context
+"How do we know the decisions are sound" needs robust measures, and the owner asked for them explicitly. Two questions matter beyond raw performance: **what does each layer add** (Timestral, the LLM, the guardrails), and **does Timestral's risk forecast hold** at the portfolio level. Timestral forecasts each asset separately: its quantiles are marginal distributions, so it cannot give a covariance matrix on its own. The live window is short, so every figure must say how much evidence stands behind it.
+
+### Options
+**Measuring the contribution of each layer**
+| Option | Pros | Cons |
+|---|---|---|
+| Account performance only | Real (paper) money | One number mixing everything: cannot tell what the LLM or Timestral added |
+| Separate backtests per variant | Clean comparison | Needs a replay engine for each variant; not live |
+| **Shadow portfolios from the audit log** | Every record already holds baseline, LLM proposal and final; valued with observed closes they isolate each layer at no extra cost, live and in the replay | Counterfactual valuation ignores costs and slippage (reported separately from the account) |
+
+**Portfolio-level forecast risk**
+| Option | Pros | Cons |
+|---|---|---|
+| Historical covariance only | Simple | Ignores Timestral entirely |
+| Multivariate Timestral run | One model | Timestral outputs marginal quantiles, not a joint distribution: no covariance to read |
+| **Timestral volatilities x shrunk historical correlation** | Standard construction; Timestral supplies what it does well (forward-looking uncertainty per asset), history supplies the dependence | Normal approximation to turn an 80% interval into a standard deviation; correlation assumed stable over the horizon |
+
+**Robustness**
+| Option | Pros | Cons |
+|---|---|---|
+| Point estimates only | Simple | Over-claims on a few days of data |
+| i.i.d. bootstrap | Standard | Ignores the dependence between consecutive days |
+| **Moving-block bootstrap (blocks of 5 sessions), from 10 sessions on; nothing claimed below** | Respects serial dependence; honest about small samples | Wide intervals early on, which is the truth |
+
+### Decision
+- **Shadow portfolios** valued daily from the observed closes of D-013: `agent` (final target), `llm_proposal` (before guardrails; the final when the proposal was rejected), `baseline` (Timestral rule), `equal_weight` (6% per asset, same invested share), `spy`. Comparisons: Timestral rule vs equal weight, LLM vs rule, guardrails (final vs proposal), agent vs SPY; each with its number of sessions, cumulative and mean daily difference, and a 95% block-bootstrap interval, flagged *conclusive* only when the interval excludes zero. The real account return is reported separately.
+- **Forecast risk** (`risk.py`): sigma = (q90 - q10) / 2.563 from Timestral, correlation of daily log returns over 252 sessions shrunk 20% towards the identity; portfolio volatility at 1 and 5 days for every portfolio and each asset's share of the risk, **logged in every run record**. Risk calibration: realised portfolio move over the horizon divided by the forecast volatility; about 80% of outcomes should fall within +/-1.28, and the root mean square of these ratios should be close to 1.
+- **LLM confidence calibration:** each deviation above 0.5 pt with its stated confidence; it "paid off" when the tilt times the asset's realised 5-day return is positive. Brier score (0 is perfect, always answering 0.5 scores 0.25) and reliability by confidence band.
+- Timing approximation, stated in the code: a session's return is earned by the latest run before it, or by that day's morning run.
+
+### Rationale
+Shadow portfolios answer the question the evaluation actually asks (is each component useful?) with data already recorded, and serve the live run and the replay (D-015) identically. The risk construction is the honest way to get a covariance from a model that forecasts marginals, and it prepares Timestral as a tool the LLM can call later (D-004 option D). Intervals and minimum sample sizes stop a few lucky days from being read as skill.
+
+### Impact on further development
+- `tables/shadow_portfolios.csv` is derived with the other tables; the dashboard (T-04, dashboard redesign) shows these metrics first.
+- The replay (T-05) reuses the same functions.
+- In a later version `portfolio_vol` and `risk_contributions` become tools the LLM can call before answering.
+
+---
+
 ## D-015 — Historical replay of the agent (test case 1)
 
 - **Date:** 2026-11-22
