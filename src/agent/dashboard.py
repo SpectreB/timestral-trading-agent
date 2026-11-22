@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.audit import FileAuditStore
+from agent.scoring import calibration, score_forecasts
 
 DEFAULT_REPO = "https://github.com/SpectreB/timestral-trading-agent"
 AUDIT_BRANCH = "audit-log"
@@ -469,6 +470,46 @@ def _forecasts(run: dict[str, Any]) -> str:
     )
 
 
+def _calibration(scores: list[dict[str, Any]]) -> str:
+    rows, table = [], []
+    for c in calibration(scores):
+        h, share = c["horizon"], c["inside_80"]
+        direction = "n/a" if c["direction_hit"] is None else _pct(c["direction_hit"], 0)
+        tip = _tip(
+            f"{h}-day forecasts: {_pct(share, 0)} inside the 80% interval",
+            f"{c['n']} scored forecasts · target 80%",
+            f"direction hit rate {direction} · mean absolute error of the median "
+            f"{_pct(c['abs_error_median'], 2)}",
+        )
+        rows.append(
+            f'<div class="alloc" tabindex="0" {tip}><span class="name">{h}d</span>'
+            f'<span class="track"><span class="bar" style="width:{100 * share:.1f}%"></span>'
+            f'<span class="tick" style="left:calc(80% - 1px)"></span></span>'
+            f'<span class="val">{_pct(share, 0)}</span></div>'
+        )
+        table.append(
+            f"<tr><td>{h}</td><td class='num'>{c['n']}</td><td class='num'>{_pct(share, 0)}</td>"
+            f"<td class='num'>{direction}</td>"
+            f"<td class='num'>{_pct(c['abs_error_median'], 2)}</td></tr>"
+        )
+    legend = (
+        '<div class="legend"><span><i class="sw"></i>Share of outcomes inside the 80% interval'
+        '</span><span><i class="tk"></i>Target (80%)</span></div>'
+    )
+    return (
+        '<div class="card"><h2>Forecast calibration, live</h2>'
+        '<p class="sec-sub">Timestral\'s intervals against the prices that followed. A calibrated '
+        "model puts about 80% of outcomes inside its 80% interval. Early on, few forecasts are "
+        "scored and the figures are noisy, and the forecasts of one day are strongly "
+        "correlated: read the counts before the percentages.</p>"
+        f"{''.join(rows)}{legend}"
+        '<details><summary>Table view</summary><div class="scroll"><table><tr><th>Horizon (days)'
+        '</th><th class="num">Scored</th><th class="num">Inside 80%</th>'
+        '<th class="num">Direction hit</th><th class="num">Median abs. error</th></tr>'
+        f"{''.join(table)}</table></div></details></div>"
+    )
+
+
 def _decision(run: dict[str, Any]) -> str:
     attempt = _last_attempt(run)
     corrections = _corrections(run)
@@ -565,6 +606,7 @@ def render(
     generated_at: datetime,
     repo: str = DEFAULT_REPO,
     tables: list[str] | None = None,
+    scores: list[dict[str, Any]] | None = None,
 ) -> str:
     if runs:
         body = "".join(
@@ -574,6 +616,7 @@ def render(
                 _equity_chart(runs),
                 _allocation(runs[-1]),
                 _forecasts(runs[-1]),
+                _calibration(scores) if scores else "",
                 _decision(runs[-1]),
                 _runs_table(runs, fills, repo),
                 _fills_table(fills),
@@ -617,7 +660,8 @@ def build(audit_dir: Path, out_dir: Path, generated_at: datetime, repo: str = DE
             shutil.copy(csv_file, out_dir / "data" / csv_file.name)
             tables.append(csv_file.name)
     page = out_dir / "index.html"
-    page.write_text(render(runs, fills, generated_at, repo, tables), encoding="utf-8")
+    scores = score_forecasts(runs, store.read_observations())
+    page.write_text(render(runs, fills, generated_at, repo, tables, scores), encoding="utf-8")
     return page
 
 
