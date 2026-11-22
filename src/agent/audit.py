@@ -69,6 +69,8 @@ class RunRecord(BaseModel):
     reasoning_file: str
     # Forecast risk of every portfolio (D-014); absent in records written before it existed.
     risk: dict[str, Any] | None = None
+    # GitHub login of whoever asked for a simulation (D-017); None for scheduled runs.
+    requested_by: str | None = None
 
 
 def run_id(now: datetime, mode: str) -> str:
@@ -101,9 +103,13 @@ def build_record(
     decision: Decision,
     orders: Sequence[OrderRecord],
     execution_status: str,
+    label: str | None = None,
+    requested_by: str | None = None,
 ) -> tuple[RunRecord, str]:
-    """Assemble the run record and the reasoning text from the pipeline objects."""
-    rid = run_id(now, mode)
+    """Assemble the run record and the reasoning text from the pipeline objects.
+
+    `label` replaces the mode in the run id (a simulation is `YYYY-MM-DD_sim-HHMMSS`)."""
+    rid = run_id(now, label or mode)
     horizons = tuple(range(1, cfg.forecast.horizon + 1))
     last = decision.attempts[-1]
     proposed, proposed_cash = _proposal_view(last.response.text)
@@ -155,6 +161,7 @@ def build_record(
         orders=list(orders),
         execution_status=execution_status,
         reasoning_file=f"{rid}_reasoning.txt",
+        requested_by=requested_by,
         risk=risk_snapshot(
             inp.forecasts,
             inp.closes,

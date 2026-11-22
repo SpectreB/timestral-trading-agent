@@ -45,7 +45,7 @@ The single place to see where the project stands. Details of each decision are i
 | T-04 | Dashboard redesign, user-first (structure validated by the owner, reversible; see the redesign note in D-012) | Claude | Code and tests done (255 tests, 15 modules at 100%); in review (PR). Replay results (T-05) will take their place under Performance |
 | T-05 | Replay harness (test case 1) as specified in D-015 | Claude | Code and tests done (278 tests, 16 modules at 100%); **the 63-session replay is running** (started 2026-11-22, several hours, resumable); results to commit as `docs/replay` and to show on the dashboard when done |
 | T-06 | LLM soundness checks (D-016): behaviour scenarios and stability | Claude | Done 2026-11-22: 5 of 7 scenarios pass, stability measured; report in `docs/evals` |
-| T-08 | Simulations requested by the evaluators (D-017): simulation run type, issue-triggered workflow with throttling, reply in the issue, dashboard button and list | Claude | In progress |
+| T-08 | Simulations requested by the evaluators (D-017): simulation run type, issue-triggered workflow with throttling, reply in the issue, dashboard button and list | Claude | Code and tests done (303 tests, 18 modules at 100%); in review (PR); first real request to test after merge |
 | T-07 | Final pass before submission: README, CLAUDE.md, decision statuses, release `v1.0` | Claude | Wed 2026-11-25 morning |
 
 Done (most recent first): turnover cap waiver and no-publish test option (#12) · forecast scoring and backtest (#11) · dashboard on Pages (#10) · README (#9) · reconciliation (#8) · workflows (#7) · execution and full cycle (#6) · audit log (#5) · decision stage (#4) · forecast stage (#3) · guardrails (#2) · tooling and docs (#1).
