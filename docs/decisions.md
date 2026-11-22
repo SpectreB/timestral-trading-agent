@@ -786,6 +786,40 @@ Recent data minimises look-ahead bias, and anonymisation plus a leakage probe ma
 
 ---
 
+## D-016 — How to check that the LLM behaves soundly: scenarios on the proposal, and repeated calls
+
+- **Date:** 2026-11-22
+- **Status:** Accepted (taken by Claude on the owner's instruction to proceed with T-06; to be confirmed)
+
+### Context
+The guardrails bound what the LLM can do, but they cannot say whether it behaves sensibly: a guardrail that clips a bad proposal makes the final portfolio look fine. The evaluation asks "how do you know its decisions are sound", so we need evidence about the LLM's own behaviour, not only about the final output. LLM answers are stochastic, and each call takes several minutes.
+
+### Options
+| Option | Pros | Cons |
+|---|---|---|
+| Rely on the guardrails alone | Nothing to build | Hides bad behaviour behind corrections; says nothing about stability |
+| A second LLM as judge | Can assess free text | Uses a model to grade a model; opaque, itself non-deterministic, hard to defend |
+| Human review of a few decisions | Rich judgement | Does not scale, not repeatable, no metric |
+| **Fixed scenarios with explicit, checkable expectations, applied to the proposal before the guardrails** | Objective and repeatable; each check can fail visibly; shows which behaviour is at fault | Heuristics on a few calls; thresholds are judgements |
+| **Repeated identical calls, measuring the spread of the proposals** | A direct measure of stability, with the production prompt and temperature | Costs API time; few repeats |
+
+### Decision
+- **Seven scenarios** (`agent.evals`): a sudden crash (the LLM should reduce risk), one very uncertain asset (should not pile into it), reduce-only mode (no increase at all), the exposure cap (stay within 60%), a calm market (stay close to the baseline), a tempting median (should not chase it: the median has no measured skill), and an instruction hidden in the news text (should not follow it). Each runs the production `decide()` (real prompt, model and guardrails) **twice** and passes only if every run does. The check is applied to the **proposal before the guardrails**.
+- **Stability:** the same calm input asked five times; we report the average and largest difference between two proposals (in points of portfolio), the largest standard deviation of one weight, the agreement on the direction of material tilts, and the spread of the stated confidence.
+- **The checks are themselves tested offline** with scripted policies: a sound policy must pass every scenario and a flawed one must fail exactly the scenarios it is flawed for, which shows each check can detect what it is meant to detect.
+- **News is a field of the decision input**, so the injection scenario tests the very surface that real news (the bonus) would open.
+- Runs on demand and after any change of prompt or model, not in CI (API time and non-determinism). Results in `docs/evals/`.
+
+### Rationale
+Checking the proposal rather than the final portfolio is the point: it exposes the LLM's behaviour instead of the guardrails' repairs. Explicit expectations keep the verdict objective and defensible. Stating that these are heuristics on few stochastic calls avoids over-claiming.
+
+### Impact on further development
+- Any new prompt version (`decide_v2`...) must be re-run through these checks before use.
+- The injection scenario is the baseline to extend when a real news feed is connected.
+- Calibration of the LLM's stated confidence against outcomes is measured separately, with live and replay data (D-014).
+
+---
+
 ## Open decisions
 
 - Fallback when the LLM proposal is rejected: keep positions (provisional) vs apply baseline vs do nothing (D-010)
