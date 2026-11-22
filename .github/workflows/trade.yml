@@ -114,6 +114,16 @@ jobs:
           [ -d audit/.git ] || exit 0
           python -m agent.reconcile --audit-dir audit
 
+      - name: Record the day's closes (basis for forecast scoring)
+        # Facts, written once per session: the forecast scores are derived from them.
+        if: always()
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          [ -d audit/.git ] || exit 0
+          python -m agent.scoring --audit-dir audit
+
       - name: Publish the audit log
         # Also after a failure: the record is written before any order is sent.
         if: always()

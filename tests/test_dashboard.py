@@ -220,3 +220,46 @@ def test_charts_scroll_instead_of_shrinking_their_text_on_phones(tmp_path: Path)
     html = page(store)
     assert html.count('<div class="chart"><svg') == 2
     assert ".chart svg{min-width:600px}" in html
+
+
+def _scored(tmp_path: Path, closes_after: float) -> tuple[FileAuditStore, list[dict[str, object]]]:
+    from agent.scoring import score_forecasts
+    from tests.test_scoring import SYMS
+
+    _, _, _, store = cycle(tmp_path)
+    dates = ["2026-11-20", "2026-11-23", "2026-11-24"]
+    closes = {d: dict.fromkeys(SYMS, 100.0 if d == dates[0] else closes_after) for d in dates}
+    store.write_observation("2026-11-24", {"as_of": "2026-11-24", "closes": closes})
+    runs = chronological(store.read_runs())
+    return store, score_forecasts(runs, store.read_observations())  # type: ignore[return-value]
+
+
+def test_live_calibration_appears_once_forecasts_are_scored(tmp_path: Path) -> None:
+    store, scores = _scored(tmp_path, closes_after=101.0)
+    html = render(chronological(store.read_runs()), [], STAMP, scores=scores)
+    assert "Forecast calibration, live" in html
+    assert "1d" in html and "2d" in html and "100%" in html  # a +1% move is inside the interval
+    assert "15 scored forecasts" in html and "target 80%" in html
+    assert "n/a" in html  # a flat forecast median has no direction
+    assert "left:calc(80% - 1px)" in html  # the 80% target tick
+
+
+def test_calibration_is_hidden_until_something_is_scored(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    assert "Forecast calibration" not in page(store)
+
+
+def test_build_includes_the_calibration_from_recorded_observations(tmp_path: Path) -> None:
+    _scored(tmp_path / "audit", closes_after=101.0)
+    html = build(tmp_path / "audit", tmp_path / "site", STAMP).read_text(encoding="utf-8")
+    assert "Forecast calibration, live" in html
+
+
+def test_a_direction_hit_rate_is_shown_when_forecasts_have_a_direction(tmp_path: Path) -> None:
+    from agent.scoring import score_forecasts
+    from tests.test_scoring import OBS, run_record
+
+    scores = score_forecasts([run_record()], [OBS])  # median +1%, realised +1% then +0.5%
+    _, _, _, store = cycle(tmp_path)
+    html = render(chronological(store.read_runs()), [], STAMP, scores=scores)
+    assert "direction hit rate 100%" in html
