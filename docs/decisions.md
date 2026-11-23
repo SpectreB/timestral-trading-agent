@@ -942,6 +942,62 @@ v2 is as protective in a crash and halves the churn in a calm market; adopted. T
 
 ---
 
+## D-019 — News analysed into covariates for Timestral (the brief's bonus)
+
+- **Date:** 2026-11-23
+- **Status:** Accepted for integration (owner's decisions throughout); adoption by the live tool agent waits for the measurement
+
+### Context
+The brief's optional bonus: *"use news analysis to build future covariates for Timestral"*. Until now Timestral received prices only, although its architecture is built to take covariates: **past covariates**, known up to today, and **known-future covariates**, also defined over the forecast days. The backtest of D-006 showed it calibrated but with no directional skill on prices alone; covariates are the realistic way to give it more information. The owner asked for integration first, then measurement and adoption, and for depth on the chosen scope rather than breadth.
+
+### Options: sources (the brief names FRED, Stooq and GDELT as free sources)
+| Source | What it is | Pros | Cons | Choice |
+|---|---|---|---|---|
+| **Alpaca News** | Benzinga articles, tagged by ticker | Free with the account, clean ticker tagging | Measured on 2026-11-23: history only from about June 2026; almost no articles for ETFs (SPY, GLD, XLE: 0; TLT: 0 to 2 a month) | **Yes**, for the 5 stocks |
+| **FRED** | The St. Louis Fed's economic database, with the official calendar of upcoming releases | The authoritative schedule of inflation (CPI) and jobs releases | Not news; its "FOMC press release" series is daily, not a meeting calendar | **Yes**, for macro dates |
+| GDELT | Worldwide media monitoring with a precomputed tone | Covers themes (oil, gold, rates), useful for ETFs | Rate-limited, historical depth unconfirmed, and it would remove the ETFs' role as control group | Future work |
+| Stooq | Free historical prices | — | Prices are already covered by Alpaca | No |
+
+### Options: how the decision LLM uses the news
+| Option | Principle | Pros | Cons |
+|---|---|---|---|
+| A. Automatic step | News, analyst, covariates, Timestral; tools return news-conditioned forecasts only | Simple, reproducible | The LLM cannot see what the news changed |
+| B. Everything as tools | The decision LLM reads headlines and scores them itself | Most "agentic" | Untrusted text reaches the decision maker; scores change from run to run; not covariates for Timestral |
+| **C. Hybrid** | A separate **analyst** turns news into numbers automatically; the decision LLM can ask Timestral for forecasts **with and without** covariates, side by side, and read the analysed signals (numbers and dates, never text) | It sees what the news changes and decides whether to use it; reproducible; article text never reaches it | Two more tool capabilities to explain |
+
+### Options: one tool per covariate type, or one tool with a setting
+| Option | Pros | Cons |
+|---|---|---|
+| One tool per type | Explicit | Five or six tools, budget diluted, combinations need yet another tool |
+| **One setting, `covariates`, on the existing tools** | One gesture, every combination; each answer states the covariates used | The prompt must explain the setting |
+
+### Decision
+- **A news analyst**: `mistral-small-2603` (pinned), temperature 0, strict JSON, reads each headline and summary once and returns, per (article, stock): sentiment (-1 to +1), relevance (0 to 1) and an announced future event (type and date). Its outputs are bounded and validated; scores are cached on the audit-log branch (`news/news_analyst_v1.jsonl`), so each article is read once.
+- **Two families of covariates**, the closed set of values of the `covariates` setting:
+  - `news` (past): for each **stock**, the daily volume of relevant articles (log scale) and their relevance-weighted sentiment;
+  - `events` (known future): 0/1 indicators of announced **earnings** and **other dated company events** (extracted from the news) and of **macro releases** (from the FRED calendar), over the context and the forecast days.
+- **ETFs are the control group**: no company news (an ETF is a basket, and Alpaca has almost none); they get the macro events only. If the news helps Timestral, the effect should show on the stocks and not on the ETFs.
+- Before the start of the news coverage the covariates are **missing (NaN), not zero**: "unknown" is not "no news". Timestral accepts missing covariates.
+- **Tools** (`decide_tools_v3`): `get_forecasts` and `evaluate_portfolio` take `covariates`; with covariates, `get_forecasts` also shows each asset's change against the prices-only forecast; a new `get_news_signals` returns the analysed news as numbers and dates. The agent without news keeps exactly its tools.
+- **Where it runs**: a third configuration, `news` (`news_agent_config`: the tool agent plus covariates), available to runs, simulations, replays and evaluations (`--agent news`). The live tool agent keeps `decide_tools_v2` until the covariates are measured and adopted. The Trade workflow scores the day's news after every run, so the analysed history grows from now on.
+- **A news failure never stops a run**: the tools then say the covariates are unavailable, and the record says why.
+
+### Findings during integration (2026-11-23)
+- Six months of news for the 5 stocks: 2,073 (article, stock) scores in about 7 minutes; 10 earnings announcements found, which is the expected two quarters for five companies, and 24 other dated company events.
+- **Company news almost never states macro dates**: the analyst found 1 macro date against 12 official ones in the window (recall 0). Macro dates therefore come from FRED; news-extracted macro dates are kept as a fallback and as a measured check of the analyst (`macro_check` in each run record).
+- First real decision of the news agent: it compared Timestral's forecasts with and without the `events` covariates (intervals modestly wider for several ETFs ahead of announced releases), read the news signals, and stated that it did not size on news direction because it is unvalidated. Accepted without correction.
+
+### Measurement plan (next, before any adoption)
+- **Measurement universe distinct from the trading universe**: 5 stocks over about 100 sessions of news is too little to conclude. The backtest of Timestral with and without each family will use a wider panel of large US stocks across sectors, with the 10 ETFs as control. The trading universe does not change.
+- Criteria as in D-006: calibration of the 80% interval, pinball loss, ranking of risk, hit rate; separately for `news`, `events` and both.
+- Caveat: on history, the analyst model may know what followed an article (look-ahead in sentiment); article volume and announced dates are not exposed to it. Stated in the results.
+
+### Impact on further development
+- Changing the **trading** universe (more stocks, where news matters most) is kept as a possible evolution, not for this test window.
+- GDELT themes for the ETFs, in future work.
+
+---
+
 ## Open decisions
 
 - Fallback when the LLM proposal is rejected: keep positions (provisional) vs apply baseline vs do nothing (D-010)
@@ -965,4 +1021,6 @@ Options deliberately set aside for this one-week assignment. Each would make sen
 | `pip-audit` (dependency vulnerability scanning) | D-009 | Low exposure for a short, non-public project | Any production or client deployment |
 | Pre-commit hooks for ruff and mypy | D-009 | CI already runs them | Larger team, to catch issues before CI |
 | Prompt `decide_v2`: no median shown to the LLM, "no change" stated as the default when nothing material happened | D-016 | Keep one agent across the live test and the replay | After the test window, re-run the soundness checks and compare |
+| GDELT themes as news covariates for the ETFs | D-019 | Rate limits, uncertain history, and the ETFs serve as control group | If the stock covariates prove useful and a longer news history is needed |
+| A trading universe with more stocks | D-019 | The test window must keep one universe | If news covariates prove useful: news matters most for single stocks |
 | Full interactive application with a server | D-017 option D | A rewrite days before submission | If reviewers need to choose inputs or compare variants |

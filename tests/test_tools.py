@@ -240,3 +240,98 @@ def test_keeping_the_current_portfolio_trades_nothing_and_changes_no_risk() -> N
     # A small reshuffle: points traded are visible next to the (small) change in risk.
     moved = call(tools, "evaluate_portfolio", weights=weights(SPY=0.25, TLT=0.35), horizon=5)
     assert moved["versus_current_portfolio"]["points_traded"] == pytest.approx(10.0)
+
+
+# --------------------------------------------------------------------------- news (D-019)
+
+
+def news_toolbox(with_news: bool = True) -> TimestralTools:
+    from agent.config import news_agent_config
+    from tests.test_news import build
+
+    config = news_agent_config()
+    model = FakeTimestral(SPREADS)
+    closes = make_closes(30, end="2026-11-20")
+    forecasts = forecast_assets(closes, model, config)  # type: ignore[arg-type]
+    return TimestralTools(
+        forecasts=forecasts,
+        closes=closes,
+        model=model,  # type: ignore[arg-type]
+        baseline=BASELINE,
+        current=ALL_CASH,
+        drawdown=0.0,
+        cfg=config,
+        news=build(fred=("2026-11-25",)) if with_news else None,
+    )
+
+
+def test_the_agent_without_news_keeps_exactly_its_tools() -> None:
+    specs = toolbox().specs()
+    assert [s["function"]["name"] for s in specs] == [
+        "get_forecasts", "evaluate_portfolio", "get_baseline"
+    ]  # fmt: skip
+    assert "covariates" not in specs[0]["function"]["parameters"]["properties"]
+    out = call(toolbox(), "get_forecasts", symbols=["SPY"], horizon=5)
+    assert "covariates" not in out and "vs_prices_only" not in out["assets"]["SPY"]
+    assert "unknown tool" in call(toolbox(), "get_news_signals", symbols=[])["error"]
+    refused = call(toolbox(), "get_forecasts", symbols=["SPY"], horizon=5, covariates=["news"])
+    assert "not available" in refused["error"]
+
+
+def test_the_news_agent_gets_covariates_and_a_news_tool() -> None:
+    specs = news_toolbox().specs()
+    assert [s["function"]["name"] for s in specs] == [
+        "get_forecasts", "evaluate_portfolio", "get_baseline", "get_news_signals"
+    ]  # fmt: skip
+    cov = specs[0]["function"]["parameters"]["properties"]["covariates"]
+    assert cov["items"]["enum"] == ["news", "events"]
+    assert "covariates" in specs[1]["function"]["parameters"]["required"]
+
+
+def test_forecasts_with_covariates_show_what_the_news_changed() -> None:
+    tools = news_toolbox()
+    plain = call(tools, "get_forecasts", symbols=["NVDA", "SPY"], horizon=5, covariates=[])
+    assert plain["covariates"] == [] and "vs_prices_only" not in plain["assets"]["NVDA"]
+    out = call(tools, "get_forecasts", symbols=["NVDA", "SPY"], horizon=5,
+               covariates=["events", "news"])  # fmt: skip
+    assert out["covariates"] == ["news", "events"]  # canonical order
+    # The fake widens the interval on announced event days: NVDA earnings and the macro date.
+    assert out["assets"]["NVDA"]["vs_prices_only"]["width_80_change"] > 0
+    assert out["assets"]["SPY"]["vs_prices_only"]["width_80_change"] > 0
+    assert tools.model.covariates[-1].keys() == {"past_covariates", "known_covariates"}
+    n = len(tools.model.calls)
+    call(tools, "get_forecasts", symbols=["LLY"], horizon=1, covariates=["news", "events"])
+    assert len(tools.model.calls) == n  # each combination is computed once
+
+
+@pytest.mark.parametrize(
+    ("cov", "message"),
+    [("news", "list of strings"), (["vix"], "unknown covariates: vix"), ([1], "list of strings")],
+)
+def test_bad_covariates_are_refused(cov: Any, message: str) -> None:
+    out = call(news_toolbox(), "get_forecasts", symbols=["SPY"], horizon=5, covariates=cov)
+    assert message in out["error"]
+
+
+def test_covariates_are_refused_when_the_news_failed_in_this_run() -> None:
+    tools = news_toolbox(with_news=False)
+    out = call(tools, "get_forecasts", symbols=["SPY"], horizon=5, covariates=["news"])
+    assert "not available" in out["error"]
+    assert "not available" in call(tools, "get_news_signals", symbols=["NVDA"])["error"]
+
+
+def test_evaluate_portfolio_applies_covariates_to_the_decomposition() -> None:
+    tools = news_toolbox()
+    w = weights(NVDA=0.1, SPY=0.2)
+    plain = call(tools, "evaluate_portfolio", weights=w, horizon=5, covariates=[])
+    news = call(tools, "evaluate_portfolio", weights=w, horizon=5, covariates=["events"])
+    assert news["covariates"] == ["events"]
+    assert news["forecast_volatility"] > plain["forecast_volatility"]
+    assert news["timestral_portfolio_forecast"] == plain["timestral_portfolio_forecast"]
+
+
+def test_news_signals_return_numbers_and_dates() -> None:
+    out = call(news_toolbox(), "get_news_signals", symbols=["NVDA", "SPY"])
+    assert out["forecast_days"][0] == "2026-11-23"
+    assert out["assets"]["NVDA"]["upcoming_events"][0] == {"type": "earnings", "date": "2026-11-24"}
+    assert "control group" in out["assets"]["SPY"]["company_news"]

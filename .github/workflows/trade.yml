@@ -166,6 +166,19 @@ jobs:
             python -m agent.scoring --audit-dir audit/agents/tools
           fi
 
+      - name: Analyse the day's news (D-019)
+        # Scores new articles once and appends them to news/ on the audit-log branch, so the
+        # analysed history keeps growing even before an agent uses it. Never blocks trading.
+        if: always()
+        continue-on-error: true
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          [ -d audit/.git ] || exit 0
+          python -m agent.news --audit-dir audit
+
       - name: Publish the audit log
         # Also after a failure: the record is written before any order is sent.
         # A manual test run can opt out, so the public log only holds the agent's real activity.
