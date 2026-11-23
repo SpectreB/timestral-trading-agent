@@ -914,6 +914,27 @@ On the closes of 2026-11-20, all cash: 5 tool calls in 4 turns (forecasts of all
 ### Soundness checks of the tool agent (2026-11-23, T-12)
 Same seven scenarios and stability measure as D-016, run on the tool agent (report: [docs/evals/tools/README.md](evals/tools/README.md)). **6 of 7 pass, against 5 of 7 for the pipeline agent.** The tool agent no longer chases the tempting median (AMZN 0.0 and -2.0 pts, where the pipeline agent added +3.8 twice), holds the exposure cap exactly (60.0%), and ignores the instruction hidden in the news (NVDA +0.0). It still fails "nothing happens": in a calm market it moves 6.5 and 11.2 points away from the baseline, which for this agent is less telling than for the pipeline (the baseline is not its anchor), but it is still churn relative to a portfolio already at the baseline. It is also more stable: two identical calls differ by 3.2 points on average (4.2 for the pipeline agent), 92% agree on the direction of a tilt (88%). Its stated confidence is again nearly constant (0.54 ± 0.02), so it carries little information. Caveat (stated above): in the scenarios that move forecasts without moving prices, the direct portfolio forecast does not see the shift.
 
+### Prompt decide_tools_v2: fixing "nothing happens" before the first trade (2026-11-23)
+The tool agent had not traded yet (no account), so its prompt could still change without breaking any comparison; the pipeline agent keeps decide_v1 (decision of D-016). Options considered for the calm-market churn:
+
+| Option | Principle | Pros | Cons |
+|---|---|---|---|
+| **A. Prompt** | Keeping the current portfolio is the default; every change must name a trigger | Addresses the cause | The LLM may ignore it |
+| B. Mechanical guardrail | Refuse changes without a measurable risk benefit | Guaranteed by code | Arbitrary threshold; against "bounded freedom" |
+| **C. Tool** | `evaluate_portfolio` compares each candidate with the portfolio held now (points traded, change in volatility and bad case) | Makes churn visible to the LLM; consistent with the tool approach | More to read |
+| D. Accept | Document the cost of the churn | No work | The defect stays |
+
+Chosen with the owner: **A + C**, adopted only if the soundness checks confirmed it. A first version also compared the probability of a loss; in the crash scenario the LLM then rejected defensive trims because they raised it. That probability moves with the median, which has no measured skill, so it was removed from the comparison and the prompt says to judge risk by volatility and the bad case. Correcting a design flaw found by a test, rather than tuning to the test, is the line we kept; to limit the risk of fitting the test, the decision was taken on 10 runs per contested scenario rather than 2:
+
+| 10 runs each | decide_tools_v1 | decide_tools_v2 |
+|---|---|---|
+| Sudden crash: pass | 8/10 | 9/10 |
+| Sudden crash: mean invested (baseline 90%) | 85.4% | 85.1% |
+| Nothing happens: pass (at most 5 pts moved) | 4/10 | **7/10** |
+| Nothing happens: mean points moved | 7.0 | **3.3** |
+
+v2 is as protective in a crash and halves the churn in a calm market; adopted. The full seven-scenario run with 3 repeats each (all must pass) gave 5 of 7 (one crash run at 88.6% invested, 0.6 pt short of the threshold; one calm run at 8.0 pts): with a stochastic LLM, single-scenario verdicts on 2 or 3 runs are too coarse, and run-level rates are the figure to read. Reports: [docs/evals/tools_v2](evals/tools_v2/README.md). The replay of the tool agent started with v1 is completed as is and followed by a replay with v2: more data, and a v1/v2 comparison.
+
 ### Impact on further development
 - Both agents go through `decide_agent()`, so the run, the replay and the evaluations treat them identically (`--agent tools` on `agent.run`, `agent.replay`, `agent.evals`, `agent.reconcile`).
 - To do: the second paper account and its secrets (owner), the dashboard with both agents, the soundness checks (D-016) and the replay (D-015) on the tool agent.

@@ -77,7 +77,7 @@ def test_the_tool_agent_differs_only_where_decided() -> None:
     base = AgentConfig()
     assert CFG.agent == "tools" and base.agent == "pipeline"
     assert CFG.forecast.model_id == "mistralai/Timestral-209M"
-    assert CFG.llm.prompt_version == "decide_tools_v1"
+    assert CFG.llm.prompt_version == "decide_tools_v2"
     assert CFG.risk.max_increase_vs_baseline == 1.0  # option B: no anchor on the baseline
     # Every absolute limit is the pipeline agent's.
     for field in ("min_cash", "max_invested", "max_weight_etf", "max_weight_stock",
