@@ -76,9 +76,10 @@ def test_the_drawdown_comes_from_the_real_agents_history(tmp_path: Path) -> None
 
 def test_requests_are_throttled(tmp_path: Path) -> None:
     request(tmp_path)
-    reply, result, _, llm = request(tmp_path, now=NOW + timedelta(minutes=4))
+    reply, result, _, llm = request(tmp_path, now=NOW + timedelta(seconds=20))
     assert result is None and llm.calls == []
-    assert "Simulation not started" in reply and "about 7 minute(s)" in reply
+    assert "Simulation not started" in reply and "less than a minute ago" in reply
+    assert "about 40 second(s)" in reply
     later, result, _, _ = request(tmp_path, now=NOW + COOLDOWN + timedelta(seconds=1))
     assert result is not None and "Simulation finished" in later
 
@@ -86,11 +87,11 @@ def test_requests_are_throttled(tmp_path: Path) -> None:
 def test_the_daily_cap_applies(tmp_path: Path) -> None:
     store = FileAuditStore(tmp_path / "simulations")
     for i in range(DAILY_CAP):
-        request(tmp_path, now=NOW + timedelta(minutes=11 * i))
+        request(tmp_path, now=NOW + timedelta(minutes=2 * i))
     assert len(store.read_runs()) == DAILY_CAP
-    reason = throttle(store, NOW + timedelta(minutes=11 * DAILY_CAP))
+    reason = throttle(store, NOW + timedelta(minutes=2 * DAILY_CAP))
     assert reason is not None and "20 simulations a day" in reason
-    assert throttle(store, NOW + timedelta(days=1, minutes=11 * DAILY_CAP)) is None  # a new day
+    assert throttle(store, NOW + timedelta(days=1, minutes=2 * DAILY_CAP)) is None  # a new day
 
 
 def test_the_reply_reports_the_decision_moves_corrections_and_reading(tmp_path: Path) -> None:
