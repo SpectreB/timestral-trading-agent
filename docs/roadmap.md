@@ -47,10 +47,10 @@ The single place to see where the project stands. Details of each decision are i
 | T-05 | Replay harness (test case 1) as specified in D-015 | Claude | Done 2026-11-23: 63 sessions replayed (pipeline agent), report and records in `docs/replay`; to show on the dashboard (T-11) |
 | T-06 | LLM soundness checks (D-016): behaviour scenarios and stability | Claude | Done 2026-11-22: 5 of 7 scenarios pass, stability measured; report in `docs/evals` |
 | T-08 | Simulations requested by the evaluators (D-017): simulation run type, issue-triggered workflow with throttling, reply in the issue, dashboard button and list | Claude | Done 2026-11-22: merged (#18), tested end to end with issue #20 (reply in 3 min 19, issue closed, simulation listed on the dashboard) |
-| T-09 | Tool agent (D-018): the three Timestral tools, the decision loop, its prompt, both agents in the run, replay, evaluations, reconciliation and Trade workflow | Claude | Code and tests done (353 tests, 20 modules at 100%), first real run accepted; in review (PR) |
+| T-09 | Tool agent (D-018): the three Timestral tools, the decision loop, its prompt, both agents in the run, replay, evaluations, reconciliation and Trade workflow | Claude | Done 2026-11-22 (#21), first real run accepted |
 | T-10 | Second Alpaca paper account for the tool agent: create it at 100,000 USD, add the secrets `ALPACA_TOOLS_API_KEY` and `ALPACA_TOOLS_SECRET_KEY`, then the variable `TRADING_ENABLED_TOOLS` | Owner | To do |
-| T-11 | Dashboard with both agents, the tool agent first, and the comparison of the two approaches | Claude | To do |
-| T-12 | Soundness checks (D-016) and replay (D-015) on the tool agent | Claude | To do |
+| T-11 | Dashboard with both agents, the tool agent first, and the comparison of the two approaches | Claude | Done 2026-11-23 (#23): comparison card, one tab per agent, tool use shown, replay card |
+| T-12 | Soundness checks (D-016) and replay (D-015) on the tool agent | Claude | Soundness checks done 2026-11-23: 6 of 7 (pipeline 5 of 7), report in `docs/evals/tools`; replay running (63 sessions, ~5 h) |
 | T-13 | News as covariates for Timestral (the bonus of the brief): source, construction, backtest with and without, used only if it improves the forecasts | Claude, with the owner | To do (after T-11) |
 | T-07 | Final pass before submission: README, CLAUDE.md, decision statuses, release `v1.0` | Claude | Wed 2026-11-25 morning |
 
