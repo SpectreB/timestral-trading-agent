@@ -3,7 +3,7 @@
 An evaluator clicks "Run a simulation" on the dashboard, which opens a pre-filled GitHub issue.
 The `Simulate` workflow picks it up and calls this module, which:
 
-1. throttles requests (one at a time is enforced by the workflow; here: at least 10 minutes
+1. throttles requests (one at a time is enforced by the workflow; here: at least a minute
    between two simulations and at most 20 a day), answering a refusal politely;
 2. runs one full cycle on the current portfolio, **never sending an order**: dry run forced and
    the kill switch forced off, whatever the environment says;
@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -37,7 +38,7 @@ from agent.forecast import QuantileModel
 from agent.run import CycleResult, run_cycle
 
 TITLE = "Simulation request"  # the workflow only reacts to issues whose title starts so
-COOLDOWN = timedelta(minutes=10)
+COOLDOWN = timedelta(minutes=1)
 DAILY_CAP = 20
 ANALYSIS_LIMIT = 1200
 REASON_LIMIT = 140
@@ -58,11 +59,10 @@ def throttle(store: FileAuditStore, now: datetime) -> str | None:
     if sum(t.astimezone(NEW_YORK).date() == today for t in times) >= DAILY_CAP:
         return f"The limit of {DAILY_CAP} simulations a day is reached. Please try again tomorrow."
     if times and now - max(times) < COOLDOWN:
-        wait = COOLDOWN - (now - max(times))
-        minutes = max(1, int(wait.total_seconds() // 60) + 1)
+        seconds = max(1, math.ceil((COOLDOWN - (now - max(times))).total_seconds()))
         return (
-            "Another simulation ran less than 10 minutes ago. Please try again in about "
-            f"{minutes} minute(s)."
+            "Another simulation was started less than a minute ago. Please try again in about "
+            f"{seconds} second(s)."
         )
     return None
 

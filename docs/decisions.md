@@ -856,7 +856,7 @@ Option B. Option D stays in mind for a longer project (see Future work).
 - A **simulation** is a full cycle (data, Timestral, LLM, guardrails, order plan) on the current portfolio that **never sends an order**: dry run forced in code and the kill switch forced off in its job.
 - Its own **run id** (`YYYY-MM-DD_sim-HHMMSS`) and the **requester's GitHub login** are recorded.
 - Simulations are stored apart (`simulations/` on the `audit-log` branch), so they never enter the metrics of the real agent (D-014).
-- **Throttling:** one at a time, at least 10 minutes between two, at most 20 per day; a refused request is answered and closed.
+- **Throttling:** one at a time, at least a minute between two starts, at most 20 per day; a refused request is answered with an error message in its issue and closed. (Changed on 2026-11-23 at the owner's request, from 10 minutes to one minute; the daily cap is kept. Since a simulation takes 3 to 6 minutes and runs are serialised, a request that arrives while another is running waits for its turn rather than being refused; the daily cap is what bounds the cost.)
 - **Security:** the issue title and body are never interpolated into a command; the LLM text posted back is length-limited and neutralised (no @-mentions).
 - The dashboard gets a "Run a simulation" button and a list of the simulations requested, and is rebuilt after each one.
 
