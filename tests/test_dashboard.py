@@ -532,3 +532,93 @@ def test_requested_simulations_are_listed_with_their_requester(tmp_path: Path) -
 def test_the_empty_page_still_offers_a_simulation(tmp_path: Path) -> None:
     html = page(FileAuditStore(tmp_path))
     assert "No runs yet" in html and "Run a simulation" in html
+
+
+# --------------------------------------------------------------------------- two agents (D-018)
+
+
+def _tool_cycle(audit: Path, broken: bool = False) -> FileAuditStore:
+    """A tool agent run, recorded where the Trade workflow puts it."""
+    from agent.config import tool_agent_config
+    from agent.run import run_cycle
+    from tests.test_decide_tools import EVALUATE, FakeToolLLM, step
+
+    calls = [
+        ("get_forecasts", '{"symbols": ["SPY"], "horizon": 5}'),
+        ("evaluate_portfolio", EVALUATE),
+        ("evaluate_portfolio", EVALUATE),
+        ("get_baseline", "{}"),
+        ("get_forecasts", '{"symbols": ["BTC"], "horizon": 5}'),
+    ]
+    store = FileAuditStore(audit / "agents" / "tools")
+    run_cycle(
+        mode="morning",
+        now=NOW,
+        cfg=tool_agent_config(),
+        market=FakeMarketData(make_closes(520)),
+        broker=FakeBroker(),
+        model=FakeTimestral([0.02] * 15),
+        llm=FakeToolLLM([step(*calls), step()], [BROKEN if broken else as_json(proposal())] * 2),  # type: ignore[arg-type]
+        store=store,
+        live=False,
+        env={},
+    )
+    return store
+
+
+def _replay_report(tmp_path: Path) -> dict[str, Any]:
+    _, _, report = _report(tmp_path / "replay")
+    return {**report, "account_return": -0.0123}
+
+
+def test_both_agents_are_compared_and_the_tool_agent_comes_first(tmp_path: Path) -> None:
+    audit, site = tmp_path / "audit", tmp_path / "site"
+    cycle(audit)
+    _tool_cycle(audit)
+    replay_dir = tmp_path / "docs_replay"
+    replay_dir.mkdir()
+    (replay_dir / "report.json").write_text(json.dumps(_replay_report(tmp_path)))
+    html = build(audit, site, STAMP, replay_dir=replay_dir).read_text(encoding="utf-8")
+    assert "Two ways of using Timestral" in html
+    assert html.index('id="tab-tools"') < html.index('id="tab-pipeline"')
+    assert 'id="panel-tools" data-panel="tools" aria-labelledby="tab-tools">' in html
+    assert (
+        'id="panel-pipeline" data-panel="pipeline" aria-labelledby="tab-pipeline" hidden>' in html
+    )
+    # How the tool agent used Timestral, at the last run and in its history.
+    assert "the LLM called Timestral 5 time(s)" in html
+    assert "had Timestral evaluate a candidate portfolio (2 times)" in html
+    assert "1 refused call(s)" in html
+    assert "refused: not in the universe: BTC" in html
+    assert "probability of a loss" in html and "the rule-based weights" in html
+    assert "1 asset(s) at 5 day(s)" in html
+    assert "/blob/audit-log/agents/tools/runs/2026-11-23_morning.json" in html
+    assert "none (fixed pipeline)" in html and "5.0" in html
+    # The replay card.
+    assert "Tested on the past: the pipeline agent" in html
+    assert "Simulated account: -1.23%" in html
+    assert "/blob/main/docs/replay/README.md" in html
+
+
+def test_a_tool_agent_without_runs_yet_is_announced_and_not_selected(tmp_path: Path) -> None:
+    audit = tmp_path / "audit"
+    cycle(audit)
+    (audit / "agents" / "tools" / "runs").mkdir(parents=True)
+    html = build(audit, tmp_path / "site", STAMP).read_text(encoding="utf-8")
+    assert "not started yet" in html
+    assert 'id="panel-tools" data-panel="tools" aria-labelledby="tab-tools" hidden>' in html
+    assert "This agent has not recorded a run" in html
+    assert "Tested on the past" not in html  # no replay report given
+
+
+def test_a_page_with_only_the_tool_agent_still_lists_simulations(tmp_path: Path) -> None:
+    from agent.dashboard import TOOLS_SUMMARY, AgentView
+
+    store = _tool_cycle(tmp_path, broken=True)
+    runs = chronological(store.read_runs())
+    tool = AgentView("tools", "Tool agent", TOOLS_SUMMARY, runs, [], [], None, "agents/tools/")
+    html = render([], [], STAMP, tool_agent=tool, replay={"sessions": 0})
+    assert "Two ways of using Timestral" in html and "Run it yourself" in html
+    assert "0 accepted · 0 corrected · 1 held" in html
+    empty = render([], [], STAMP, tool_agent=AgentView("tools", "Tool agent", "", [], [], [], None))
+    assert "No runs yet" in empty

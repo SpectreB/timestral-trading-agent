@@ -18,6 +18,7 @@ import json
 import math
 import shutil
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ from agent.scoring import calibration, score_forecasts
 
 DEFAULT_REPO = "https://github.com/SpectreB/timestral-trading-agent"
 AUDIT_BRANCH = "audit-log"
+TOOLS_FOLDER = "agents/tools"  # the tool agent's records on the audit-log branch (D-018)
 SIM_TITLE = "Simulation request"  # the Simulate workflow reacts to issues titled so (D-017)
 SIM_BODY = (
     "Submitting this issue asks the agent to run one simulation now: live market data, "
@@ -89,6 +91,10 @@ white-space:nowrap}
 .meter .fill{position:absolute;left:0;top:0;bottom:0;background:var(--s1);border-radius:5px}
 .meter i{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
 .alloc{grid-template-columns:64px 1fr 150px}
+.tabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
+.tab{background:none;border:1px solid var(--border);border-radius:999px;padding:6px 16px;
+color:var(--ink2);font:inherit;font-weight:600;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--s1);border-color:var(--s1);color:#fff}
 .btn{display:inline-block;background:var(--s1);color:#fff;border-radius:8px;padding:8px 16px;
 font-weight:600;text-decoration:none}.btn:hover{opacity:.9}
 .alloc .val{white-space:nowrap}
@@ -150,8 +156,14 @@ tip.style.top=Math.max(8,y-r.height-12)+'px';}
 for(const b of document.querySelectorAll('[data-toggle]')){
 b.addEventListener('click',()=>{const on=b.getAttribute('aria-pressed')!=='true';
 b.setAttribute('aria-pressed',on?'true':'false');
-for(const g of document.querySelectorAll('[data-series="'+b.dataset.toggle+'"]')){
+const box=b.closest('.card')||document;
+for(const g of box.querySelectorAll('[data-series="'+b.dataset.toggle+'"]')){
 g.style.display=on?'':'none';}});}
+for(const t of document.querySelectorAll('[data-tab]')){
+t.addEventListener('click',()=>{for(const o of document.querySelectorAll('[data-tab]')){
+o.setAttribute('aria-selected',o===t?'true':'false');}
+for(const p of document.querySelectorAll('[data-panel]')){
+p.hidden=p.dataset.panel!==t.dataset.tab;}});}
 for(const el of document.querySelectorAll('[data-tip]')){
 el.addEventListener('pointermove',e=>show(el,e.clientX,e.clientY));
 el.addEventListener('pointerleave',()=>{tip.hidden=true;});
@@ -681,7 +693,7 @@ def _today(run: dict[str, Any], fills: list[dict[str, Any]]) -> str:
             )
     return (
         f'<div class="card"><h2>At the last run</h2><p class="sec-sub">{_e(run["run_id"])} · '
-        f"{_outcome(run)}</p>{table}"
+        f"{_outcome(run)}</p>{_tool_use(run)}{table}"
         f'<p class="sec-sub">Orders: {sent}{_e(done)}</p>'
         f"<h3>The LLM's reading</h3>{note}</div>"
     )
@@ -723,8 +735,10 @@ def _series_chart(report: dict[str, Any]) -> str:
         f'<line class="axis" x1="{left}" x2="{width - right}" y1="{y(0):.1f}" y2="{y(0):.1f}"/>'
     )
     parts.append(f'<text x="{x(0):.1f}" y="{height - 12}" text-anchor="start">start</text>')
+    step = max(1, (n - 1) // 6)
     for i, row in enumerate(daily, start=1):
-        if i == n - 1 or i % max(1, (n - 1) // 6) == 0:
+        # Every `step` sessions, plus the last one (unless a label is already too close to it).
+        if i == n - 1 or (i % step == 0 and n - 1 - i >= step / 2):
             parts.append(
                 f'<text x="{x(i):.1f}" y="{height - 12}" text-anchor="middle">'
                 f"{_e(row['session'][5:])}</text>"
@@ -878,8 +892,8 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> str:
         )
     listing = "".join(items) or '<p class="sec-sub">No simulation has been requested yet.</p>'
     return (
-        '<div class="card"><h2>Run it yourself</h2><p class="sec-sub">Ask the agent to decide '
-        "now, on its current portfolio: live data, Timestral, the LLM and the guardrails. "
+        '<div class="card"><h2>Run it yourself</h2><p class="sec-sub">Ask the pipeline agent to '
+        "decide now, on its current portfolio: live data, Timestral, the LLM and the guardrails. "
         "<b>Simulations never send an order.</b> The button opens a pre-filled GitHub issue "
         "(a GitHub account is needed); the answer is posted in the issue in about 6 minutes and "
         "appears below. At most one simulation every 10 minutes and 20 a day.</p>"
@@ -962,10 +976,10 @@ def _guardrails(runs: list[dict[str, Any]]) -> str:
     )
 
 
-def _run_history(runs: list[dict[str, Any]], repo: str) -> str:
+def _run_history(runs: list[dict[str, Any]], repo: str, prefix: str = "") -> str:
     items = []
     for r in reversed(runs):
-        link = f"{repo}/blob/{AUDIT_BRANCH}/runs/{r['run_id']}.json"
+        link = f"{repo}/blob/{AUDIT_BRANCH}/{prefix}runs/{r['run_id']}.json"
         fixes = "".join(
             f"<li>{_e(c['rule'])} {_e(c['symbol'] or '')}: "
             f"{c['before']:.4f} → {c['after']:.4f}</li>"
@@ -993,6 +1007,7 @@ def _run_history(runs: list[dict[str, Any]], repo: str) -> str:
             f'<details class="run"><summary>{_e(r["run_id"])} · {_outcome(r)} · {_execution(r)} · '
             f"{_usd(r['account']['equity'])}</summary>"
             + (f"<h3>Corrections</h3><ul>{fixes}</ul>" if fixes else "")
+            + _tool_calls_detail(r)
             + f"<h3>Orders</h3>{orders}<h3>The LLM's analysis</h3>"
             + (
                 f'<pre class="txt">{_e(analysis)}</pre>'
@@ -1015,7 +1030,202 @@ def _downloads(repo: str, tables: list[str]) -> str:
     )
 
 
+_TOOL_LABEL = {
+    "get_forecasts": "read Timestral's forecasts",
+    "evaluate_portfolio": "had Timestral evaluate a candidate portfolio",
+    "get_baseline": "looked at the Timestral rule",
+}
+
+
+def _tool_calls(run: dict[str, Any]) -> list[dict[str, Any]]:
+    return list(run["decision"].get("tool_calls") or [])
+
+
+def _tool_use(run: dict[str, Any]) -> str:
+    """How the tool agent used Timestral before deciding (D-018); nothing for the pipeline."""
+    calls = _tool_calls(run)
+    if not calls:
+        return ""
+    counts = Counter(c["name"] for c in calls)
+    parts = [
+        f"{_e(_TOOL_LABEL.get(n, n))} ({k} times)" if k > 1 else _e(_TOOL_LABEL.get(n, n))
+        for n, k in counts.items()
+    ]
+    errors = sum("error" in c["result"] for c in calls)
+    note = f", {errors} refused call(s)" if errors else ""
+    return (
+        f'<p class="sec-sub">Before deciding, the LLM called Timestral {len(calls)} time(s): '
+        f"{'; '.join(parts)}{note}.</p>"
+    )
+
+
+def _tool_calls_detail(run: dict[str, Any]) -> str:
+    calls = _tool_calls(run)
+    if not calls:
+        return ""
+    rows = []
+    for c in calls:
+        result = c["result"]
+        if "error" in result:
+            seen = f"refused: {result['error']}"
+        elif c["name"] == "evaluate_portfolio":
+            pf = result["timestral_portfolio_forecast"]
+            seen = (
+                f"invested {_pct(result['invested'], 0)}, probability of a loss "
+                f"{_pct(pf['probability_of_loss'], 0)}, bad case (5%) {_spct(pf['q05'], 1)}, "
+                f"guardrails: {result['guardrails']['would_be']}"
+            )
+        elif c["name"] == "get_forecasts":
+            seen = f"{len(result['assets'])} asset(s) at {result['horizon']} day(s)"
+        else:
+            seen = "the rule-based weights"
+        rows.append([_e(c["name"]), _e(seen)])
+    return "<h3>Tool calls</h3>" + _table(["Tool", "What came back"], rows)
+
+
+@dataclass(frozen=True)
+class AgentView:
+    """One agent on the page (D-018): its records and where they live in the audit log."""
+
+    key: str
+    title: str
+    summary: str
+    runs: list[dict[str, Any]]
+    fills: list[dict[str, Any]]
+    scores: list[dict[str, Any]]
+    report: dict[str, Any] | None
+    prefix: str = ""  # folder of its records on the audit-log branch
+
+
+def _agent_body(agent: AgentView, repo: str) -> str:
+    runs, fills, report = agent.runs, agent.fills, agent.report
+    if not runs:
+        return (
+            '<div class="card"><h2>No runs yet</h2><p class="sec-sub">This agent has not recorded '
+            "a run. Its section fills in automatically after its first scheduled run.</p></div>"
+        )
+    evidence = [
+        _evidence("Timestral's forecasts", "the risk behind the weights", _forecasts(runs[-1])),
+        *(
+            [
+                _evidence(
+                    "Forecast calibration", "do the intervals hold?", _calibration(agent.scores)
+                )
+            ]
+            if agent.scores
+            else []
+        ),
+        _evidence(
+            "Forecast risk against what happened", "portfolio level", _risk_calibration(report)
+        ),
+        _evidence("The LLM's confidence", "is it calibrated?", _confidence(report)),
+        _evidence("Guardrail activity", "corrections and rejections", _guardrails(runs)),
+        _evidence("Executions and slippage", "what the broker did", _fills_table(fills)),
+        _evidence("Account value per run", "the real account", _equity_chart(runs)),
+        _evidence(
+            "History of runs", "click a run for its detail", _run_history(runs, repo, agent.prefix)
+        ),
+    ]
+    return "".join(
+        [
+            _status(runs, fills),
+            _today(runs[-1], fills),
+            _performance(runs, report),
+            _allocation(runs[-1]),
+            '<div class="card"><h2>Can we trust it?</h2><p class="sec-sub">The evidence behind '
+            "the figures above. Click a line to open it.</p>" + "".join(evidence) + "</div>",
+        ]
+    )
+
+
+def _compare(agents: list[AgentView]) -> str:
+    """Both approaches side by side, on the real accounts (D-018)."""
+    rows = []
+    for a in agents:
+        if not a.runs:
+            rows.append([f"<b>{_e(a.title)}</b>", "not started yet", "", "", ""])
+            continue
+        start, now = a.runs[0]["account"]["equity"], a.runs[-1]["account"]["equity"]
+        outcomes = Counter(r["decision"]["outcome"] for r in a.runs)
+        calls = [len(_tool_calls(r)) for r in a.runs]
+        rows.append(
+            [
+                f"<b>{_e(a.title)}</b>",
+                f"{_usd(now)} ({_spct(now / start - 1, 2)})",
+                str(len(a.runs)),
+                f"{outcomes['accepted']} accepted · {outcomes['corrected']} corrected · "
+                f"{outcomes['fallback_hold']} held",
+                f"{sum(calls) / len(calls):.1f}" if any(calls) else "none (fixed pipeline)",
+            ]
+        )
+    return (
+        '<div class="card"><h2>Two ways of using Timestral</h2><p class="sec-sub">Two agents trade '
+        "the same 15 assets, at the same times, with the same data and the same guardrails, each "
+        "on its own paper account. They differ in one thing: how the LLM uses Timestral.</p>"
+        + _table(
+            [
+                "Agent",
+                "Account value (since its first run)",
+                "Runs",
+                "Decisions",
+                "Timestral calls per decision",
+            ],
+            rows,
+        )
+        + "<ul class='sec-sub'>"
+        + "".join(f"<li><b>{_e(a.title)}</b>: {_e(a.summary)}</li>" for a in agents)
+        + "</ul></div>"
+    )
+
+
+def _tabs(agents: list[AgentView], repo: str) -> str:
+    first = next((i for i, a in enumerate(agents) if a.runs), 0)
+    buttons = "".join(
+        f'<button type="button" role="tab" class="tab" id="tab-{a.key}" data-tab="{a.key}" '
+        f'aria-controls="panel-{a.key}" aria-selected="{"true" if i == first else "false"}">'
+        f"{_e(a.title)}</button>"
+        for i, a in enumerate(agents)
+    )
+    panels = "".join(
+        f'<section role="tabpanel" id="panel-{a.key}" data-panel="{a.key}" '
+        f'aria-labelledby="tab-{a.key}"{"" if i == first else " hidden"}>{_agent_body(a, repo)}'
+        "</section>"
+        for i, a in enumerate(agents)
+    )
+    return f'<div class="tabs" role="tablist" aria-label="Agent">{buttons}</div>{panels}'
+
+
+def _replay(report: dict[str, Any] | None, repo: str, folder: str, agent: str) -> str:
+    """Test case 1 (D-015): the same agent replayed on past sessions, anonymised."""
+    if not report or report.get("sessions", 0) < 1:
+        return ""
+    link = f"{repo}/blob/main/{folder}/README.md"
+    return (
+        f'<div class="card"><h2>Tested on the past: the {_e(agent)}</h2><p class="sec-sub">'
+        f"The same agent replayed on {report['sessions']} past sessions "
+        f"({_e(report['first_session'])} to {_e(report['last_session'])}), one decision a day, "
+        "with strictly point-in-time data. "
+        "Assets were renamed and dates shifted so the LLM could not recognise the period; fills "
+        f"at the next open plus costs. Simulated account: {_spct(report['account_return'], 2)}.</p>"
+        f"{_series_chart(report)}<h3>What does each layer add?</h3>{_comparisons(report)}"
+        f'<p class="sec-sub">A falling market, and only {report["sessions"]} sessions: read the '
+        f'intervals, not the point estimates. <a href="{_e(link)}">Full replay report</a>.'
+        "</p></div>"
+    )
+
+
 # --------------------------------------------------------------------------- page
+
+
+PIPELINE_SUMMARY = (
+    "Timestral always runs; a rule turns its forecast intervals into a baseline portfolio and "
+    "the LLM adjusts it, at most +15 points per asset. The reference, unchanged since the start."
+)
+TOOLS_SUMMARY = (
+    "The LLM queries Timestral through tools: forecasts at the horizon it chooses, a forecast of "
+    "any candidate portfolio, a check against the guardrails, the rule as a reference. It builds "
+    "the portfolio itself, within the same absolute limits. The final agent."
+)
 
 
 def render(
@@ -1027,46 +1237,34 @@ def render(
     scores: list[dict[str, Any]] | None = None,
     report: dict[str, Any] | None = None,
     simulations: list[dict[str, Any]] | None = None,
+    tool_agent: AgentView | None = None,
+    replay: dict[str, Any] | None = None,
 ) -> str:
+    """`runs`, `fills`, `scores` and `report` are the pipeline agent's; `tool_agent` adds the
+    second agent of D-018 (shown first: it is the final agent); `replay` is the D-015 report."""
+    pipeline = AgentView(
+        "pipeline", "Pipeline agent", PIPELINE_SUMMARY, runs, fills, scores or [], report
+    )
+    agents = [tool_agent, pipeline] if tool_agent is not None else [pipeline]
     intro = (
         '<h1>Timestral Trading Agent</h1><p class="sub">An autonomous paper-trading agent: '
-        "Timestral forecasts risk, a Mistral LLM adjusts a rule-based baseline, deterministic "
-        "guardrails decide what reaches the broker. Paper money only. Read-only view generated "
-        f'from the immutable <a href="{_e(repo)}/tree/{AUDIT_BRANCH}">audit log</a>.</p>'
+        "Timestral, Mistral's time-series model, forecasts risk; a Mistral LLM decides the "
+        "positions; deterministic guardrails decide what reaches the broker. Paper money only. "
+        "Read-only view generated from the immutable "
+        f'<a href="{_e(repo)}/tree/{AUDIT_BRANCH}">audit log</a>.</p>'
     )
-    if runs:
-        evidence = [
-            _evidence("Timestral's forecasts", "the risk behind the weights", _forecasts(runs[-1])),
-            *(
-                [_evidence("Forecast calibration", "do the intervals hold?", _calibration(scores))]
-                if scores
-                else []
-            ),
-            _evidence(
-                "Forecast risk against what happened", "portfolio level", _risk_calibration(report)
-            ),
-            _evidence("The LLM's confidence", "is it calibrated?", _confidence(report)),
-            _evidence("Guardrail activity", "corrections and rejections", _guardrails(runs)),
-            _evidence("Executions and slippage", "what the broker did", _fills_table(fills)),
-            _evidence("Account value per run", "the real account", _equity_chart(runs)),
-            _evidence("History of runs", "click a run for its detail", _run_history(runs, repo)),
-        ]
-        body = "".join(
-            [
-                _status(runs, fills),
-                _simulations(simulations or [], repo),
-                _today(runs[-1], fills),
-                _performance(runs, report),
-                _allocation(runs[-1]),
-                '<div class="card"><h2>Can we trust it?</h2><p class="sec-sub">The evidence behind '
-                "the figures above. Click a line to open it.</p>" + "".join(evidence) + "</div>",
-            ]
+    if any(a.runs for a in agents):
+        body = (
+            (_compare(agents) if len(agents) > 1 else "")
+            + _simulations(simulations or [], repo)
+            + (_tabs(agents, repo) if len(agents) > 1 else _agent_body(pipeline, repo))
         )
     else:
         body = (
             '<div class="card"><h2>No runs yet</h2><p class="sec-sub">The agent has not recorded '
             "a run. This page fills in automatically after the first scheduled run.</p></div>"
         ) + _simulations(simulations or [], repo)
+    body += _replay(replay, repo, "docs/replay", "pipeline agent")
     stamp = generated_at.isoformat(timespec="seconds")
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
@@ -1081,15 +1279,40 @@ def render(
     )
 
 
+def _view(store: FileAuditStore, key: str, title: str, summary: str, prefix: str) -> AgentView:
+    runs = chronological(store.read_runs())
+    observations = store.read_observations()
+    return AgentView(
+        key,
+        title,
+        summary,
+        runs,
+        store.read_fills(),
+        score_forecasts(runs, observations),
+        performance_report(runs, observations),
+        prefix,
+    )
+
+
 def chronological(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Oldest first; for runs at the same instant the morning run comes before the afternoon."""
     return sorted(runs, key=lambda r: (r["started_at"], r["mode"] != "morning"))
 
 
-def build(audit_dir: Path, out_dir: Path, generated_at: datetime, repo: str = DEFAULT_REPO) -> Path:
-    store = FileAuditStore(audit_dir)
-    runs = chronological(store.read_runs())
-    fills = store.read_fills()
+def build(
+    audit_dir: Path,
+    out_dir: Path,
+    generated_at: datetime,
+    repo: str = DEFAULT_REPO,
+    replay_dir: Path | None = None,
+) -> Path:
+    pipeline = _view(FileAuditStore(audit_dir), "pipeline", "Pipeline agent", PIPELINE_SUMMARY, "")
+    tools_dir = audit_dir / TOOLS_FOLDER
+    tool_agent = (
+        _view(FileAuditStore(tools_dir), "tools", "Tool agent", TOOLS_SUMMARY, f"{TOOLS_FOLDER}/")
+        if (tools_dir / "runs").exists()
+        else None
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     tables: list[str] = []
     source = audit_dir / "tables"
@@ -1098,13 +1321,28 @@ def build(audit_dir: Path, out_dir: Path, generated_at: datetime, repo: str = DE
         for csv_file in sorted(source.glob("*.csv")):
             shutil.copy(csv_file, out_dir / "data" / csv_file.name)
             tables.append(csv_file.name)
+    replay_file = replay_dir / "report.json" if replay_dir is not None else None
+    replay = (
+        json.loads(replay_file.read_text(encoding="utf-8"))
+        if replay_file is not None and replay_file.exists()
+        else None
+    )
     page = out_dir / "index.html"
-    observations = store.read_observations()
-    scores = score_forecasts(runs, observations)
-    report = performance_report(runs, observations)
     sims = chronological(FileAuditStore(audit_dir / "simulations").read_runs())
     page.write_text(
-        render(runs, fills, generated_at, repo, tables, scores, report, sims), encoding="utf-8"
+        render(
+            pipeline.runs,
+            pipeline.fills,
+            generated_at,
+            repo,
+            tables,
+            pipeline.scores,
+            pipeline.report,
+            sims,
+            tool_agent=tool_agent,
+            replay=replay,
+        ),
+        encoding="utf-8",
     )
     return page
 
@@ -1116,10 +1354,11 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the dashboard work
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--audit-dir", default="audit", type=Path)
     parser.add_argument("--out", default="site", type=Path)
+    parser.add_argument("--replay-dir", default=Path("docs/replay"), type=Path)
     args = parser.parse_args()
     slug = os.environ.get("GITHUB_REPOSITORY")
     repo = f"https://github.com/{slug}" if slug else DEFAULT_REPO
-    print(build(args.audit_dir, args.out, datetime.now(UTC), repo))
+    print(build(args.audit_dir, args.out, datetime.now(UTC), repo, args.replay_dir))
 
 
 if __name__ == "__main__":  # pragma: no cover
