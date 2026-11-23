@@ -166,6 +166,6 @@ def tool_agent_config(base: AgentConfig | None = None) -> AgentConfig:
         base,
         agent="tools",
         forecast=replace(base.forecast, model_id="mistralai/Timestral-209M"),
-        llm=replace(base.llm, prompt_version="decide_tools_v1"),
+        llm=replace(base.llm, prompt_version="decide_tools_v2"),  # v1 failed "calm market"
         risk=replace(base.risk, max_increase_vs_baseline=1.0),  # 1.0 = no baseline bound
     )

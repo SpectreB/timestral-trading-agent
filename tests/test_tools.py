@@ -111,6 +111,11 @@ def test_evaluate_portfolio_forecasts_the_portfolio_and_checks_the_guardrails() 
     assert out["forecast_volatility"] > 0
     assert set(out["risk_share_top5"]) == {"SPY", "TLT", "GLD"}
     assert out["guardrails"] == {"would_be": "accepted", "rejection_reason": None, "breaches": []}
+    # Against the portfolio held now (all cash): everything is traded, all risk is added.
+    vs = out["versus_current_portfolio"]
+    assert vs["points_traded"] == pytest.approx(50.0)
+    assert vs["forecast_volatility_change"] == pytest.approx(out["forecast_volatility"])
+    assert vs["bad_case_q05_change"] == pytest.approx(pf["q05"])
     # Timestral was called on one series: the portfolio's value history.
     context, horizon = tools.model.calls[-1]
     assert context.shape == (1, len(CLOSES)) and horizon == 5
@@ -142,6 +147,7 @@ def test_an_all_cash_portfolio_has_no_risk_and_does_not_call_timestral() -> None
     out = call(tools, "evaluate_portfolio", weights=[], horizon=5)
     assert out["invested"] == 0 and out["forecast_volatility"] == 0
     assert out["timestral_portfolio_forecast"]["median"] == 0
+    assert out["timestral_portfolio_forecast"]["probability_of_loss"] == 0
     assert out["risk_share_top5"] == {}
     assert len(tools.model.calls) == n
 
@@ -220,3 +226,17 @@ def test_probability_of_loss_is_read_from_the_quantile_function() -> None:
     assert _probability_below_zero(levels, np.array([0.01, 0.02, 0.03])) == pytest.approx(0.1)
     assert _probability_below_zero(levels, np.array([-0.03, -0.02, -0.01])) == pytest.approx(0.9)
     assert len(LEVELS) == 21
+
+
+def test_keeping_the_current_portfolio_trades_nothing_and_changes_no_risk() -> None:
+    held = dict.fromkeys(CFG.symbols, 0.0) | {"SPY": 0.3, "TLT": 0.3}
+    tools = toolbox(current=held)
+    out = call(tools, "evaluate_portfolio", weights=weights(SPY=0.3, TLT=0.3), horizon=5)
+    assert out["versus_current_portfolio"] == {
+        "points_traded": 0.0,
+        "forecast_volatility_change": 0.0,
+        "bad_case_q05_change": 0.0,
+    }
+    # A small reshuffle: points traded are visible next to the (small) change in risk.
+    moved = call(tools, "evaluate_portfolio", weights=weights(SPY=0.25, TLT=0.35), horizon=5)
+    assert moved["versus_current_portfolio"]["points_traded"] == pytest.approx(10.0)
