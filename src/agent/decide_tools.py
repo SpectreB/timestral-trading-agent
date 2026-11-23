@@ -86,6 +86,7 @@ def decide_with_tools(
         current=inp.current,
         drawdown=inp.drawdown,
         cfg=cfg,
+        news=inp.news_covariates,
     )
     specs = tools.specs()
     messages: list[dict[str, Any]] = [

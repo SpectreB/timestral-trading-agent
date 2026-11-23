@@ -26,6 +26,7 @@ The single place to see where the project stands. Details of each decision are i
 | D-016 | LLM soundness checks: seven behaviour scenarios on the proposal, plus stability over repeated calls | Accepted; first results 5 of 7 (fails: calm market, tempting median); prompt v1 kept for the test window, decided with the owner 2026-11-22 |
 | D-017 | Simulations requested by the evaluators through a GitHub issue (option B; full app, option D, kept in mind) | Accepted 2026-11-22 |
 | D-018 | A second agent that uses Timestral as a tool ("bounded freedom", 3 tools), on its own paper account; the final agent, the pipeline agent kept as reference | Accepted 2026-11-22 |
+| D-019 | News analysed into Timestral covariates: Mistral analyst, `news` (stocks) and `events` (earnings, company events, FRED macro dates), ETFs as control group, one `covariates` setting on the tools | Accepted for integration 2026-11-23; adoption after measurement |
 
 ## Waiting for the owner
 
@@ -51,7 +52,7 @@ The single place to see where the project stands. Details of each decision are i
 | T-10 | Second Alpaca paper account for the tool agent: create it at 100,000 USD, add the secrets `ALPACA_TOOLS_API_KEY` and `ALPACA_TOOLS_SECRET_KEY`, then the variable `TRADING_ENABLED_TOOLS` | Owner | To do |
 | T-11 | Dashboard with both agents, the tool agent first, and the comparison of the two approaches | Claude | Done 2026-11-23 (#23): comparison card, one tab per agent, tool use shown, replay card |
 | T-12 | Soundness checks (D-016) and replay (D-015) on the tool agent | Claude | Checks done: v1 6 of 7; prompt decide_tools_v2 adopted on 10-run evidence (calm market 7/10 against 4/10, churn halved, crash unchanged). Replay with v1 running, replay with v2 next |
-| T-13 | News as covariates for Timestral (the bonus of the brief): source, construction, backtest with and without, used only if it improves the forecasts | Claude, with the owner | To do (after T-11) |
+| T-13 | News as covariates for Timestral (D-019, the brief's bonus) | Claude | Integration done (analyst, covariates, tools, prompt v3, daily scoring in the Trade workflow); next: measurement on a wider stock panel, then adoption decision |
 | T-07 | Final pass before submission: README, CLAUDE.md, decision statuses, release `v1.0` | Claude | Wed 2026-11-25 morning |
 
 Done (most recent first): evaluator simulations (#18) · LLM outage handling, no crash on a timeout (#19) · turnover cap waiver and no-publish test option (#12) · forecast scoring and backtest (#11) · dashboard on Pages (#10) · README (#9) · reconciliation (#8) · workflows (#7) · execution and full cycle (#6) · audit log (#5) · decision stage (#4) · forecast stage (#3) · guardrails (#2) · tooling and docs (#1).

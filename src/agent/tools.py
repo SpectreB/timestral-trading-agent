@@ -35,8 +35,9 @@ import numpy as np
 import pandas as pd
 
 from agent.config import AgentConfig
-from agent.forecast import AssetForecast, QuantileModel, _to_numpy
+from agent.forecast import AssetForecast, QuantileModel, _to_numpy, forecast_assets
 from agent.guardrails import apply_guardrails
+from agent.news import FAMILIES, NewsCovariates, forecast_kwargs
 from agent.risk import correlation, covariance, forecast_vols, portfolio_vol, risk_contributions
 
 LEVELS_SHOWN = {"q05": 0.05, "q10": 0.1, "q25": 0.25, "median": 0.5, "q75": 0.75, "q90": 0.9,
@@ -79,8 +80,10 @@ class TimestralTools:
         current: Mapping[str, float],
         drawdown: float,
         cfg: AgentConfig,
+        news: NewsCovariates | None = None,
     ) -> None:
         self.forecasts = forecasts
+        self.news = news  # D-019: present only for an agent with news covariates
         self.closes = closes
         self.model = model
         self.baseline = dict(baseline)
@@ -89,10 +92,65 @@ class TimestralTools:
         self.cfg = cfg
         self.calls: list[dict[str, Any]] = []
         self._corr = correlation(closes)
+        self._variants: dict[tuple[str, ...], Mapping[str, AssetForecast]] = {(): forecasts}
 
     # ------------------------------------------------------------------ schemas
 
     def specs(self) -> list[dict[str, Any]]:
+        specs = self._base_specs()
+        if not self.cfg.news.enabled:
+            return specs  # the agent without news keeps exactly its tools
+        covariates = {
+            "type": "array",
+            "items": {"type": "string", "enum": list(FAMILIES)},
+            "description": (
+                'Information Timestral receives besides prices: "news" (volume and sentiment '
+                'of each stock\'s recent news, past days only), "events" (announced earnings, '
+                "macro releases and company events, also over the forecast days). Empty: "
+                "prices only."
+            ),
+        }
+        for spec in specs:
+            fn = spec["function"]
+            if fn["name"] in ("get_forecasts", "evaluate_portfolio"):
+                fn["parameters"]["properties"]["covariates"] = covariates
+                fn["parameters"]["required"].append("covariates")
+        specs[0]["function"]["description"] += (
+            " With covariates, each asset also shows how the forecast differs from the "
+            "prices-only one."
+        )
+        specs[1]["function"]["description"] += (
+            " Covariates apply to the per-asset risk decomposition; the forecast of the "
+            "portfolio's own value uses prices only."
+        )
+        specs.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_news_signals",
+                    "description": (
+                        "What the analysed news says, as numbers and dates only: for each stock, "
+                        "the number of relevant articles and their average sentiment (-1 to +1) "
+                        "over the last sessions; for every asset, the events announced over the "
+                        "forecast days. ETFs have no company news (control group)."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbols": {
+                                "type": "array",
+                                "items": {"type": "string", "enum": list(self.cfg.symbols)},
+                            }
+                        },
+                        "required": ["symbols"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+        )
+        return specs
+
+    def _base_specs(self) -> list[dict[str, Any]]:
         symbols = list(self.cfg.symbols)
         horizon = {
             "type": "integer",
@@ -191,12 +249,15 @@ class TimestralTools:
                 args = json.loads(arguments) if arguments.strip() else {}
                 if not isinstance(args, dict):
                     raise ToolError("arguments must be a JSON object")
+                cov = args.get("covariates", [])
                 if name == "get_forecasts":
-                    result = self.get_forecasts(args.get("symbols", []), args.get("horizon"))
+                    result = self.get_forecasts(args.get("symbols", []), args.get("horizon"), cov)
                 elif name == "evaluate_portfolio":
-                    result = self.evaluate_portfolio(args.get("weights"), args.get("horizon"))
+                    result = self.evaluate_portfolio(args.get("weights"), args.get("horizon"), cov)
                 elif name == "get_baseline":
                     result = self.get_baseline()
+                elif name == "get_news_signals" and self.cfg.news.enabled:
+                    result = self.get_news_signals(args.get("symbols", []))
                 else:
                     raise ToolError(f"unknown tool {name!r}")
             except json.JSONDecodeError:
@@ -223,6 +284,25 @@ class TimestralTools:
             raise ToolError(f"not in the universe: {', '.join(unknown)}")
         return [s for s in self.cfg.symbols if s in symbols] if symbols else list(self.cfg.symbols)
 
+    def _families(self, covariates: Any) -> tuple[str, ...]:
+        if covariates in (None, []):
+            return ()
+        if not isinstance(covariates, list) or not all(isinstance(c, str) for c in covariates):
+            raise ToolError("covariates must be a list of strings")
+        unknown = sorted(set(covariates) - set(FAMILIES))
+        if unknown:
+            raise ToolError(f"unknown covariates: {', '.join(unknown)} (use {list(FAMILIES)})")
+        if not self.cfg.news.enabled or self.news is None:
+            raise ToolError("news covariates are not available in this run")
+        return tuple(f for f in FAMILIES if f in covariates)
+
+    def _forecasts(self, families: tuple[str, ...]) -> Mapping[str, AssetForecast]:
+        """Timestral's forecasts with the chosen covariates, computed once per combination."""
+        if families not in self._variants:
+            kwargs = forecast_kwargs(self.news, families, list(self.closes.columns))
+            self._variants[families] = forecast_assets(self.closes, self.model, self.cfg, kwargs)
+        return self._variants[families]
+
     def _weights(self, weights: Any) -> dict[str, float]:
         if not isinstance(weights, list):
             raise ToolError("weights must be a list of {symbol, weight}")
@@ -248,22 +328,36 @@ class TimestralTools:
 
     # ------------------------------------------------------------------ tools
 
-    def get_forecasts(self, symbols: Any, horizon: Any) -> dict[str, Any]:
+    def get_forecasts(self, symbols: Any, horizon: Any, covariates: Any = ()) -> dict[str, Any]:
         h = self._horizon(horizon)
         chosen = self._symbols(symbols)
-        vols = forecast_vols({s: self.forecasts[s] for s in chosen}, h)
-        return {
+        families = self._families(covariates)
+        fc = self._forecasts(families)
+        vols = forecast_vols({s: fc[s] for s in chosen}, h)
+        base = forecast_vols({s: self.forecasts[s] for s in chosen}, h)
+
+        def view(s: str) -> dict[str, Any]:
+            out: dict[str, Any] = {
+                **_quantiles(fc[s].levels, fc[s].cum_returns[h - 1]),
+                "width_80": _r(fc[s].width(h)),
+                "volatility": _r(vols[s]),
+            }
+            if families:  # what the information changed, against the prices-only forecast
+                out["vs_prices_only"] = {
+                    "width_80_change": _r(fc[s].width(h) - self.forecasts[s].width(h)),
+                    "median_change": _r(fc[s].median(h) - self.forecasts[s].median(h)),
+                    "volatility_change": _r(vols[s] - base[s]),
+                }
+            return out
+
+        result: dict[str, Any] = {
             "horizon": h,
             "last_close_date": next(iter(self.forecasts.values())).last_date.isoformat(),
-            "assets": {
-                s: {
-                    **_quantiles(self.forecasts[s].levels, self.forecasts[s].cum_returns[h - 1]),
-                    "width_80": _r(self.forecasts[s].width(h)),
-                    "volatility": _r(vols[s]),
-                }
-                for s in chosen
-            },
         }
+        if self.cfg.news.enabled:
+            result["covariates"] = list(families)
+        result["assets"] = {s: view(s) for s in chosen}
+        return result
 
     def portfolio_series(self, weights: Mapping[str, float]) -> np.ndarray:
         """Value history of the candidate holdings, scaled to 1 at the last close.
@@ -289,16 +383,19 @@ class TimestralTools:
             "probability_of_loss": _probability_below_zero(levels, cum),
         }
 
-    def evaluate_portfolio(self, weights: Any, horizon: Any) -> dict[str, Any]:
+    def evaluate_portfolio(
+        self, weights: Any, horizon: Any, covariates: Any = ()
+    ) -> dict[str, Any]:
         h = self._horizon(horizon)
         w = self._weights(weights)
+        families = self._families(covariates)
         invested = sum(w.values())
 
         # 1. Timestral forecasts the portfolio's own value series.
         forecast = self._portfolio_forecast(w, h)
 
         # 2. Risk decomposition from the asset forecasts (D-014).
-        cov = covariance(forecast_vols(self.forecasts, h), self._corr)
+        cov = covariance(forecast_vols(self._forecasts(families), h), self._corr)
         shares = risk_contributions(w, cov)
         top = sorted(((s, x) for s, x in shares.items() if w[s] > 0), key=lambda t: -t[1])[:5]
         vol = portfolio_vol(w, cov)
@@ -329,8 +426,10 @@ class TimestralTools:
             for c in check.corrections
             if c.counted
         ]
-        return {
-            "horizon": h,
+        result: dict[str, Any] = {"horizon": h}
+        if self.cfg.news.enabled:
+            result["covariates"] = list(families)
+        return result | {
             "invested": _r(invested, 4),
             "cash": _r(1 - invested, 4),
             "timestral_portfolio_forecast": forecast,
@@ -342,6 +441,16 @@ class TimestralTools:
                 "rejection_reason": check.rejection_reason,
                 "breaches": breaches,
             },
+        }
+
+    def get_news_signals(self, symbols: Any) -> dict[str, Any]:
+        chosen = self._symbols(symbols)
+        if self.news is None:
+            raise ToolError("news covariates are not available in this run")
+        return {
+            "coverage_start": self.news.coverage_start.isoformat(),
+            "forecast_days": [d.isoformat() for d in self.news.future],
+            "assets": {s: self.news.signals(s) for s in chosen},
         }
 
     def get_baseline(self) -> dict[str, Any]:

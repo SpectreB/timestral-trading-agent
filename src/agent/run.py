@@ -15,15 +15,17 @@ from __future__ import annotations
 
 import argparse
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+import pandas as pd
+
 from agent.audit import FileAuditStore, build_record, run_id
 from agent.baseline import baseline_weights
-from agent.config import AgentConfig, tool_agent_config
+from agent.config import AgentConfig, news_agent_config, tool_agent_config
 from agent.data import NEW_YORK, MarketData, load_context
 from agent.decide import DecisionInput, LLMClient, Mode
 from agent.decide_tools import decide_agent
@@ -38,22 +40,61 @@ from agent.execute import (
     trading_enabled,
 )
 from agent.forecast import QuantileModel, forecast_assets
+from agent.news import NewsCovariates, news_record
 from agent.safety import final_check
 
 Status = Literal["done", "already_done", "market_closed"]
 
 # D-018: two agents, each trading its own Alpaca paper account.
-AGENTS = ("pipeline", "tools")
+# "news" is the tool agent with news covariates (D-019): it would take over the tool agent's
+# account once adopted, so it uses the same keys.
+AGENTS = ("pipeline", "tools", "news")
 ALPACA_KEY_NAMES = {
     "pipeline": ("ALPACA_API_KEY", "ALPACA_SECRET_KEY"),
     "tools": ("ALPACA_TOOLS_API_KEY", "ALPACA_TOOLS_SECRET_KEY"),
+    "news": ("ALPACA_TOOLS_API_KEY", "ALPACA_TOOLS_SECRET_KEY"),
 }
 
 
 def config_for(agent: str) -> AgentConfig:
     if agent not in AGENTS:
         raise ValueError(f"unknown agent {agent!r}")
+    if agent == "news":
+        return news_agent_config()
     return tool_agent_config() if agent == "tools" else AgentConfig()
+
+
+def news_provider(
+    cfg: AgentConfig, audit_dir: Path, env: Mapping[str, str]
+) -> Callable[[pd.DataFrame], NewsCovariates] | None:  # pragma: no cover - network wiring
+    """The production news pipeline of D-019: Alpaca News, the Mistral analyst, the score cache
+    kept with the audit log, and the FRED calendar for the extraction check."""
+    if not cfg.news.enabled:
+        return None
+    from dataclasses import replace
+
+    from agent.decide import MistralLLM
+    from agent.news import AlpacaNews, ScoreCache, fred_release_dates, news_covariates
+
+    key, secret = alpaca_keys(cfg.agent if cfg.agent in ALPACA_KEY_NAMES else "news", env)
+    analyst_cfg = replace(
+        cfg,
+        llm=replace(cfg.llm, model=cfg.news.analyst_model, temperature=0.0, reasoning_effort=""),
+    )
+    analyst = MistralLLM(env["MISTRAL_API_KEY"], analyst_cfg)
+    fred = env.get("FRED_API_KEY")
+
+    def provide(closes: pd.DataFrame) -> NewsCovariates:
+        return news_covariates(
+            closes=closes,
+            cfg=cfg,
+            source=AlpacaNews(key, secret),
+            analyst=analyst,
+            cache=ScoreCache(audit_dir),
+            fred_macro=fred_release_dates(fred, cfg.news.fred_release_ids) if fred else None,
+        )
+
+    return provide
 
 
 def alpaca_keys(agent: str, env: Mapping[str, str]) -> tuple[str, str]:
@@ -89,6 +130,7 @@ def run_cycle(
     label: str | None = None,
     requested_by: str | None = None,
     history: FileAuditStore | None = None,
+    news: Callable[[pd.DataFrame], NewsCovariates] | None = None,
 ) -> CycleResult:
     """One cycle. `label` gives the run its own id (simulations, D-017); `history` is the store
     whose records give the peak equity, when the records are written elsewhere."""
@@ -119,6 +161,13 @@ def run_cycle(
     peak = max([equity, *(r["account"]["equity"] for r in (history or store).read_runs())])
     drawdown = min(0.0, equity / peak - 1.0)
 
+    covariates, news_error = None, None
+    if cfg.news.enabled and news is not None:
+        try:  # news is a bonus: its failure never stops a run (the tools say it is unavailable)
+            covariates = news(closes)
+        except Exception as error:
+            news_error = f"{type(error).__name__}: {str(error)[:300]}"
+
     inp = DecisionInput(
         now=now_ny,
         mode=mode,
@@ -129,6 +178,7 @@ def run_cycle(
         drawdown=drawdown,
         equity=equity,
         latest_prices=prices,
+        news_covariates=covariates,
     )
     decision = decide_agent(inp, llm, model, cfg)
 
@@ -161,6 +211,8 @@ def run_cycle(
         orders=planned,
         execution_status=execution_status,
     )
+    if cfg.news.enabled:
+        record = record.model_copy(update={"news": news_record(covariates, news_error)})
     store.write_run(record, reasoning)  # write-ahead: recorded before anything is sent
 
     if live_orders and plan is not None and plan.orders:
@@ -187,6 +239,7 @@ def main() -> None:  # pragma: no cover - CLI wiring, exercised by the smoke tes
     load_dotenv()
     cfg = config_for(args.agent)
     key, secret = alpaca_keys(args.agent, os.environ)
+    news = news_provider(cfg, args.audit_dir, os.environ)
     result = run_cycle(
         mode=args.mode,
         now=datetime.now(UTC),
@@ -198,6 +251,7 @@ def main() -> None:  # pragma: no cover - CLI wiring, exercised by the smoke tes
         store=FileAuditStore(args.audit_dir),
         live=args.live,
         env=os.environ,
+        news=news,
     )
     print(result)
 

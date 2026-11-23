@@ -63,17 +63,24 @@ class FakeTimestral:
         self.daily_spread = daily_spread
         self.drift = drift
         self.calls: list[tuple[Any, int]] = []
+        self.covariates: list[dict[str, Any]] = []
 
-    def forecast(self, context: Any, prediction_length: int) -> FakeOutput:
+    def forecast(self, context: Any, prediction_length: int, **covariates: Any) -> FakeOutput:
         import numpy as np
 
         self.calls.append((context, prediction_length))
+        self.covariates.append(covariates)
         last = context[:, -1]
         h = np.arange(1, prediction_length + 1)
         z = np.asarray(LEVELS) - 0.5  # linear in the level: q90 - q10 = 0.8 * spread
         # A batch of another size (e.g. one portfolio series, D-018) reuses the spreads in turn.
         spreads = np.resize(np.asarray(self.daily_spread, dtype=float), len(last))
         spread = spreads[:, None, None] * np.sqrt(h)[None, :, None]
+        known = covariates.get("known_covariates")
+        if known is not None:  # an announced event widens the interval (D-019 tests)
+            day = np.nan_to_num(known[:, :, -prediction_length:]).max(axis=1)
+            events = np.maximum.accumulate(day, axis=1)  # an event widens every later horizon
+            spread = spread * (1 + events[:, :, None])
         rel = self.drift * h[None, :, None] + 2 * spread * z[None, None, :] / 2
         q = last[:, None, None] * (1 + rel)
         return FakeOutput(q[:, None, :, :], LEVELS)  # (B, V=1, H, L) like Timestral
