@@ -217,3 +217,61 @@ def test_a_tool_agent_cycle_records_its_tool_calls(tmp_path: Path) -> None:
     assert any(m["role"] == "tool" for m in record["messages"])
     reasoning = (tmp_path / "runs" / record["reasoning_file"]).read_text()
     assert "exploration turn 1" in reasoning and "attempt 1" in reasoning
+
+
+def _news_cycle(tmp_path: Path, news: Any) -> dict[str, Any]:
+    from agent.config import news_agent_config
+    from tests.test_decide_tools import FakeToolLLM, step
+
+    llm = FakeToolLLM(
+        [step(("get_news_signals", '{"symbols": ["NVDA"]}')), step()], [as_json(proposal())]
+    )
+    store = FileAuditStore(tmp_path)
+    run_cycle(
+        mode="morning",
+        now=NOW,
+        cfg=news_agent_config(),
+        market=FakeMarketData(CLOSES),
+        broker=FakeBroker(),
+        model=FakeTimestral([0.02] * 15),
+        llm=llm,  # type: ignore[arg-type]
+        store=store,
+        live=False,
+        env={},
+        news=news,
+    )
+    return store.read_runs()[0]
+
+
+def test_a_news_agent_cycle_records_the_news_it_used(tmp_path: Path) -> None:
+    from agent.news import build_covariates
+    from tests.test_news import scores_for_tests
+
+    def provide(closes: Any) -> Any:
+        sessions = [d.date() for d in closes.index]
+        return build_covariates(sessions=sessions, horizon=5, cfg=CFG, scores=scores_for_tests(),
+                                coverage_start=sessions[-10])  # fmt: skip
+
+    record = _news_cycle(tmp_path, provide)
+    assert record["news"]["available"] and record["news"]["analyst"] == "news_analyst_v1"
+    assert record["decision"]["tool_calls"][0]["result"]["assets"]["NVDA"]["upcoming_events"]
+
+
+def test_a_news_failure_never_stops_the_run(tmp_path: Path) -> None:
+    from agent.news import NewsError
+
+    def broken(closes: Any) -> Any:
+        raise NewsError("Alpaca news unreachable")
+
+    record = _news_cycle(tmp_path, broken)
+    assert record["news"] == {"available": False, "error": "NewsError: Alpaca news unreachable"}
+    assert record["decision"]["outcome"] == "accepted"
+    assert "not available" in record["decision"]["tool_calls"][0]["result"]["error"]
+
+
+def test_the_news_agent_is_a_cli_choice_with_the_tool_agent_keys() -> None:
+    from agent.run import alpaca_keys, config_for
+
+    assert config_for("news").news.enabled and config_for("news").agent == "tools"
+    env = {"ALPACA_TOOLS_API_KEY": "k2", "ALPACA_TOOLS_SECRET_KEY": "s2"}
+    assert alpaca_keys("news", env) == ("k2", "s2")

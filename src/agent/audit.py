@@ -71,6 +71,8 @@ class RunRecord(BaseModel):
     risk: dict[str, Any] | None = None
     # GitHub login of whoever asked for a simulation (D-017); None for scheduled runs.
     requested_by: str | None = None
+    # News covariates of the run (D-019): coverage, scores used, analyst check; None if unused.
+    news: dict[str, Any] | None = None
 
 
 def run_id(now: datetime, mode: str) -> str:

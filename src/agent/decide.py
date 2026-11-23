@@ -94,11 +94,13 @@ class MistralLLM:  # pragma: no cover - network adapter, exercised by the smoke 
         self._cfg = cfg.llm
 
     def _call(self, messages: list[dict[str, Any]], **extra: Any) -> LLMStep:
+        # A model without native reasoning (the news analyst, D-019) gets no such parameter.
+        if self._cfg.reasoning_effort:
+            extra["reasoning_effort"] = self._cfg.reasoning_effort
         response = self._client.chat.complete(
             model=self._cfg.model,
             messages=messages,  # type: ignore[arg-type]
             temperature=self._cfg.temperature,
-            reasoning_effort=self._cfg.reasoning_effort,  # type: ignore[arg-type]
             **extra,
         )
         message = response.choices[0].message
@@ -184,6 +186,8 @@ class DecisionInput:
     equity: float
     latest_prices: Mapping[str, float] = field(default_factory=dict)  # live reference prices
     news: str = "No news feed is connected yet."  # untrusted text: a prompt-injection surface
+    # D-019: news analysed into Timestral covariates (agent.news.NewsCovariates), tool agent only.
+    news_covariates: Any = None
 
 
 class Attempt(BaseModel):

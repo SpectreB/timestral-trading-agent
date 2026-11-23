@@ -8,6 +8,7 @@ cumulative-return quantiles: q_return = q_price / last_price - 1.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Protocol
@@ -27,7 +28,7 @@ class ForecastError(RuntimeError):
 
 
 class QuantileModel(Protocol):
-    def forecast(self, context: Any, prediction_length: int) -> Any: ...
+    def forecast(self, context: Any, prediction_length: int, **covariates: Any) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -82,14 +83,20 @@ def load_model(model_id: str) -> QuantileModel:  # pragma: no cover - loads real
 
 
 def forecast_assets(
-    closes: pd.DataFrame, model: QuantileModel, cfg: AgentConfig
+    closes: pd.DataFrame,
+    model: QuantileModel,
+    cfg: AgentConfig,
+    covariates: Mapping[str, Any] | None = None,
 ) -> dict[str, AssetForecast]:
-    """Forecast every column of `closes` in one batch and sanity-check the result."""
+    """Forecast every column of `closes` in one batch and sanity-check the result.
+
+    `covariates`: optional `past_covariates` / `known_covariates` arrays (D-019), in the batch
+    order of the columns."""
     if cfg.forecast.input_type != "price":
         raise NotImplementedError("only price input is supported in production (D-006)")
     horizon = cfg.forecast.horizon
     context = closes.to_numpy(dtype=np.float64).T  # (B, T)
-    out = model.forecast(context, prediction_length=horizon)
+    out = model.forecast(context, prediction_length=horizon, **(covariates or {}))
 
     levels = tuple(float(v) for v in _to_numpy(out.quantile_levels))
     q = _to_numpy(out.quantiles).reshape(len(closes.columns), horizon, len(levels))
