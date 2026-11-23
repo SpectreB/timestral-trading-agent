@@ -122,6 +122,19 @@ class ToolConfig:
 
 
 @dataclass(frozen=True)
+class NewsConfig:
+    """D-019: news analysed into covariates for Timestral (off unless an agent enables it)."""
+
+    enabled: bool = False
+    analyst_model: str = "mistral-small-2603"  # pinned; reads headlines, returns numbers only
+    batch_size: int = 20  # articles per analyst call
+    # First day of the free Alpaca news history for our stocks (measured on 2026-11-23):
+    # before it, covariates are missing (NaN), not zero.
+    coverage_start: str = "2026-06-01"  # ISO date (kept a string: the config is logged as JSON)
+    fred_release_ids: tuple[int, ...] = (10, 50)  # CPI, Employment Situation: official dates
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     universe: tuple[Asset, ...] = UNIVERSE
     forecast: ForecastConfig = field(default_factory=ForecastConfig)
@@ -134,6 +147,7 @@ class AgentConfig:
     # (the LLM queries Timestral through tools and builds the portfolio itself).
     agent: str = "pipeline"
     tools: ToolConfig = field(default_factory=ToolConfig)
+    news: NewsConfig = field(default_factory=NewsConfig)
 
     @property
     def symbols(self) -> tuple[str, ...]:
@@ -168,4 +182,18 @@ def tool_agent_config(base: AgentConfig | None = None) -> AgentConfig:
         forecast=replace(base.forecast, model_id="mistralai/Timestral-209M"),
         llm=replace(base.llm, prompt_version="decide_tools_v2"),  # v1 failed "calm market"
         risk=replace(base.risk, max_increase_vs_baseline=1.0),  # 1.0 = no baseline bound
+    )
+
+
+def news_agent_config(base: AgentConfig | None = None) -> AgentConfig:
+    """The tool agent with news covariates (D-019): same agent, its tools can also ask Timestral
+    for forecasts conditioned on the news. Integrated and testable; it replaces the live tool
+    agent only once the covariates are measured and adopted."""
+    from dataclasses import replace
+
+    cfg = tool_agent_config(base)
+    return replace(
+        cfg,
+        llm=replace(cfg.llm, prompt_version="decide_tools_v3"),
+        news=replace(cfg.news, enabled=True),
     )
