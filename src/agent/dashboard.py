@@ -35,7 +35,7 @@ SIM_TITLE = "Simulation request"  # the Simulate workflow reacts to issues title
 SIM_BODY = (
     "Submitting this issue asks the agent to run one simulation now: live market data, "
     "Timestral forecasts, the LLM and the guardrails, on its current portfolio. No order is sent. "
-    "The answer is posted here in about 6 minutes. At most one simulation every 10 minutes and "
+    "The answer is posted here in about 6 minutes. At most one simulation a minute and "
     "20 a day."
 )
 
@@ -896,7 +896,8 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> str:
         "decide now, on its current portfolio: live data, Timestral, the LLM and the guardrails. "
         "<b>Simulations never send an order.</b> The button opens a pre-filled GitHub issue "
         "(a GitHub account is needed); the answer is posted in the issue in about 6 minutes and "
-        "appears below. At most one simulation every 10 minutes and 20 a day.</p>"
+        "appears below. At most one simulation a minute and 20 a day; a request that comes too "
+        "soon is answered with an error message in its issue.</p>"
         f'<p><a class="btn" href="{_e(url)}">Run a simulation</a></p>{listing}</div>'
     )
 
