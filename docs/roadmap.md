@@ -50,7 +50,7 @@ The single place to see where the project stands. Details of each decision are i
 | T-09 | Tool agent (D-018): the three Timestral tools, the decision loop, its prompt, both agents in the run, replay, evaluations, reconciliation and Trade workflow | Claude | Done 2026-11-22 (#21), first real run accepted |
 | T-10 | Second Alpaca paper account for the tool agent: create it at 100,000 USD, add the secrets `ALPACA_TOOLS_API_KEY` and `ALPACA_TOOLS_SECRET_KEY`, then the variable `TRADING_ENABLED_TOOLS` | Owner | To do |
 | T-11 | Dashboard with both agents, the tool agent first, and the comparison of the two approaches | Claude | Done 2026-11-23 (#23): comparison card, one tab per agent, tool use shown, replay card |
-| T-12 | Soundness checks (D-016) and replay (D-015) on the tool agent | Claude | Soundness checks done 2026-11-23: 6 of 7 (pipeline 5 of 7), report in `docs/evals/tools`; replay running (63 sessions, ~5 h) |
+| T-12 | Soundness checks (D-016) and replay (D-015) on the tool agent | Claude | Checks done: v1 6 of 7; prompt decide_tools_v2 adopted on 10-run evidence (calm market 7/10 against 4/10, churn halved, crash unchanged). Replay with v1 running, replay with v2 next |
 | T-13 | News as covariates for Timestral (the bonus of the brief): source, construction, backtest with and without, used only if it improves the forecasts | Claude, with the owner | To do (after T-11) |
 | T-07 | Final pass before submission: README, CLAUDE.md, decision statuses, release `v1.0` | Claude | Wed 2026-11-25 morning |
 

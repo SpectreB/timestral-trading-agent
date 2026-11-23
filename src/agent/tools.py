@@ -11,8 +11,11 @@ Three tools, each a question the LLM may ask:
      assumption: probability of a loss, bad-case loss (5% quantile).
   2. The risk decomposition of D-014 (Timestral volatilities x shrunk historical correlation):
      forecast volatility and each asset's share of the risk.
-  It also says whether the guardrails would accept the allocation as it is, using the
-  production guardrails themselves, so the LLM can correct itself before answering.
+  It compares the allocation with the portfolio held now (points traded, change in forecast
+  volatility and in bad case), so a change that trades a lot for little risk
+  benefit is visible (D-018, calm-market finding). It also says whether the guardrails would
+  accept the allocation as it is, using the production guardrails themselves, so the LLM can
+  correct itself before answering.
 - `get_baseline`: the rule-based portfolio (weights inversely proportional to the forecast
   interval width), as a reference the LLM may use or ignore.
 
@@ -127,8 +130,9 @@ class TimestralTools:
                         "Evaluate a candidate allocation (weights as fractions of the portfolio; "
                         "omitted assets are 0, the rest is cash). Returns Timestral's forecast of "
                         "the portfolio's own value (quantiles, probability of a loss), its "
-                        "forecast volatility and each asset's share of the risk, and whether the "
-                        "guardrails would accept it as it is."
+                        "forecast volatility and each asset's share of the risk, how it compares "
+                        "with the portfolio held now (points traded, change in risk), and whether "
+                        "the guardrails would accept it as it is."
                     ),
                     "parameters": {
                         "type": "object",
@@ -271,28 +275,46 @@ class TimestralTools:
         cash = 1.0 - float(w.sum())
         return cash + (values / values[-1]) @ w  # type: ignore[no-any-return]
 
+    def _portfolio_forecast(self, w: Mapping[str, float], h: int) -> dict[str, float]:
+        """Timestral's forecast of the portfolio's own value series (all cash: no risk)."""
+        if sum(w.values()) <= 0:
+            return {**dict.fromkeys(LEVELS_SHOWN, 0.0), "probability_of_loss": 0.0}
+        series = self.portfolio_series(w)
+        out = self.model.forecast(series[None, :], prediction_length=self.cfg.forecast.horizon)
+        levels = tuple(float(v) for v in _to_numpy(out.quantile_levels))
+        q = _to_numpy(out.quantiles).reshape(self.cfg.forecast.horizon, len(levels))
+        cum = np.maximum.accumulate(q[h - 1] / series[-1] - 1.0)  # quantiles must not cross
+        return {
+            **_quantiles(levels, cum),
+            "probability_of_loss": _probability_below_zero(levels, cum),
+        }
+
     def evaluate_portfolio(self, weights: Any, horizon: Any) -> dict[str, Any]:
         h = self._horizon(horizon)
         w = self._weights(weights)
         invested = sum(w.values())
 
-        # 1. Timestral forecasts the portfolio's own value series (all cash: nothing to forecast).
-        if invested > 0:
-            series = self.portfolio_series(w)
-            out = self.model.forecast(series[None, :], prediction_length=self.cfg.forecast.horizon)
-            levels = tuple(float(v) for v in _to_numpy(out.quantile_levels))
-            q = _to_numpy(out.quantiles).reshape(self.cfg.forecast.horizon, len(levels))
-            cum = np.maximum.accumulate(q[h - 1] / series[-1] - 1.0)  # quantiles must not cross
-        else:
-            levels = tuple(LEVELS_SHOWN.values())
-            cum = np.zeros(len(levels))
+        # 1. Timestral forecasts the portfolio's own value series.
+        forecast = self._portfolio_forecast(w, h)
 
         # 2. Risk decomposition from the asset forecasts (D-014).
         cov = covariance(forecast_vols(self.forecasts, h), self._corr)
         shares = risk_contributions(w, cov)
         top = sorted(((s, x) for s, x in shares.items() if w[s] > 0), key=lambda t: -t[1])[:5]
+        vol = portfolio_vol(w, cov)
 
-        # 3. Would the guardrails accept it as it is?
+        # 3. Against the portfolio held now: what the change trades, and what it buys in risk.
+        #    Makes churn visible: many points traded for a negligible change in risk. Only measures
+        #    of dispersion are compared: the probability of a loss moves with the median, which has
+        #    no measured skill, so comparing it would reward guessing the direction.
+        held = self._portfolio_forecast(self.current, h)
+        versus_current = {
+            "points_traded": _r(100 * sum(abs(w[s] - self.current[s]) for s in w), 2),
+            "forecast_volatility_change": _r(vol - portfolio_vol(self.current, cov)),
+            "bad_case_q05_change": _r(forecast["q05"] - held["q05"]),
+        }
+
+        # 4. Would the guardrails accept it as it is?
         proposal = {
             "analysis": "tool check",
             "positions": [
@@ -311,12 +333,10 @@ class TimestralTools:
             "horizon": h,
             "invested": _r(invested, 4),
             "cash": _r(1 - invested, 4),
-            "timestral_portfolio_forecast": {
-                **_quantiles(levels, cum),
-                "probability_of_loss": _probability_below_zero(levels, cum),
-            },
-            "forecast_volatility": _r(portfolio_vol(w, cov)),
+            "timestral_portfolio_forecast": forecast,
+            "forecast_volatility": _r(vol),
             "risk_share_top5": {s: _r(x, 3) for s, x in top},
+            "versus_current_portfolio": versus_current,
             "guardrails": {
                 "would_be": check.status,
                 "rejection_reason": check.rejection_reason,
