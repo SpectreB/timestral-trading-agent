@@ -18,13 +18,15 @@ import json
 import math
 import shutil
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 from agent.audit import FileAuditStore
+from agent.config import AgentConfig, AssetType, tool_agent_config
 from agent.metrics import MIN_SESSIONS_FOR_CI, SERIES, performance_report
 from agent.scoring import calibration, score_forecasts
 
@@ -42,15 +44,13 @@ SIM_BODY = (
 CSS = """
 .viz-root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;
 --muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;--border:rgba(11,11,11,.10);--s1:#2a78d6;
---s2:#eb6834;--good:#006300;--warn:#a86f00;--crit:#d03b3b}
-@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{
-color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;
---grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926;
---good:#0ca30c;--warn:#fab219;--crit:#d03b3b}}
+--s2:#eb6834;--good:#006300;--warn:#a86f00;--crit:#d03b3b;--c1:#1a8f81;--c2:#6a4cb8;
+--tool:#2a78d6;--pipe:#e07b2a}
+/* Light by default, whatever the system theme: the dark theme is opt-in (data-theme). */
 :root[data-theme="dark"] .viz-root{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;
 --ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;
 --border:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926;--good:#0ca30c;--warn:#fab219;
---crit:#d03b3b}
+--crit:#d03b3b;--c1:#2ec4b0;--c2:#9b82e0}
 *{box-sizing:border-box}
 body{margin:0;background:var(--page,#f9f9f7)}
 .viz-root{background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,
@@ -63,13 +63,45 @@ padding:16px;margin:0 0 16px}
 .sec-sub{color:var(--ink2);font-size:13px;margin:0 0 12px}
 .hero{font-size:56px;line-height:1.1;font-weight:600;margin:4px 0}
 .delta{font-size:14px;color:var(--ink2)}
+.delta.up,.delta.down{font-weight:600}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;
 margin:0 0 16px}
 .tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px}
 .tile .l{color:var(--ink2);font-size:13px}.tile .v{font-size:24px;font-weight:600}
 .tile .n{color:var(--muted);font-size:12px}
 .badge{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:1px 10px;
-font-size:12px;font-weight:600;white-space:nowrap}
+font-size:12px;font-weight:600;white-space:nowrap;
+background:color-mix(in srgb,currentColor 13%,transparent)}
+.up{color:var(--good)}.down{color:var(--crit)}
+.glance{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;
+margin:0 0 16px}
+.gcard{background:var(--surface);border:1px solid var(--border);border-top:5px solid var(--axis);
+border-radius:12px;padding:16px}
+.gcard.tools{border-top-color:var(--tool)}.gcard.pipeline{border-top-color:var(--pipe)}
+.gcard.tools h2{color:var(--tool)}.gcard.pipeline h2{color:var(--pipe)}
+.gcard h2{font-size:17px}.gcard .tag{color:var(--ink2);font-size:13px;margin:0 0 10px}
+.journey{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.journey .from{font-size:20px;color:var(--ink2)}.journey .go{font-size:24px;color:var(--muted)}
+.journey .to{font-size:42px;font-weight:700;line-height:1.1}
+.gdelta{font-size:16px;font-weight:600;margin:2px 0 10px}
+.gdelta span{font-weight:400;color:var(--ink2);font-size:13px;margin-left:6px}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.simform{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:end;margin:8px 0 12px}
+.simform label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2)}
+.simform select{font:inherit;font-size:14px;padding:6px 8px;border-radius:8px;
+border:1px solid var(--axis);background:var(--surface);color:var(--ink)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:13px;margin:8px 0}
+.kv span{color:var(--muted)}.kv b{font-weight:600}
+.inrow{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:start;padding:6px 0;
+border-top:1px solid var(--grid)}.inrow>b{font-size:13px}.inrow .pills{margin:0}
+.card[class*="sec-"]{border-left:4px solid var(--sec)}
+.card[class*="sec-"]>h2::before{content:"";display:inline-block;width:9px;height:9px;
+border-radius:50%;background:var(--sec);margin-right:8px}
+.side{font-weight:600}.side.buy{color:var(--ink)}.side.sell{color:var(--warn)}
+[data-panel="tools"]{--agent:var(--tool)}[data-panel="pipeline"]{--agent:var(--pipe)}
+.sec-agent{--sec:var(--agent,var(--axis))}.sec-cmp{--sec:var(--ink2)}.sec-safe{--sec:var(--c2)}
+.sec-how{--sec:var(--c1)}.sec-sim{--sec:var(--warn)}.sec-cov{--sec:var(--c1)}
+ul.plain{margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.5}ul.plain li{margin:4px 0}
 .b-good{color:var(--good)}.b-warn{color:var(--warn)}.b-crit{color:var(--crit)}
 .b-mute{color:var(--ink2)}
 svg{display:block;width:100%;height:auto;overflow:visible}
@@ -81,8 +113,8 @@ padding:1px 10px;font-size:12px;color:var(--ink2)}
 .alerts{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-wrap:wrap;gap:8px}
 .read{margin:4px 0}
 .sline{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
-.s-agent.sline{stroke:var(--s1);stroke-width:2.5}.sdot{fill:var(--muted)}
-.sdot.s-agent{fill:var(--s1);stroke:var(--surface);stroke-width:2}
+.s-agent.sline{stroke:var(--agent,var(--s1));stroke-width:2.5}.sdot{fill:var(--muted)}
+.sdot.s-agent{fill:var(--agent,var(--s1));stroke:var(--surface);stroke-width:2}
 .key{display:inline-flex;gap:6px;align-items:center;background:none;border:1px solid var(--border);
 border-radius:999px;padding:2px 10px;color:var(--ink2);font:inherit;font-size:13px;cursor:pointer;
 white-space:nowrap}
@@ -90,15 +122,18 @@ white-space:nowrap}
 .meter{position:relative;height:10px;background:var(--grid);border-radius:5px;margin:4px 0 12px}
 .meter .fill{position:absolute;left:0;top:0;bottom:0;background:var(--s1);border-radius:5px}
 .meter i{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
-.alloc{grid-template-columns:64px 1fr 150px}
 .tabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
 .tab{background:none;border:1px solid var(--border);border-radius:999px;padding:6px 16px;
 color:var(--ink2);font:inherit;font-weight:600;cursor:pointer}
-.tab[aria-selected="true"]{background:var(--s1);border-color:var(--s1);color:#fff}
+.tab::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;
+background:var(--tool)}#tab-pipeline::before{background:var(--pipe)}
+.tab[aria-selected="true"]{background:var(--tool);border-color:var(--tool);color:#fff}
+#tab-pipeline[aria-selected="true"]{background:var(--pipe);border-color:var(--pipe)}
+.tab[aria-selected="true"]::before{background:#fff}
 .btn{display:inline-block;background:var(--s1);color:#fff;border-radius:8px;padding:8px 16px;
 font-weight:600;text-decoration:none}.btn:hover{opacity:.9}
 .alloc .val{white-space:nowrap}
-.alloc .val small{color:var(--muted);margin-left:6px}
+.alloc .val small{color:var(--muted);margin-left:0}
 details.ev{border-top:1px solid var(--grid);margin:0;padding:8px 0}
 details.ev>summary{font-size:14px}details.ev .card{border:0;padding:0;margin:8px 0 0}
 details.ev .card>h2{display:none}
@@ -106,26 +141,51 @@ details.run{border-top:1px solid var(--grid);padding:6px 0}
 details.run>summary{font-size:13px}
 svg text{fill:var(--muted);font:12px system-ui,sans-serif}
 .grid{stroke:var(--grid);stroke-width:1}.axis{stroke:var(--axis);stroke-width:1}
-.line{fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
-.area{fill:var(--s1);fill-opacity:.10}
-.dot{fill:var(--s1);stroke:var(--surface);stroke-width:2}
+.line{fill:none;stroke:var(--agent,var(--s1));stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.area{fill:var(--agent,var(--s1));fill-opacity:.10}
+.dot{fill:var(--agent,var(--s1));stroke:var(--surface);stroke-width:2}
 .ref{stroke:var(--muted);stroke-width:1;stroke-dasharray:none}
 .hit{fill:transparent}.xhair{stroke:var(--muted);stroke-width:1;opacity:0}
 .pt:hover .xhair,.pt:focus .xhair{opacity:1}
 .pt:focus{outline:none}.pt:focus .dot{stroke:var(--ink)}
 .range{fill:var(--s1);fill-opacity:.35}.med{stroke:var(--ink);stroke-width:2}
-.alloc{display:grid;grid-template-columns:64px 1fr 56px;gap:8px;align-items:center;
+.alloc{display:grid;grid-template-columns:64px 1fr 250px;gap:8px;align-items:center;
 padding:3px 0;border-radius:6px}
 .alloc:hover,.alloc:focus{background:var(--grid);outline:none}
 .alloc .name{font-weight:600;font-size:13px}.alloc .val{text-align:right;font-size:13px;
 color:var(--ink2);font-variant-numeric:tabular-nums}
 .track{position:relative;height:14px}
-.bar{position:absolute;left:0;top:0;bottom:0;background:var(--s1);border-radius:0 4px 4px 0}
+.bar{position:absolute;left:0;top:0;bottom:0;background:var(--c1);border-radius:0 4px 4px 0}
+.bar.stock{background:var(--c2)}
+td .sw{display:inline-block;margin-right:6px;vertical-align:middle}
+.dg{max-width:100%;height:auto;margin:8px 0}
+.dg rect{fill:var(--surface);stroke:var(--axis);stroke-width:1.2}
+.dg rect{stroke-width:2}.dg rect.pipe{stroke:var(--pipe)}.dg rect.tool{stroke:var(--tool)}
+.dg rect.pipe.ts{fill:color-mix(in srgb,var(--pipe) 16%,var(--surface))}
+.dg rect.tool.ts{fill:color-mix(in srgb,var(--tool) 16%,var(--surface))}
+.dg text.row.pipe{fill:var(--pipe)}.dg text.row.tool{fill:var(--tool)}
+.dg text{fill:var(--ink);font-size:12px}.dg text.sm{fill:var(--ink2);font-size:11px}
+.dg text.row{fill:var(--ink);font-size:13px;font-weight:600}
+.dg line{stroke:var(--ink2);stroke-width:1.5}.dg marker path{fill:var(--ink2);stroke:none}
+.rules{list-style:none;padding:0;margin:0 0 8px}
+.rules li{padding:6px 0;border-top:1px solid var(--grid);font-size:14px}
+.rules li:first-child{border-top:0}.rules small{display:block;color:var(--ink2);font-size:13px}
 .bar.cash{background:var(--axis)}
+.alloc .val b{color:var(--ink);font-weight:600}
+.alloc .val{display:flex;justify-content:flex-end;align-items:baseline;gap:8px}
+.cmp td.num,.cmp th.num{width:190px}
+.num{white-space:nowrap}
+th.c-tools{color:var(--tool);border-bottom:3px solid var(--tool)}
+th.c-pipeline{color:var(--pipe);border-bottom:3px solid var(--pipe)}
+.cmp tr.grp td{font-size:12px;font-weight:600;color:var(--ink2);text-transform:uppercase;
+letter-spacing:.04em;padding-top:12px}
+.mv{display:inline-block;width:46px;text-align:right;font-size:12px;color:var(--muted)}
+.mv.up{color:var(--ink)}.mv.down{color:var(--warn)}
 .tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
 .legend{display:flex;flex-wrap:wrap;gap:16px;color:var(--ink2);font-size:13px;margin:8px 0 0}
 .legend i{display:inline-block;vertical-align:middle;margin-right:6px}
-.sw{width:12px;height:12px;border-radius:3px;background:var(--s1)}
+.sw{width:12px;height:12px;border-radius:3px;background:var(--c1)}
+.sw.stock{background:var(--c2)}.sw.cash{background:var(--axis)}
 .tk{width:2px;height:14px;background:var(--ink)}
 .rg{width:14px;height:10px;border-radius:3px;background:var(--s1);opacity:.45}
 details{margin:8px 0 0}summary{cursor:pointer;color:var(--ink2);font-size:13px}
@@ -141,7 +201,8 @@ a{color:var(--s1)}
 border:1px solid var(--axis);border-radius:8px;padding:6px 10px;font-size:12px;
 box-shadow:0 2px 8px rgba(0,0,0,.15);max-width:320px}
 .tip strong{display:block;color:var(--ink);font-size:13px}
-@media (max-width:560px){.hero{font-size:40px}.alloc{grid-template-columns:52px 1fr 112px}}
+@media (max-width:560px){.hero{font-size:40px}.alloc{grid-template-columns:52px 1fr 150px}
+.alloc .val{gap:4px;font-size:12px}}
 """
 
 SCRIPT = """
@@ -170,6 +231,12 @@ el.addEventListener('pointerleave',()=>{tip.hidden=true;});
 el.addEventListener('focus',()=>{const r=el.getBoundingClientRect();
 show(el,r.left+r.width/2,r.top);});
 el.addEventListener('blur',()=>{tip.hidden=true;});}})();
+(()=>{const go=document.getElementById('sim-go');if(!go)return;
+const sel=[...document.querySelectorAll('[data-opt]')];
+const upd=()=>{const lines=sel.map(s=>s.dataset.opt+': '+s.value).join('\\n');
+go.href=go.dataset.base+'?title='+encodeURIComponent(go.dataset.title)+'&body='
++encodeURIComponent(lines+'\\n\\n'+go.dataset.text);};
+for(const s of sel)s.addEventListener('change',upd);upd();})();
 """
 
 
@@ -341,12 +408,22 @@ def _equity_chart(runs: list[dict[str, Any]]) -> str:
     )
 
 
-def _allocation(run: dict[str, Any]) -> str:
+def _allocation(run: dict[str, Any], first: dict[str, Any]) -> str:
     p = run["portfolios"]
     proposed = p["proposed"] or {}
     final, baseline = p["final"], p["baseline"]
     scale = max(0.25, *final.values(), *baseline.values())
     shares = (run.get("risk") or {}).get("risk_contributions_final", {})
+    equity = run["account"]["equity"]
+    stocks = {a["symbol"] for a in run["config"]["universe"] if a["type"] == "stock"}
+
+    def move(symbol: str) -> str:
+        """Change against the portfolio held before this run, in points of the portfolio."""
+        pts = 100 * (final[symbol] - p["current"][symbol])
+        if abs(pts) < 0.05:
+            return '<span class="mv"></span>'
+        arrow, kind = ("▲", "up") if pts > 0 else ("▼", "down")
+        return f'<span class="mv {kind}">{arrow} {abs(pts):.1f}</span>'
 
     def risk_note(symbol: str) -> str:
         return f"<small>risk {_pct(shares[symbol], 0)}</small>" if symbol in shares else ""
@@ -355,7 +432,7 @@ def _allocation(run: dict[str, Any]) -> str:
     for symbol in sorted(final, key=lambda s: -final[s]):
         view = proposed.get(symbol)
         lines = [
-            f"{symbol}: {_pct(final[symbol])} target",
+            f"{symbol}: {_usd(final[symbol] * equity)} target ({_pct(final[symbol])})",
             f"baseline {_pct(baseline[symbol])} · current {_pct(p['current'][symbol])}",
         ]
         if view:
@@ -367,17 +444,21 @@ def _allocation(run: dict[str, Any]) -> str:
         rows.append(
             f'<div class="alloc" tabindex="0" {_tip(*lines)}>'
             f'<span class="name">{_e(symbol)}</span><span class="track">'
-            f'<span class="bar" style="width:{bar:.1f}%"></span>'
-            f'<span class="tick" style="left:calc({mark:.1f}% - 1px)"></span></span>'
-            f'<span class="val">{_pct(final[symbol])}{risk_note(symbol)}</span></div>'
+            f'<span class="bar{" stock" if symbol in stocks else ""}" style="width:{bar:.1f}%">'
+            f'</span><span class="tick" style="left:calc({mark:.1f}% - 1px)"></span></span>'
+            f'<span class="val">{move(symbol)}<b>{_usd(final[symbol] * equity)}</b> '
+            f"{_pct(final[symbol])}{risk_note(symbol)}</span></div>"
         )
         llm_weight = _pct(view["weight"]) if view else "n/a"
         confidence = f"{view['confidence']:.2f}" if view else "n/a"
         why = _e(view["rationale"]) if view else ""
+        kind = " stock" if symbol in stocks else ""
         table.append(
-            f"<tr><td>{_e(symbol)}</td><td class='num'>{_pct(p['current'][symbol])}</td>"
+            f'<tr><td><i class="sw{kind}"></i>{_e(symbol)}</td>'
+            f"<td class='num'>{_pct(p['current'][symbol])}</td>"
             f"<td class='num'>{_pct(baseline[symbol])}</td><td class='num'>{llm_weight}</td>"
-            f"<td class='num'>{_pct(final[symbol])}</td><td class='num'>{confidence}</td>"
+            f"<td class='num'>{move(symbol)}{_pct(final[symbol])}</td>"
+            f"<td class='num'>{_usd(final[symbol] * equity)}</td><td class='num'>{confidence}</td>"
             f"<td>{why}</td></tr>"
         )
     vols = ((run.get("risk") or {}).get("portfolio_vol") or {}).get(
@@ -390,26 +471,38 @@ def _allocation(run: dict[str, Any]) -> str:
         else ""
     )
     cash = p["final_cash"]
+    began = datetime.fromisoformat(first["started_at"]).strftime("%d %b").lstrip("0")
+    at_start = sum(first["portfolios"]["current"].values())
+    journey = (
+        f'<div class="pills"><span class="chip">Start, {_e(began)}: {_pct(at_start, 0)} invested'
+        f'</span><span class="go" aria-hidden="true">→</span>'
+        f'<span class="chip">Now: {_pct(1 - cash, 0)} invested, {_pct(cash, 0)} cash</span></div>'
+    )
     cash_bar = 100 * cash / scale
     rows.append(
-        f'<div class="alloc" tabindex="0" {_tip(f"Cash: {_pct(cash)}")}>'
+        f'<div class="alloc" tabindex="0" {_tip(f"Cash: {_usd(cash * equity)} ({_pct(cash)})")}>'
         f'<span class="name">Cash</span><span class="track">'
         f'<span class="bar cash" style="width:{cash_bar:.1f}%"></span></span>'
-        f'<span class="val">{_pct(cash)}</span></div>'
+        f'<span class="val"><span class="mv"></span><b>{_usd(cash * equity)}</b> '
+        f"{_pct(cash)}</span></div>"
     )
     legend = (
-        '<div class="legend"><span><i class="sw"></i>Target weight (after guardrails)</span>'
-        '<span><i class="tk"></i>Baseline (Timestral rule)</span></div>'
+        '<div class="legend"><span><i class="sw"></i>ETF</span>'
+        '<span><i class="sw stock"></i>Stock</span><span><i class="sw cash"></i>Cash</span>'
+        '<span><i class="tk"></i>Baseline (Timestral rule)</span>'
+        '<span><b class="side buy">▲</b> <b class="side sell">▼</b> change since the last run, '
+        "in points</span></div>"
     )
     return (
         '<div class="card"><h2>What it holds</h2>'
-        f'<p class="sec-sub">{_e(run["run_id"])}: the target allocation, against the baseline '
-        "derived from Timestral's forecast intervals. The small figure is each asset's share of "
-        f"the portfolio's forecast risk. Hover a row for the rationale.</p>{vol_line}"
+        f'<p class="sec-sub">{_e(run["run_id"])}: target value and weight after the guardrails. '
+        f"The small figure is the asset's share of the forecast risk. Hover a row for the "
+        f"rationale.</p>{journey}{vol_line}"
         f"{''.join(rows)}{legend}"
         '<details><summary>Table view</summary><div class="scroll"><table><tr><th>Asset</th>'
         '<th class="num">Current</th><th class="num">Baseline</th><th class="num">LLM</th>'
-        '<th class="num">Final</th><th class="num">Confidence</th><th>Rationale</th></tr>'
+        '<th class="num">Final</th><th class="num">Target value</th>'
+        '<th class="num">Confidence</th><th>Rationale</th></tr>'
         f"{''.join(table)}</table></div></details></div>"
     )
 
@@ -553,6 +646,92 @@ def _fills_table(fills: list[dict[str, Any]]) -> str:
     )
 
 
+def _stamp(moment: str | None, fallback: str) -> str:
+    if not moment:
+        return fallback
+    return datetime.fromisoformat(moment).strftime("%d %b %H:%M").lstrip("0") + " UTC"
+
+
+def _trades(fills: list[dict[str, Any]], runs: list[dict[str, Any]]) -> str:
+    """The paper-trading activity itself (the brief asks for it): the latest orders with what
+    the broker did, most recent first. The slippage detail stays in the evidence below."""
+    orders = [(f["run_id"], o) for f in reversed(fills) for o in f["orders"]]
+    reconciled = {f["run_id"] for f in fills}
+    for run in reversed(runs):  # orders sent but not yet reconciled: shown as sent, not hidden
+        if run["run_id"] in reconciled or run["execution_status"] != "live":
+            continue
+        orders += [
+            (
+                run["run_id"],
+                {
+                    **o,
+                    "status": "not reconciled yet",
+                    "filled_qty": 0.0,
+                    "avg_fill_price": None,
+                    "submitted_at": run["started_at"],
+                },
+            )
+            for o in run["orders"]
+        ]
+    if not orders:
+        return (
+            '<div class="card"><h2>Trades</h2><p class="sec-sub">No order has been sent to the '
+            "broker yet.</p></div>"
+        )
+    done = [o for _, o in orders if o["status"] == "filled" and o["avg_fill_price"] is not None]
+
+    def value(o: dict[str, Any]) -> float:
+        return float(o["filled_qty"] * o["avg_fill_price"])
+
+    bought = sum(value(o) for o in done if o["side"] == "buy")
+    sold = sum(value(o) for o in done if o["side"] == "sell")
+
+    def row(run_id: str, o: dict[str, Any]) -> str:
+        buy = o["side"] == "buy"
+        side = (
+            f'<span class="side {"buy" if buy else "sell"}">{"▲ Buy" if buy else "▼ Sell"}</span>'
+        )
+        filled = o["status"] == "filled" and o["avg_fill_price"] is not None
+        waiting = o["status"] == "not reconciled yet"  # said once above, not on every row
+        price = f"{o['avg_fill_price']:,.2f}" if filled else ""
+        amount = _usd(value(o)) if filled else ""
+        status = "" if filled or waiting else _badge(o["status"], "warn", "!")
+        when = _stamp(o.get("filled_at") or o.get("submitted_at"), run_id)
+        fill_cells = f"<td class='num'>{price}</td><td class='num'>{amount}</td>" if done else ""
+        return (
+            f"<tr><td>{_e(when)}</td><td><b>{_e(o['symbol'])}</b></td><td>{side}</td>"
+            f"<td class='num'>{o['filled_qty'] or o['quantity']:,.2f}</td>"
+            f"{fill_cells}<td>{status}</td></tr>"
+        )
+
+    head = (
+        "<div class='scroll'><table><tr><th>When</th><th>Asset</th><th>Side</th>"
+        '<th class="num">Shares</th>'
+        + ('<th class="num">Price</th><th class="num">Value</th>' if done else "")
+        + "<th></th></tr>"
+    )
+    first = "".join(row(r, o) for r, o in orders[:12])
+    more = ""
+    if len(orders) > 12:
+        rest = "".join(row(r, o) for r, o in orders[12:])
+        more = (
+            f"<details><summary>The {len(orders) - 12} earlier orders</summary>"
+            f"{head}{rest}</table></div></details>"
+        )
+    waiting = sum(o["status"] == "not reconciled yet" for _, o in orders)
+    pills = [f'<span class="chip">{len(orders)} orders</span>']
+    if done:
+        pills += [
+            f'<span class="chip">{len(done)} filled</span>',
+            f'<span class="chip">{_usd(bought)} bought</span>',
+            f'<span class="chip">{_usd(sold)} sold</span>',
+        ]
+    if waiting:
+        pills.append(_badge("awaiting the broker's final state", "mute", "○"))
+    chips = f'<div class="pills">{"".join(pills)}</div>'
+    return f'<div class="card"><h2>Trades</h2>{chips}{head}{first}</table></div>{more}</div>'
+
+
 _SERIES_LABEL = {
     "agent": "Agent (after guardrails)",
     "llm_proposal": "LLM proposal",
@@ -577,6 +756,23 @@ _LEVEL_LABEL = {
 
 def _when(moment: datetime) -> str:
     return moment.strftime("%a %d %b, %H:%M").replace(" 0", " ") + " ET"
+
+
+SLOT_HOURS = (10, 15)  # the two scheduled runs of the day, US Eastern time
+
+
+def _next_slot(now: datetime) -> datetime:
+    """The next scheduled slot after `now` (weekdays only; holidays are not modelled). Counted
+    from the present, not from the last run: a run that did not happen must not make the
+    page announce a slot that is already in the past."""
+    et = now.astimezone(ZoneInfo("America/New_York"))
+    day = et.replace(hour=0, minute=0, second=0, microsecond=0)
+    while True:
+        if day.weekday() < 5:
+            for hour in SLOT_HOURS:
+                if (slot := day.replace(hour=hour)) > et:
+                    return slot
+        day += timedelta(days=1)
 
 
 def _next_run(started: datetime, mode: str) -> datetime:
@@ -621,14 +817,10 @@ def _status(runs: list[dict[str, Any]], fills: list[dict[str, Any]]) -> str:
     last = runs[-1]
     started = datetime.fromisoformat(last["started_at"])
     attempt = _last_attempt(last)
-    upcoming = _when(_next_run(started, last["mode"]))
     prompt = last["decision"]["prompt_version"]
     chips = [
-        _execution(last),
-        f'<span class="chip">Last run <b>{_e(_when(started))}</b> ({_e(last["mode"])})</span>',
-        f'<span class="chip">Next run about <b>{_e(upcoming)}</b></span>',
-        f'<span class="chip">{_e(attempt["model"])} · prompt {_e(prompt)}'
-        f" · code {_e(last['git_sha'][:7])}</span>",
+        f'<p class="sec-sub">{_e(attempt["model"])} · prompt {_e(prompt)}'
+        f" · code {_e(last['git_sha'][:7])} · {_e(_when(started))}</p>"
     ]
     alerts = _alerts(last, fills)
     if alerts:
@@ -637,7 +829,7 @@ def _status(runs: list[dict[str, Any]], fills: list[dict[str, Any]]) -> str:
             for kind, text in alerts
         )
     else:
-        lines = f"<li>{_badge('No alert at the last run', 'good', '✓')}</li>"
+        return f'<div class="status">{"".join(chips)}</div>'  # nothing wrong: nothing to add
     return f'<div class="status">{"".join(chips)}</div><ul class="alerts">{lines}</ul>'
 
 
@@ -653,7 +845,7 @@ def _today(run: dict[str, Any], fills: list[dict[str, Any]]) -> str:
     for symbol, delta in moves[:6]:
         view = proposed.get(symbol)
         why = view["rationale"] if view else ""
-        short = why if len(why) <= 150 else why[:147] + "..."
+        short = why if len(why) <= 90 else why[:87] + "..."
         origin = "cash" if cur[symbol] == 0 else _pct(cur[symbol])
         why_cell = f"<td {_tip(why)}>{_e(short)}</td>" if why else "<td></td>"
         rows.append(
@@ -684,9 +876,9 @@ def _today(run: dict[str, Any], fills: list[dict[str, Any]]) -> str:
         note = "<p>No parsable analysis.</p>"
     else:
         note = (
-            f'<p class="read">{_e(analysis[:317] + "..." if len(analysis) > 320 else analysis)}</p>'
+            f'<p class="read">{_e(analysis[:197] + "..." if len(analysis) > 200 else analysis)}</p>'
         )
-        if len(analysis) > 320:
+        if len(analysis) > 200:
             note += (
                 f'<details><summary>Full analysis</summary><pre class="txt">{_e(analysis)}</pre>'
                 "</details>"
@@ -838,29 +1030,32 @@ def _exposure(run: dict[str, Any]) -> str:
     )
 
 
-def _performance(runs: list[dict[str, Any]], report: dict[str, Any] | None) -> str:
+def _performance(
+    runs: list[dict[str, Any]], report: dict[str, Any] | None, replay: str = ""
+) -> str:
     equity, start = runs[-1]["account"]["equity"], runs[0]["account"]["equity"]
     hero = (
-        f'<div class="hero">{_usd(equity)}</div><div class="delta">{_spct(equity / start - 1, 2)} '
+        f'<div class="hero">{_usd(equity)}</div>'
+        f'<div class="delta {"" if equity == start else "up" if equity > start else "down"}">'
+        f"{_spct(equity / start - 1, 2)} "
         f"since the first run ({_usd(start)}) · account value at the latest run</div>"
     )
     if report is None or report["sessions"] < 1:
         body = (
-            '<p class="sec-sub">No trading session has closed since the first run, so the '
-            "performance of the agent and its references cannot be measured yet. The chart and the "
-            "comparisons appear after the first session's closing prices are recorded.</p>"
+            '<p class="sec-sub">No session has closed since the first run: the chart appears '
+            "after the first closing prices.</p>"
         )
     else:
         first, last = report["first_session"], report["last_session"]
         body = (
-            f'<p class="sec-sub">Cumulative return of the agent against four references, '
-            f"{report['sessions']} session(s), {_e(first)} to {_e(last)}. "
-            "Positions are valued as if "
-            "executed exactly, without costs: the real account is the figure above.</p>"
-            f"{_series_chart(report)}<h3>What does each layer add?</h3>{_comparisons(report)}"
+            f'<p class="sec-sub">The agent against four references, {report["sessions"]} '
+            f"session(s), {_e(first)} to {_e(last)}. Valued without costs: the real account is "
+            "the figure above.</p>"
+            f"{_series_chart(report)}<details><summary>What does each layer add?</summary>"
+            f"{_comparisons(report)}"
             '<p class="sec-sub">A difference is only called conclusive when its 95% interval '
             f"(from {MIN_SESSIONS_FOR_CI} sessions on) excludes zero: a few days of returns cannot "
-            "separate skill from noise.</p>"
+            "separate skill from noise.</p></details>"
         )
     definitions = (
         "<details><summary>Definitions</summary><ul>"
@@ -872,12 +1067,45 @@ def _performance(runs: list[dict[str, Any]], report: dict[str, Any] | None) -> s
         "<li><b>SPY</b>: the S&amp;P 500 ETF, the market.</li></ul></details>"
     )
     exposure = _exposure(runs[-1])
-    return f'<div class="card"><h2>Performance</h2>{hero}{body}{exposure}{definitions}</div>'
+    return (
+        f'<div class="card"><h2>Performance</h2>{hero}{body}{replay}{exposure}{definitions}</div>'
+    )
+
+
+SIM_CHOICES: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
+    "agent": (
+        "Agent",
+        (
+            ("tools", "Tool agent (final)"),
+            ("pipeline", "Pipeline agent (reference)"),
+            ("news", "Tool agent + news covariates"),
+        ),
+    ),
+    "stance": (
+        "Risk stance",
+        (
+            ("balanced", "Balanced: the live limits"),
+            ("cautious", "Cautious: 30% cash, small positions"),
+            ("bold", "Bold: larger positions, no leverage"),
+        ),
+    ),
+    "start": (
+        "Start from",
+        (
+            ("current", "Its current portfolio"),
+            ("cash", "All cash"),
+            ("equal", "Equal weight, 6% each"),
+        ),
+    ),
+}
 
 
 def _simulations(sims: list[dict[str, Any]], repo: str) -> str:
-    """The evaluators' entry point: request a simulation, and see the ones already run."""
-    url = f"{repo}/issues/new?" + urlencode({"title": SIM_TITLE, "body": SIM_BODY})
+    """The evaluators' entry point: choose, request a simulation, see the ones already run."""
+    first = {key: opts[0][0] for key, (_, opts) in SIM_CHOICES.items()}
+    lines = "\n".join(f"{key}: {value}" for key, value in first.items())
+    base = f"{repo}/issues/new"
+    url = f"{base}?" + urlencode({"title": SIM_TITLE, "body": f"{lines}\n\n{SIM_BODY}"})
     items = []
     for r in list(reversed(sims))[:10]:
         who = r.get("requested_by") or "unknown"
@@ -891,14 +1119,25 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> str:
             f'<p><a href="{_e(link)}">Full record</a></p></details>'
         )
     listing = "".join(items) or '<p class="sec-sub">No simulation has been requested yet.</p>'
+    controls = "".join(
+        f'<label>{_e(label)}<select data-opt="{key}">'
+        + "".join(f'<option value="{v}">{_e(text)}</option>' for v, text in opts)
+        + "</select></label>"
+        for key, (label, opts) in SIM_CHOICES.items()
+    )
     return (
-        '<div class="card"><h2>Run it yourself</h2><p class="sec-sub">Ask the pipeline agent to '
-        "decide now, on its current portfolio: live data, Timestral, the LLM and the guardrails. "
-        "<b>Simulations never send an order.</b> The button opens a pre-filled GitHub issue "
-        "(a GitHub account is needed); the answer is posted in the issue in about 6 minutes and "
-        "appears below. At most one simulation a minute and 20 a day; a request that comes too "
-        "soon is answered with an error message in its issue.</p>"
-        f'<p><a class="btn" href="{_e(url)}">Run a simulation</a></p>{listing}</div>'
+        '<div class="card"><h2>Run it yourself</h2><p class="sec-sub">Pick an agent, a stance and '
+        "a starting point, and watch it decide now on live data. "
+        "<b>Simulations never send an order.</b></p>"
+        f'<div class="simform">{controls}<a class="btn" id="sim-go" href="{_e(url)}" '
+        f'data-base="{_e(base)}" data-title="{_e(SIM_TITLE)}" data-text="{_e(SIM_BODY)}">'
+        "Run a simulation</a></div>"
+        '<details><summary>How it works and its limits</summary><p class="sec-sub">The button '
+        "opens a pre-filled GitHub issue (a GitHub account is needed); the answer is posted in "
+        "the issue in about 6 minutes and appears below. Cautious keeps 30% in cash and small "
+        "positions; bold allows larger positions but never leverage. At most one simulation a "
+        "minute and 20 a day; a request that comes too soon is answered in its issue."
+        f"</p></details>{listing}</div>"
     )
 
 
@@ -1096,6 +1335,8 @@ class AgentView:
     scores: list[dict[str, Any]]
     report: dict[str, Any] | None
     prefix: str = ""  # folder of its records on the audit-log branch
+    replay: dict[str, Any] | None = None  # its replay report (D-015), shown under Performance
+    replay_folder: str = ""  # where the replay records live in the repository
 
 
 def _agent_body(agent: AgentView, repo: str) -> str:
@@ -1131,51 +1372,293 @@ def _agent_body(agent: AgentView, repo: str) -> str:
         [
             _status(runs, fills),
             _today(runs[-1], fills),
-            _performance(runs, report),
-            _allocation(runs[-1]),
+            _performance(runs, report, _replay(agent.replay, repo, agent.replay_folder)),
+            _trades(fills, runs),
+            _allocation(runs[-1], runs[0]),
             '<div class="card"><h2>Can we trust it?</h2><p class="sec-sub">The evidence behind '
             "the figures above. Click a line to open it.</p>" + "".join(evidence) + "</div>",
         ]
     )
 
 
-def _compare(agents: list[AgentView]) -> str:
-    """Both approaches side by side, on the real accounts (D-018)."""
-    rows = []
+_TAGLINE = {
+    "tools": "The final agent: the LLM questions Timestral through tools, then builds.",
+    "pipeline": "The reference: Timestral and a rule set a baseline, the LLM adjusts it.",
+}
+
+
+def _glance(agents: list[AgentView], moment: datetime | None = None) -> str:
+    """What the reader needs first, for each agent: where it started, where it is, is anything
+    wrong. Everything else on the page is evidence one click away."""
+    cards = []
     for a in agents:
+        tag = f'<p class="tag">{_e(_TAGLINE.get(a.key, a.summary))}</p>'
         if not a.runs:
-            rows.append([f"<b>{_e(a.title)}</b>", "not started yet", "", "", ""])
+            cards.append(
+                f'<div class="gcard {a.key}"><h2>{_e(a.title)}</h2>{tag}'
+                '<p class="sec-sub">Not started yet: its section fills in after its first run.</p>'
+                "</div>"
+            )
             continue
-        start, now = a.runs[0]["account"]["equity"], a.runs[-1]["account"]["equity"]
-        outcomes = Counter(r["decision"]["outcome"] for r in a.runs)
-        calls = [len(_tool_calls(r)) for r in a.runs]
-        rows.append(
-            [
-                f"<b>{_e(a.title)}</b>",
-                f"{_usd(now)} ({_spct(now / start - 1, 2)})",
-                str(len(a.runs)),
-                f"{outcomes['accepted']} accepted · {outcomes['corrected']} corrected · "
-                f"{outcomes['fallback_hold']} held",
-                f"{sum(calls) / len(calls):.1f}" if any(calls) else "none (fixed pipeline)",
-            ]
+        first, last = a.runs[0], a.runs[-1]
+        start, now = first["account"]["equity"], last["account"]["equity"]
+        kind = "" if now == start else "up" if now > start else "down"
+        alerts = _alerts(last, a.fills)
+        level = "crit" if any(k == "crit" for k, _ in alerts) else "warn" if alerts else ""
+        status = (
+            _badge(f"{len(alerts)} alert(s)", level, "!" if level == "warn" else "✕")
+            if alerts
+            else _badge("No alert", "good", "✓")
         )
-    return (
-        '<div class="card"><h2>Two ways of using Timestral</h2><p class="sec-sub">Two agents trade '
-        "the same 15 assets, at the same times, with the same data and the same guardrails, each "
-        "on its own paper account. They differ in one thing: how the LLM uses Timestral.</p>"
-        + _table(
+        began = datetime.fromisoformat(first["started_at"]).strftime("%d %b").lstrip("0")
+        started = datetime.fromisoformat(last["started_at"])
+        upcoming = _when(_next_slot(moment) if moment else _next_run(started, last["mode"]))
+        # Green is for gains: a normal state is neutral, only a deviation takes a colour.
+        calm = f"{_outcome(last)}{status if alerts else ''}".replace("b-good", "b-mute")
+        cards.append(
+            f'<div class="gcard {a.key}"><h2>{_e(a.title)}</h2>{tag}'
+            f'<div class="journey"><span class="from">{_usd(start)}</span>'
+            f'<span class="go" aria-label="to">→</span>'
+            f'<span class="to {kind}">{_usd(now)}</span></div>'
+            f'<div class="gdelta {kind}">{_usd(now - start).replace("$-", "-$")} '
+            f"({_spct(now / start - 1, 2)})<span>since {_e(began)} · {len(a.runs)} run(s)</span>"
+            f'</div><div class="pills">{calm}</div>'
+            f'<div class="kv"><span>Last run</span><b>{_e(_when(started))}</b>'
+            f"<span>Next run</span><b>{_e(upcoming)}</b></div></div>"
+        )
+    return f'<div class="glance">{"".join(cards)}</div>'
+
+
+def _inputs(cov: dict[str, Any] | None = None) -> str:
+    """What goes in, as keywords: the reviewer looks for the data, the models and the covariates."""
+    pipe, tool = AgentConfig(), tool_agent_config()
+    etfs = sum(a.type is AssetType.ETF for a in pipe.universe)
+    stocks = len(pipe.universe) - etfs
+
+    def size(cfg: AgentConfig) -> str:
+        return cfg.forecast.model_id.split("/")[-1]
+
+    rows = [
+        (
+            "Data",
             [
-                "Agent",
-                "Account value (since its first run)",
-                "Runs",
-                "Decisions",
-                "Timestral calls per decision",
+                "Alpaca daily bars",
+                f"{len(pipe.universe)} assets: {etfs} ETFs, {stocks} stocks",
+                f"{pipe.forecast.context_length}-day context",
             ],
-            rows,
+        ),
+        (
+            "Forecasts",
+            [
+                f"{size(pipe)} (pipeline agent)",
+                f"{size(tool)} (tool agent)",
+                f"quantiles, 1 to {pipe.forecast.horizon} days",
+            ],
+        ),
+        ("Decision", [pipe.llm.model, "native reasoning", "strict JSON"]),
+        (
+            "Covariates",
+            [
+                "news: article volume and sentiment (stocks)",
+                "events: earnings, company events, macro dates",
+                "sources: Alpaca News, FRED",
+                f"analyst: {pipe.news.analyst_model}",
+            ],
+        ),
+        ("Orders", ["Alpaca paper accounts", "marketable limit orders", "idempotent order ids"]),
+    ]
+    out = []
+    for label, items in rows:
+        pills = "".join(f'<span class="chip">{_e(i)}</span>' for i in items)
+        if label == "Covariates":
+            pills += (
+                _badge("measured, not adopted", "mute", "-")
+                if cov
+                else _badge("built; not yet measured or used live", "warn", "!")
+            )
+        out.append(f'<div class="inrow"><b>{_e(label)}</b><div class="pills">{pills}</div></div>')
+    return "".join(out)
+
+
+_VARIANT_LABEL = {
+    "news": "News sentiment",
+    "events": "Company events",
+    "news+events": "News and events",
+}
+_VERDICT_BADGE = {
+    "clear": ("clear gain", "good", "✓"),
+    "weak": ("weak gain", "warn", "!"),
+    "no": ("no gain", "mute", "-"),
+}
+
+
+def _covariates(cov: dict[str, Any] | None) -> str:
+    """The covariate trial of D-019: what was tried, the result, and what it cannot tell."""
+    if not cov:
+        return ""
+    summary, pairs = cov["summary"], {(p["variant"], p["kind"]): p for p in cov["paired"]}
+    verdicts = {v["variant"]: v for v in cov["verdicts"]}
+
+    def row(variant: str, label: str) -> str:
+        stock = next(s for s in summary if s["variant"] == variant and s["kind"] == "stock")
+        etf = next(s for s in summary if s["variant"] == variant and s["kind"] == "etf")
+        if variant == "prices":
+            gain, ctrl, verdict = "reference", "reference", _badge("reference", "mute", "-")
+        else:
+            lo, hi = pairs[(variant, "stock")]["ci95"]
+            rel = pairs[(variant, "stock")]["relative"]
+            gain = f"{rel:+.2%} ({lo / stock['pinball']:+.2%} to {hi / stock['pinball']:+.2%})"
+            ctrl = f"{pairs[(variant, 'etf')]['relative']:+.2%}"
+            text, kind, icon = _VERDICT_BADGE[verdicts[variant]["decision"]]
+            verdict = _badge(text, kind, icon)
+        return (
+            f"<tr><td>{_e(label)}</td><td class='num'>{stock['coverage_80']:.1%}</td>"
+            f"<td class='num'>{etf['coverage_80']:.1%}</td><td class='num'>{_e(gain)}</td>"
+            f"<td class='num'>{_e(ctrl)}</td><td>{verdict}</td></tr>"
         )
-        + "<ul class='sec-sub'>"
-        + "".join(f"<li><b>{_e(a.title)}</b>: {_e(a.summary)}</li>" for a in agents)
-        + "</ul></div>"
+
+    rows = row("prices", "Prices only") + "".join(row(v, _VARIANT_LABEL[v]) for v in _VARIANT_LABEL)
+    n_stocks = cov.get("stocks_with_news", cov["stocks"])
+    return (
+        '<div class="card"><h2>Do news help the forecast?</h2>'
+        '<p class="sec-sub"><b>Tried, not adopted.</b> The same Timestral model forecast '
+        f"{n_stocks} stocks and {cov['etfs']} ETFs on {cov['origins']} past days "
+        f"({cov['first_origin']} to {cov['last_origin']}, {cov['horizon']}-day horizon), with and "
+        "without news covariates. The ETFs are the control: they have no company news.</p>"
+        '<div class="scroll"><table class="cmp"><tr><th>Forecast built from</th>'
+        '<th class="num">Interval hit, stocks</th><th class="num">Interval hit, ETFs</th>'
+        '<th class="num">Error vs prices only, stocks (95% range)</th>'
+        '<th class="num">Same, ETFs (control)</th><th>Verdict</th></tr>'
+        f"{rows}</table></div>"
+        '<p class="sec-sub">Interval hit: share of outcomes inside the 80% interval, ideal 80%. '
+        "Error: pinball loss, a negative figure means worse. The pre-declared rule (D-019) needs "
+        "a lower error on stocks, calibration kept, and the control unharmed.</p>"
+        "<details><summary>How to read it, and what it cannot tell</summary>"
+        "<ul class='plain'>"
+        "<li>The covariates do change the forecasts (the median flips sign in 11 to 23% of cases), "
+        "but the changes cancel out: the average error does not move.</li>"
+        "<li>Intervals widen by 2 to 3.5% for stocks <i>and</i> ETFs alike. That is a general "
+        "caution once covariates are present, not information from the news, so the slightly "
+        "better interval hit is not a gain.</li>"
+        f"<li>Limits: one period of about six months, {cov['origins']} overlapping daily origins, "
+        "55 earnings releases only, and one sentiment score per article from a small model, "
+        "which is the weakest kind of information at five days.</li>"
+        "<li>Not tested: known-in-advance calendars (earnings dates, central banks), market "
+        "variables such as volatility, and the effect around events only.</li></ul></details>"
+        "</div>"
+    )
+
+
+def _compare(cov: dict[str, Any] | None = None) -> str:
+    """How the two approaches work, drawn, with the inputs as keywords (D-018)."""
+    return (
+        '<div class="card"><h2>Two ways of using Timestral</h2><p class="sec-sub">Same 15 assets, '
+        "same data, same guardrails, one paper account each. Only the use of Timestral differs."
+        "</p>" + _diagram() + _inputs(cov) + "</div>"
+    )
+
+
+def _pass_share(counts: dict[str, tuple[int, int]]) -> str:
+    passed, total = sum(c[0] for c in counts.values()), sum(c[1] for c in counts.values())
+    return f"{passed}/{total} ({100 * passed / total:.0f}%)" if total else "n/a"
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    return float(ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2)
+
+
+def _measures(a: AgentView, evals: dict[str, Any] | None) -> dict[str, str]:
+    """Concrete measures of one agent, as text: how it decides, what risk it takes, how it
+    executes, how it behaved in tests, how it did on the past. 'n/a' when not measurable yet."""
+    out: dict[str, str] = {}
+    runs = a.runs
+    if runs:
+        n = len(runs)
+        outcomes = Counter(r["decision"]["outcome"] for r in runs)
+        port = [r["portfolios"] for r in runs]
+
+        def moved(x: dict[str, Any], other: str) -> float:
+            return float(100 * sum(abs(x["final"][s] - x[other][s]) for s in x["final"]))
+
+        ratios = []
+        for r in runs:
+            vols = (r.get("risk") or {}).get("portfolio_vol") or {}
+            if vols:
+                v = vols[max(vols, key=int)]
+                if v.get("final") and v.get("baseline"):
+                    ratios.append(v["final"] / v["baseline"])
+        traded, away = (
+            _median([moved(x, "current") for x in port]),
+            _median([moved(x, "baseline") for x in port]),
+        )
+        calls = [len(_tool_calls(r)) for r in runs]
+        out["calls"] = f"{sum(calls) / n:.1f}" if any(calls) else "1 fixed run"
+        out["accepted"] = f"{outcomes['accepted']}/{n}"
+        out["corrections"] = f"{sum(len(_corrections(r)) for r in runs) / n:.1f}"
+        out["traded"], out["away"] = f"{traded:.0f}", f"{away:.0f}"
+        out["risk"] = f"{sum(ratios) / len(ratios):.2f}x" if ratios else "n/a"
+        out["invested"] = _pct(sum(1 - x["final_cash"] for x in port) / n, 0)
+        sums = [f["summary"] for f in a.fills]
+        if sums:
+            out["filled"] = f"{sum(x['n_filled'] for x in sums)}/{sum(x['n_orders'] for x in sums)}"
+            slips = [
+                x["slippage_bps_weighted"] for x in sums if x["slippage_bps_weighted"] is not None
+            ]
+            if slips:
+                out["slippage"] = f"{sum(slips) / len(slips):+.1f} bps"
+    rep = a.replay
+    if rep and rep.get("sessions"):
+        mine = rep["series"]["agent"]
+        out["past_return"] = _spct(mine["cumulative_return"], 1)
+        out["past_vol"] = _pct(mine["annualised_volatility"], 1)
+        out["past_dd"] = _pct(mine["max_drawdown"], 1)
+        five = next((r for r in rep["risk_calibration"] if r["horizon"] == 5), None)
+        if five:
+            out["past_cov"] = _pct(five["inside_80"], 0)
+    if evals:
+        res = evals.get("tools" if a.key == "tools" else "pipeline")
+        if res:
+            focus = evals.get("tools_focus") if a.key == "tools" else None
+            out["tests"] = _pass_share(_scenario_counts(res, focus))
+    return out
+
+
+_MEASURE_ROWS: tuple[tuple[str, str, str], ...] = (
+    ("Decisions", "calls", "Timestral calls per decision"),
+    ("", "accepted", "Accepted as proposed"),
+    ("", "corrections", "Guardrail corrections per run"),
+    ("", "traded", "Points traded per run (median)"),
+    ("", "away", "Points away from the Timestral rule (median)"),
+    ("Risk", "risk", "Forecast risk against the rule"),
+    ("", "invested", "Invested share"),
+    ("Execution", "filled", "Orders filled"),
+    ("", "slippage", "Average slippage"),
+    ("Tests", "tests", "Behaviour tests passed (more repeats for the tool agent)"),
+    ("The past", "past_return", "Return over 63 replayed sessions"),
+    ("", "past_vol", "Volatility, annualised"),
+    ("", "past_dd", "Largest fall from a peak"),
+    ("", "past_cov", "Risk interval hit (5 days, target 80%)"),
+)
+
+
+def _head_to_head(agents: list[AgentView], evals: dict[str, Any] | None) -> str:
+    """The two agents on concrete measures, not only on money: one row per measure."""
+    values = {a.key: _measures(a, evals) for a in agents}
+    head = "".join(f'<th class="num c-{a.key}">{_e(a.title)}</th>' for a in agents)
+    rows = []
+    for group, key, label in _MEASURE_ROWS:
+        if group:
+            rows.append(f'<tr class="grp"><td colspan="{len(agents) + 1}">{_e(group)}</td></tr>')
+        cells = "".join(f"<td class='num'>{_e(values[a.key].get(key, 'n/a'))}</td>" for a in agents)
+        rows.append(f"<tr><td>{_e(label)}</td>{cells}</tr>")
+    return (
+        '<div class="card"><h2>How do they compare?</h2><p class="sec-sub">On how they decide, '
+        "the risk they take, how they execute and how they behave in tests, not only on money. "
+        "Live figures cover the few runs so far; the past is a 63-session replay.</p>"
+        f'<div class="scroll"><table class="cmp"><tr><th></th>{head}</tr>{"".join(rows)}</table>'
+        "</div></div>"
     )
 
 
@@ -1196,22 +1679,200 @@ def _tabs(agents: list[AgentView], repo: str) -> str:
     return f'<div class="tabs" role="tablist" aria-label="Agent">{buttons}</div>{panels}'
 
 
-def _replay(report: dict[str, Any] | None, repo: str, folder: str, agent: str) -> str:
-    """Test case 1 (D-015): the same agent replayed on past sessions, anonymised."""
+def _replay(report: dict[str, Any] | None, repo: str, folder: str) -> str:
+    """Test case 1 (D-015): the same agent replayed on past sessions, anonymised. A dropdown
+    under Performance: it is evidence for the reader who wants it, not the headline."""
     if not report or report.get("sessions", 0) < 1:
         return ""
     link = f"{repo}/blob/main/{folder}/README.md"
-    return (
-        f'<div class="card"><h2>Tested on the past: the {_e(agent)}</h2><p class="sec-sub">'
-        f"The same agent replayed on {report['sessions']} past sessions "
-        f"({_e(report['first_session'])} to {_e(report['last_session'])}), one decision a day, "
-        "with strictly point-in-time data. "
-        "Assets were renamed and dates shifted so the LLM could not recognise the period; fills "
-        f"at the next open plus costs. Simulated account: {_spct(report['account_return'], 2)}.</p>"
-        f"{_series_chart(report)}<h3>What does each layer add?</h3>{_comparisons(report)}"
+    body = (
+        f'<p class="sec-sub">The same agent replayed on {report["sessions"]} past sessions, one '
+        "decision a day, with strictly point-in-time data. Assets were renamed and dates shifted "
+        "so the LLM could not recognise the period; fills at the next open plus costs. "
+        f"Simulated account: {_spct(report['account_return'], 2)}.</p>"
+        f"{_series_chart(report)}{_comparisons(report)}"
         f'<p class="sec-sub">A falling market, and only {report["sessions"]} sessions: read the '
-        f'intervals, not the point estimates. <a href="{_e(link)}">Full replay report</a>.'
-        "</p></div>"
+        f'intervals, not the point estimates. <a href="{_e(link)}">Full replay report</a>.</p>'
+    )
+    return _evidence(
+        "Tested on the past",
+        f"{report['sessions']} sessions, {report['first_session']} to {report['last_session']}",
+        body,
+    )
+
+
+# --------------------------------------------------------------------------- safeguards
+
+
+def _flow(x: int, y: int, cls: str, title: str, sub: str) -> str:
+    return (
+        f'<rect class="{cls}" x="{x}" y="{y}" width="124" height="54" rx="8"/>'
+        f'<text x="{x + 62}" y="{y + 23}" text-anchor="middle"><tspan font-weight="600">'
+        f'{_e(title)}</tspan></text><text class="sm" x="{x + 62}" y="{y + 40}" '
+        f'text-anchor="middle">{_e(sub)}</text>'
+    )
+
+
+def _flow_arrow(x: int, y: int, both: bool = False) -> str:
+    start = ' marker-start="url(#dg-head)"' if both else ""
+    return f'<line x1="{x}" y1="{y}" x2="{x + 36}" y2="{y}"{start} marker-end="url(#dg-head)"/>'
+
+
+def _diagram() -> str:
+    """The two agents as two flows, each in its colour. Shaded: Timestral. Plain: the LLM and
+    the rest. What differs is how Timestral and the LLM are chained."""
+    cols = [8, 168, 328, 488, 648]
+    top, bottom = 30, 140
+    parts = [
+        '<text class="row tool" x="8" y="18">Tool agent: the LLM asks Timestral, then '
+        "builds</text>",
+        _flow(cols[0], top, "tool", "LLM", "asks, up to 12 calls"),
+        _flow(cols[1], top, "tool ts", "Timestral tools", "forecast, evaluate"),
+        _flow(cols[2], top, "tool", "LLM", "builds the portfolio"),
+        _flow(cols[3], top, "tool", "Guardrails", "same limits"),
+        _flow(cols[4], top, "tool", "Orders", "Alpaca paper"),
+        '<text class="row pipe" x="8" y="128">Pipeline agent: Timestral first, the LLM '
+        "adjusts</text>",
+        _flow(cols[0], bottom, "pipe ts", "Timestral", "forecasts 15 assets"),
+        _flow(cols[1], bottom, "pipe", "Rule", "baseline: 1 / width"),
+        _flow(cols[2], bottom, "pipe", "LLM", "adjusts, max +15 pts"),
+        _flow(cols[3], bottom, "pipe", "Guardrails", "correct or reject"),
+        _flow(cols[4], bottom, "pipe", "Orders", "Alpaca paper"),
+    ]
+    for y in (top + 27, bottom + 27):
+        for i in range(4):
+            parts.append(_flow_arrow(cols[i] + 124, y, both=(y == top + 27 and i == 0)))
+    return (
+        '<figure><svg class="dg" viewBox="0 0 780 205" role="img" aria-label="The tool agent lets '
+        "the LLM question Timestral through tools and build the portfolio itself. The pipeline "
+        "agent runs Timestral on every asset, applies a rule and lets the LLM adjust it. Both "
+        'then go through the same guardrails and orders.">'
+        '<defs><marker id="dg-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" '
+        'markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs>'
+        f"{''.join(parts)}</svg>"
+        '<figcaption class="sec-sub">Shaded: Timestral. Same guardrails and orders for both; only '
+        "the way Timestral and the LLM are chained differs.</figcaption></figure>"
+    )
+
+
+def _rules() -> str:
+    """The guardrails in one line each, with the limits read from the configuration."""
+    cfg = AgentConfig()
+    r = cfg.risk
+    levels = ", ".join(
+        f"{_pct(abs(lv.threshold), 0)} {lbl}"
+        for lv, lbl in zip(
+            cfg.drawdown_levels,
+            ("alert", "no new risk", "60% invested at most", "half the baseline, LLM paused"),
+            strict=True,
+        )
+    )
+    items = [
+        (
+            "Unusable answers are rejected",
+            "invalid JSON, an unknown asset, weights that do not add up. The agent then keeps its "
+            "positions.",
+        ),
+        (
+            "Violations are corrected and logged",
+            f"long only, no leverage, cash at least {_pct(r.min_cash, 0)}, at most "
+            f"{_pct(r.max_weight_etf, 0)} per ETF, {_pct(r.max_weight_stock, 0)} per stock, "
+            f"{_pct(r.max_weight_group, 0)} per sector. Pipeline agent: also at most "
+            f"{100 * r.max_increase_vs_baseline:.0f} points above its baseline.",
+        ),
+        ("Losses trigger a circuit breaker", f"drawdown of {levels}."),
+        (
+            "Orders are bounded",
+            f"no trade under {100 * cfg.execution.no_trade_band:.0f} points, turnover capped at "
+            f"{_pct(cfg.execution.max_turnover_per_run, 0)} per run, limit orders, one order id "
+            "per decision, paper account only, a kill switch.",
+        ),
+        (
+            "An independent final check",
+            "a deliberately simple second implementation re-verifies the core limits before any "
+            "order leaves.",
+        ),
+    ]
+    pills = "".join(f'<span class="badge b-mute">✓ {_e(title)}</span>' for title, _ in items)
+    detail = (
+        "<ul class='rules'>"
+        + "".join(f"<li><b>{_e(title)}</b><small>{_e(text)}</small></li>" for title, text in items)
+        + "</ul>"
+    )
+    return (
+        f'<div class="pills">{pills}</div>'
+        f"<details><summary>The limits in detail</summary>{detail}</details>"
+    )
+
+
+def _scenario_counts(
+    results: dict[str, Any], focus: dict[str, Any] | None = None
+) -> dict[str, tuple[int, int]]:
+    """Passes out of repeats per scenario; a dedicated longer series replaces the short one."""
+    counts = {
+        s["key"]: (sum(r["passed"] for r in s["runs"]), len(s["runs"]))
+        for s in results["scenarios"]
+    }
+    for key, series in (focus or {}).items():
+        if key in counts and isinstance(series, list) and series:
+            counts[key] = (sum(bool(x) for x in series), len(series))
+    return counts
+
+
+def _score(count: tuple[int, int] | None) -> str:
+    if count is None:
+        return "not measured"
+    passed, n = count
+    if passed == n:
+        return _badge(f"{passed}/{n}", "mute", "✓")
+    return _badge(f"{passed}/{n}", "warn", "!")
+
+
+def _behaviour(evals: dict[str, Any]) -> str:
+    pipeline, tools = evals.get("pipeline"), evals.get("tools")
+    base = pipeline or tools
+    if not base:
+        return ""
+    p = _scenario_counts(pipeline) if pipeline else {}
+    t = _scenario_counts(tools, evals.get("tools_focus")) if tools else {}
+    rows = [
+        [
+            f"<b>{_e(s['title'])}</b>",
+            _score(t.get(s["key"])),
+            _score(p.get(s["key"])),
+        ]
+        for s in base["scenarios"]
+    ]
+    notes = []
+    for label, res in (("Pipeline agent", pipeline), ("Tool agent", tools)):
+        if res:
+            st = res["stability"]
+            notes.append(
+                f"{label}: asked the same question {st['calls']} times, answers differ by at most "
+                f"{100 * st['max_pairwise_turnover']:.0f} points of the portfolio."
+            )
+    what = "".join(
+        f"<li><b>{_e(x['title'])}</b><small>{_e(x['expectation'])}</small></li>"
+        for x in base["scenarios"]
+    )
+    return (
+        "<h3>How the LLM behaves when tested</h3>"
+        '<p class="sec-sub">Seven situations built on purpose, each repeated. Passes out of '
+        "repeats: the tool agent's prompt was tuned on longer series, so the bases differ.</p>"
+        + _table(["Situation", "Tool agent", "Pipeline agent"], rows)
+        .replace("<th>Tool agent</th>", '<th class="c-tools">Tool agent</th>')
+        .replace("<th>Pipeline agent</th>", '<th class="c-pipeline">Pipeline agent</th>')
+        + "<details><summary>What each situation tests, and how stable the answers are</summary>"
+        f"<ul class='rules'>{what}</ul>"
+        f'<p class="sec-sub">{_e(" ".join(notes))} Where an agent does not always pass, it is '
+        "shown as it is: the guardrails bound the consequences either way.</p></details>"
+    )
+
+
+def _safeguards(evals: dict[str, Any] | None) -> str:
+    return (
+        '<div class="card"><h2>Why it should not do anything silly</h2>'
+        f"<h3>Rules it cannot cross</h3>{_rules()}{_behaviour(evals) if evals else ''}</div>"
     )
 
 
@@ -1229,6 +1890,31 @@ TOOLS_SUMMARY = (
 )
 
 
+_SECTIONS = {
+    "How do they compare?": "cmp",
+    "Why it should not do anything silly": "safe",
+    "Two ways of using Timestral": "how",
+    "Run it yourself": "sim",
+    "Do news help the forecast?": "cov",
+    # Inside an agent's tab, every card takes that agent's colour.
+    "Performance": "agent",
+    "Portfolio value": "agent",
+    "What it holds": "agent",
+    "Trades": "agent",
+    "At the last run": "agent",
+    "Can we trust it?": "agent",
+}
+
+
+def _sections(page: str) -> str:
+    """A colour per kind of section, so the page can be scanned before it is read."""
+    for title, key in _SECTIONS.items():
+        page = page.replace(
+            f'<div class="card"><h2>{title}</h2>', f'<div class="card sec-{key}"><h2>{title}</h2>'
+        )
+    return page
+
+
 def render(
     runs: list[dict[str, Any]],
     fills: list[dict[str, Any]],
@@ -1240,23 +1926,36 @@ def render(
     simulations: list[dict[str, Any]] | None = None,
     tool_agent: AgentView | None = None,
     replay: dict[str, Any] | None = None,
+    evals: dict[str, Any] | None = None,
+    covariates: dict[str, Any] | None = None,
 ) -> str:
     """`runs`, `fills`, `scores` and `report` are the pipeline agent's; `tool_agent` adds the
     second agent of D-018 (shown first: it is the final agent); `replay` is the D-015 report."""
     pipeline = AgentView(
-        "pipeline", "Pipeline agent", PIPELINE_SUMMARY, runs, fills, scores or [], report
+        "pipeline",
+        "Pipeline agent",
+        PIPELINE_SUMMARY,
+        runs,
+        fills,
+        scores or [],
+        report,
+        replay=replay,
+        replay_folder="docs/replay",
     )
     agents = [tool_agent, pipeline] if tool_agent is not None else [pipeline]
     intro = (
         '<h1>Timestral Trading Agent</h1><p class="sub">An autonomous paper-trading agent: '
-        "Timestral, Mistral's time-series model, forecasts risk; a Mistral LLM decides the "
-        "positions; deterministic guardrails decide what reaches the broker. Paper money only. "
-        "Read-only view generated from the immutable "
+        "Timestral forecasts the risk, a Mistral LLM decides, guardrails decide what reaches "
+        "the broker. Paper money only. Read-only view of the immutable "
         f'<a href="{_e(repo)}/tree/{AUDIT_BRANCH}">audit log</a>.</p>'
     )
     if any(a.runs for a in agents):
         body = (
-            (_compare(agents) if len(agents) > 1 else "")
+            _glance(agents, generated_at)
+            + (_head_to_head(agents, evals) if len(agents) > 1 else "")
+            + _safeguards(evals)
+            + (_compare(covariates) if len(agents) > 1 else "")
+            + _covariates(covariates)
             + _simulations(simulations or [], repo)
             + (_tabs(agents, repo) if len(agents) > 1 else _agent_body(pipeline, repo))
         )
@@ -1265,7 +1964,6 @@ def render(
             '<div class="card"><h2>No runs yet</h2><p class="sec-sub">The agent has not recorded '
             "a run. This page fills in automatically after the first scheduled run.</p></div>"
         ) + _simulations(simulations or [], repo)
-    body += _replay(replay, repo, "docs/replay", "pipeline agent")
     stamp = generated_at.isoformat(timespec="seconds")
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
@@ -1274,7 +1972,7 @@ def render(
         '<meta name="description" content="Read-only view of an autonomous paper-trading agent: '
         'Timestral forecasts, Mistral LLM decisions, guardrails and audit log.">'
         f'<style>{CSS}</style></head><body><div class="viz-root"><div class="wrap">'
-        f"{intro}{body}{_downloads(repo, tables or [])}"
+        f"{intro}{_sections(body)}{_downloads(repo, tables or [])}"
         f'<p class="foot">Generated {_e(stamp)} from the audit log. Paper trading, not financial '
         f"advice.</p></div></div><script>{SCRIPT}</script></body></html>"
     )
@@ -1300,12 +1998,29 @@ def chronological(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(runs, key=lambda r: (r["started_at"], r["mode"] != "morning"))
 
 
+def _load_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def _load_evals(folder: Path) -> dict[str, Any] | None:
+    """The behaviour tests of D-016: the pipeline agent, and the tool agent's final prompt."""
+    found = {
+        "pipeline": _load_json(folder / "results.json"),
+        "tools": _load_json(folder / "tools_v2" / "results.json"),
+        "tools_focus": _load_json(folder / "tools_v2" / "focus_10_runs_v2.json"),
+    }
+    return found if found["pipeline"] or found["tools"] else None
+
+
 def build(
     audit_dir: Path,
     out_dir: Path,
     generated_at: datetime,
     repo: str = DEFAULT_REPO,
     replay_dir: Path | None = None,
+    tool_replay_dir: Path | None = None,
+    evals_dir: Path | None = None,
+    covariates_dir: Path | None = None,
 ) -> Path:
     pipeline = _view(FileAuditStore(audit_dir), "pipeline", "Pipeline agent", PIPELINE_SUMMARY, "")
     tools_dir = audit_dir / TOOLS_FOLDER
@@ -1322,12 +2037,15 @@ def build(
         for csv_file in sorted(source.glob("*.csv")):
             shutil.copy(csv_file, out_dir / "data" / csv_file.name)
             tables.append(csv_file.name)
-    replay_file = replay_dir / "report.json" if replay_dir is not None else None
-    replay = (
-        json.loads(replay_file.read_text(encoding="utf-8"))
-        if replay_file is not None and replay_file.exists()
-        else None
-    )
+    replay = _load_json(replay_dir / "report.json") if replay_dir is not None else None
+    if tool_agent is not None and tool_replay_dir is not None:
+        tool_agent = replace(
+            tool_agent,
+            replay=_load_json(tool_replay_dir / "report.json"),
+            replay_folder="docs/replay_tools",
+        )
+    evals = _load_evals(evals_dir) if evals_dir is not None else None
+    covariates = _load_json(covariates_dir / "results.json") if covariates_dir else None
     page = out_dir / "index.html"
     sims = chronological(FileAuditStore(audit_dir / "simulations").read_runs())
     page.write_text(
@@ -1342,6 +2060,8 @@ def build(
             sims,
             tool_agent=tool_agent,
             replay=replay,
+            evals=evals,
+            covariates=covariates,
         ),
         encoding="utf-8",
     )
@@ -1356,10 +2076,24 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the dashboard work
     parser.add_argument("--audit-dir", default="audit", type=Path)
     parser.add_argument("--out", default="site", type=Path)
     parser.add_argument("--replay-dir", default=Path("docs/replay"), type=Path)
+    parser.add_argument("--tool-replay-dir", default=Path("docs/replay_tools"), type=Path)
+    parser.add_argument("--evals-dir", default=Path("docs/evals"), type=Path)
+    parser.add_argument("--covariates-dir", default=Path("docs/covariates"), type=Path)
     args = parser.parse_args()
     slug = os.environ.get("GITHUB_REPOSITORY")
     repo = f"https://github.com/{slug}" if slug else DEFAULT_REPO
-    print(build(args.audit_dir, args.out, datetime.now(UTC), repo, args.replay_dir))
+    print(
+        build(
+            args.audit_dir,
+            args.out,
+            datetime.now(UTC),
+            repo,
+            args.replay_dir,
+            args.tool_replay_dir,
+            args.evals_dir,
+            args.covariates_dir,
+        )
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
