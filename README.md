@@ -118,11 +118,11 @@ Setup: the secrets `MISTRAL_API_KEY`, `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` (
 | Market data and broker | Alpaca: daily bars (completed sessions only), two paper accounts | Free paper trading with real prices, one API for data and orders | [D-002](docs/decisions.md) |
 | Forecast | Timestral 28M (pipeline agent) and 209M (tool agent), on CPU | Calibrated risk; no measurable direction, so used for risk | [D-004, D-006](docs/decisions.md) |
 | Decision | Mistral Large 4 (`mistral-large-4-0`, pinned), native reasoning, strict JSON | A reasoning trace and a schema-valid answer in one call | [D-008](docs/decisions.md) |
-| Orchestration | Our own tool loop on the Mistral SDK, no agent framework | One bounded decision with three tools: every step plain, tested and recorded | [D-021](docs/decisions.md) |
+| Orchestration | A simple harness of our own on the Mistral SDK: no LangChain, no LangGraph | One bounded decision with three tools: every step plain, tested and recorded | [D-021](docs/decisions.md) |
 | Safety | Deterministic guardrails and an independent final check, in Python | The LLM proposes; code decides what reaches the broker | [D-009, D-010](docs/decisions.md) |
 | Scheduling | GitHub Actions: trading twice a day, the accounts read hourly | No server to run; every run leaves a log | [D-002, D-007](docs/decisions.md) |
 | Records | Immutable JSON on the `audit-log` branch, CSV tables derived from it | Append-only, readable, public | [D-011](docs/decisions.md) |
-| Dashboard | React page without build step on GitHub Pages, data written by Python | Nothing to install; always agrees with the records | [D-012](docs/decisions.md) |
+| Dashboard | React 18 front end (htm, no build step) on GitHub Pages; the data written by Python | Nothing to install; always agrees with the records | [D-012](docs/decisions.md) |
 | Quality | ruff, mypy, pytest with hypothesis, 100% coverage on the core, gitleaks, protected `main` | Changes reach trading only through green CI | [D-009](docs/decisions.md) |
 
 ## Dashboard
