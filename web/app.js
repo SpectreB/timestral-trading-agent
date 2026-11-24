@@ -144,6 +144,24 @@
       <p className=${cls + " toggle"}>${toggle}</p></div>`;
   }
 
+  /* A tooltip anchored under any element of a section with the class "tipped": returns the
+     handlers to spread on the trigger and the box to render once in the section. */
+  function useTip() {
+    const [tip, setTip] = useState(null); // { id, top, left, body }
+    const open = (id, body) => (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const s = e.currentTarget.closest("section").getBoundingClientRect();
+      setTip({ id, body, top: r.bottom - s.top + 4, left: Math.max(0, Math.min(r.left - s.left, s.width - 380)) });
+    };
+    const close = () => setTip(null);
+    const on = (id, body) => ({
+      tabIndex: 0, onMouseEnter: open(id, body), onMouseLeave: close, onFocus: open(id, body), onBlur: close,
+      onClick: (e) => (tip && tip.id === id ? close() : open(id, body)(e)),
+    });
+    const box = tip && html`<div role="tooltip" className="tipbox" style=${{ top: tip.top, left: tip.left }}>${tip.body}</div>`;
+    return { on, box, active: tip && tip.id };
+  }
+
   // ------------------------------------------------------------------ charts
   function ticks(lo, hi, n = 4) {
     const raw = (hi - lo) / n;
@@ -204,7 +222,7 @@
 
   /* One asset: Timestral's 80% interval (q10 to q90) and median for each horizon, drawn as a
      fan from today's price (0%) to 5 days ahead. All fans share one scale, so widths compare. */
-  function Fan({ a, bound }) {
+  function Fan({ a, bound, on, tipOn }) {
     const W = 160, H = 96, L = 4, R = 4, T = 6, B = 6;
     const hs = a.horizons;
     const maxH = hs[hs.length - 1].h;
@@ -216,11 +234,13 @@
     const med = [[0, 0], ...hs.map((h) => [h.h, h.median])].map(([h, v]) => `${x(h).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
     const last = hs[hs.length - 1];
     const colour = a.type === "stock" ? "var(--stock)" : "var(--etf)";
-    const [open, setOpen] = useState(false);
-    const toggle = () => setOpen(!open);
+    const body = html`<div className="tiphead"><${Timestral} size=${11} /><b>${a.symbol}</b> <span className="muted">${a.name}</span></div>
+      <table className="mini"><thead><tr><th>Days</th><th className="num">q10</th><th className="num">Median</th><th className="num">q90</th><th className="num">Spread</th></tr></thead>
+        <tbody>${hs.map((h) => html`<tr key=${h.h}><td>${h.h}</td><td className="num">${spct(h.q10)}</td><td className="num">${spct(h.median)}</td>
+          <td className="num">${spct(h.q90)}</td><td className="num">${pct(h.spread)}</td></tr>`)}</tbody></table>
+      <p>Rule weight ${pct(a.rule_weight)}, final ${pct(a.final_weight)}.</p>`;
     return html`
-      <div className=${"fan" + (open ? " open" : "")} role="button" tabIndex="0" aria-expanded=${open}
-           title="Show the numbers for each horizon" onClick=${toggle} onKeyDown=${key(toggle)}>
+      <div className=${"fan" + (tipOn === a.symbol ? " on" : "")} ...${on(a.symbol, body)}>
         <div className="h"><b>${a.symbol}</b><span className="muted">${a.name}</span></div>
         <svg viewBox=${`0 0 ${W} ${H}`} role="img"
              aria-label=${`${a.symbol}: 80% interval at ${maxH} days from ${spct(last.q10)} to ${spct(last.q90)}`}>
@@ -231,9 +251,7 @@
           <text x=${W - R} y=${y(last.q10) + 11} textAnchor="end" style=${{ font: "10px var(--mono)", fill: "var(--ink3)" }}>${spct(last.q10, 0)}</text>
         </svg>
         <div className="w"><span>spread ${pct(last.spread)}</span><span>rule ${pct(a.rule_weight)} → ${pct(a.final_weight)}</span></div>
-        ${open && html`<table className="mini"><thead><tr><th>Days</th><th className="num">q10</th><th className="num">Median</th><th className="num">q90</th><th className="num">Spread</th></tr></thead>
-          <tbody>${hs.map((h) => html`<tr key=${h.h}><td>${h.h}</td><td className="num">${spct(h.q10)}</td><td className="num">${spct(h.median)}</td>
-            <td className="num">${spct(h.q90)}</td><td className="num">${pct(h.spread)}</td></tr>`)}</tbody></table>`}
+
       </div>`;
   }
 
@@ -301,6 +319,16 @@
       .map((h) => ({ ...h, change: h.final - h.current }))
       .filter((h) => Math.abs(h.change) >= 0.005)
       .sort((p, q) => Math.abs(q.change) - Math.abs(p.change));
+    const [shown, setShown] = useState(false);
+    const summary = `${moves.length ? moves.length + " change" + (moves.length > 1 ? "s" : "") : "positions kept"}`
+      + (d.tool_steps.length ? ` · ${d.tool_steps.length} call${d.tool_steps.length > 1 ? "s" : ""} to Timestral` : "")
+      + (d.corrections.length ? ` · ${d.corrections.length} correction${d.corrections.length > 1 ? "s" : ""}` : "");
+    if (!shown) return html`
+      <section className="sec">
+        <header><h2>Last decision</h2><span className="aside">${d.run_id} · ${when(d.at)}</span></header>
+        <p className="facts"><span><${Outcome} o=${d.outcome} /></span><span>${summary}</span>
+          <button className="more" aria-expanded="false" onClick=${() => setShown(true)}>Show the decision</button></p>
+      </section>`;
     return html`
       <section className="sec">
         <header><h2>Last decision</h2><span className="aside">${d.run_id} · ${when(d.at)}</span></header>
@@ -310,6 +338,7 @@
           <span>model <b>${d.model}</b></span><span>prompt <b>${d.prompt}</b></span>
           ${d.portfolio_vol && d.portfolio_vol.final != null && html`<span>forecast risk, ${d.portfolio_vol.horizon} days: <b>${pct(d.portfolio_vol.final)}</b> (rule alone ${pct(d.portfolio_vol.rule)})</span>`}
           <a href=${d.record}>full record</a>
+          <button className="more" aria-expanded="true" onClick=${() => setShown(false)}>Hide</button>
         </p>
         <div className="decision">
           <div>
@@ -341,6 +370,7 @@
 
   function Forecast({ a }) {
     const f = a.forecast;
+    const tip = useTip();
     const [view, setView] = useState("fans");
     const bound = useMemo(() => {
       const m = Math.max(...f.assets.flatMap((x) => x.horizons.map((h) => Math.max(Math.abs(h.q10), Math.abs(h.q90)))));
@@ -351,7 +381,7 @@
     const tq = f.tool_quantiles;
     const qcols = tq ? Object.keys(Object.values(tq.assets)[0]) : [];
     return html`
-      <section className="sec">
+      <section className="sec tipped">
         <header><h2><${Timestral} />Timestral's forecast behind it</h2>
           <span className="views" role="group" aria-label="View">
             ${[["fans", "Chart"], ["table", "Numbers"], ["raw", "Raw output"]].map(([k, t]) =>
@@ -362,9 +392,10 @@
           return 1 to ${maxH} days ahead. The rule weights each asset by <span className="formula">1 / spread</span>; the LLM then adjusts.
           The median is shown for reference: Timestral has no measured directional skill here.</${Fold}>
         ${view === "fans" && html`<${React.Fragment}>
-          <div className="fans">${f.assets.map((x) => html`<${Fan} key=${x.symbol} a=${x} bound=${bound} />`)}</div>
+          <div className="fans">${f.assets.map((x) => html`<${Fan} key=${x.symbol} a=${x} bound=${bound} on=${tip.on} tipOn=${tip.active} />`)}</div>
+          ${tip.box}
           <div className="legend"><span><i className="sq etf"></i>ETF</span><span><i className="sq stock"></i>Stock</span>
-            <span>Band: 80% interval, today to ${maxH} days · line: median · same scale (±${pct(bound, 0)}) for every asset · riskiest first · click an asset for its numbers</span></div>
+            <span>Band: 80% interval, today to ${maxH} days · line: median · same scale (±${pct(bound, 0)}) for every asset · riskiest first · hover or tap an asset for its numbers</span></div>
         </${React.Fragment}>`}
         ${view === "table" && html`<div className="scroll"><table>
           <thead><tr><th>Asset</th>${hs.map((h) => html`<th key=${h} className="num">${h}d q10</th>`)}<th className="num">${maxH}d median</th><th className="num">${maxH}d q90</th><th className="num">Spread ${maxH}d</th><th className="num">Rule</th><th className="num">Final</th></tr></thead>
@@ -530,13 +561,27 @@
     ["Replay", "The agent run again on past sessions with only the data of each day."],
   ];
 
+  const STEP_HELP = {
+    "LLM explores": ["Reads the portfolio, prices and market context without Timestral's forecasts, and asks for them through tools.", "src/agent/decide_tools.py"],
+    "Timestral tools": ["get_forecasts: quantiles for any assets and horizon.\nevaluate_portfolio: Timestral's forecast for a candidate portfolio, and whether the guardrails would accept it.\nget_baseline: the rule's weights.", "src/agent/tools.py"],
+    "LLM decides": ["Returns the portfolio as strict JSON: its analysis first, then a weight, a confidence and a reason per asset.", "src/agent/decide.py"],
+    "Guardrails": ["Rejects unusable answers, corrects and logs limit breaches, applies the circuit breaker; an independent final check follows.", "src/agent/guardrails.py · src/agent/safety.py"],
+    "Orders": ["Marketable limit orders on the agent's own Alpaca paper account, idempotent ids, a kill switch.", "src/agent/execute.py"],
+    "Timestral": ["Forecasts all 15 assets, 1 to 5 days ahead, in one batch on CPU.", "src/agent/forecast.py"],
+    "Rule": ["Weights inversely proportional to the spread, within the limits.", "src/agent/baseline.py"],
+    "LLM adjusts": ["Starts from the rule: free to reduce risk, at most +15 points to add, strict JSON.", "src/agent/decide.py"],
+  };
+
   /* The two agents as two flows. Two different loops: only the tool agent decides to call
      Timestral again or stop; both agents get one retry when the guardrails reject the answer. */
   function Diagram() {
+    const tip = useTip();
     const W = 136, H = 52;
     const cols = [8, 186, 364, 542, 720];
     const mid = (i) => cols[i] + W / 2;
-    const box = (i, y, title, sub, opts = {}) => html`<g key=${title + i + y}>
+    const box = (i, y, title, sub, opts = {}) => html`<g key=${title + i + y} className=${"step" + (tip.active === title + y ? " on" : "")}
+      ...${tip.on(title + y, html`<div className="tiphead"><b>${title}</b></div><p className="plain">${STEP_HELP[title][0]}</p>
+        <p className="mono muted">${STEP_HELP[title][1]}</p>`)}>
       <rect className=${opts.ts ? "bx ts" : "bx"} x=${cols[i]} y=${y} width=${W} height=${opts.h || H} />
       ${opts.ts && html`<${Timestral} size=${12} x=${cols[i] + 6} y=${y + 6} />`}
       ${opts.llm && html`<${Chonk} size=${12} x=${cols[i] + 6} y=${y + 6} />`}
@@ -585,6 +630,8 @@
             ${loop(3, 2, p + 52, "rejected: one retry with the reason, then hold", "retry")}
           </g>
         </svg>
+        ${tip.box}
+        <div className="legend"><span className="muted">hover or tap a step for what it does and where its code is</span></div>
       </figure>`;
   }
 
@@ -650,11 +697,12 @@
   }
 
   function How({ data }) {
+    const inTip = useTip();
     const withReplay = data.agents.filter((a) => a.replay);
     const live = data.agents.filter((a) => a.started && (a.calibration.length || a.risk_calibration.length));
     return html`
       <${React.Fragment}>
-        <section className="sec"><header><h2>The idea</h2></header>
+        <section className="sec tipped"><header><h2>The idea</h2></header>
           <${Fold} first=${html`Timestral forecasts the <b>risk</b>, a Mistral LLM <b>decides</b>, deterministic guardrails <b>bound</b> the result.`}>
             Timestral, Mistral's time-series model, turned out well calibrated on risk but without a reliable sense of direction, so
             it is used as a risk engine: how wide its interval is decides how much an asset can weigh. The LLM reads those forecasts
@@ -662,9 +710,12 @@
             Two agents test two ways of combining Timestral and the LLM, each on its own paper account.</${Fold}>
           <${Diagram} />
         </section>
-        <section className="sec"><header><h2>Inputs</h2></header>
+        <section className="sec tipped"><header><h2>Inputs</h2></header>
           <dl className="inputs">${data.inputs.map((r) => html`<${React.Fragment} key=${r.label}><dt>${r.label === "Forecast" ? html`<${Timestral} size=${13} />` : r.label === "Decision" ? html`<${Chonk} size=${13} />` : ""}${r.label}</dt>
-            <dd>${r.items.map((i) => html`<span key=${i}>${i}</span>`)}</dd></${React.Fragment}>`)}</dl>
+            <dd>${r.items.map((i) => html`<span key=${i.text} className=${"kw" + (inTip.active === i.text ? " on" : "")}
+              ...${inTip.on(i.text, html`<div className="tiphead"><b>${i.text}</b></div><p className="plain">${i.help}</p>`)}>${i.text}</span>`)}</dd></${React.Fragment}>`)}</dl>
+          ${inTip.box}
+          <div className="legend"><span className="muted">hover or tap a keyword for what it means</span></div>
         </section>
         ${data.covariates && html`<section className="sec"><header><h2><${Glyph} d=${NEWS} size=${16} />News as covariates: do they help Timestral?</h2><span className="aside">the brief's bonus, measured</span></header><${Covariates} c=${data.covariates} /></section>`}
         <section className="sec"><header><h2><${Glyph} d=${SHIELD} size=${16} />What the LLM cannot override</h2><span className="aside">deterministic code, outside the LLM</span></header>
