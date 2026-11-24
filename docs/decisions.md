@@ -61,7 +61,7 @@ One language from data to evaluation. The dashboard is also likely to be Python-
 ## D-002 — Scheduling and deployment: GitHub Actions cron
 
 - **Date:** 2026-11-19
-- **Status:** Provisional (validate Timestral CPU runtime and weight caching on a GitHub-hosted runner)
+- **Status:** Accepted 2026-11-24, with an external trigger for the schedule (see the amendment at the end of this section). The runs themselves stay on GitHub Actions; only what starts them changed.
 
 ### Context
 The agent must run unattended during the assignment week, at no cost, in a way reviewers can inspect.
@@ -91,6 +91,19 @@ At daily frequency, a few minutes of cron jitter is harmless. Auditability (a pu
 - **Audit log:** the `audit-log` branch is checked out into `audit/`, the run writes there, and the workflow pushes it afterwards, **also after a failure** (the record is written before any order, D-011). Derived CSV tables are rebuilt on every publish.
 - **`smoke.yml`:** a daily smoke test at 13:30 UTC (08:30 ET) on the real services, no order and no audit record: paper account, data validation, Timestral forecast, live prices, and a strict-schema call to the **pinned** Mistral model, whose answer must report the pinned model id (a silent alias change would otherwise go unnoticed). It is an alert, not a gate: a failure is visible and the kill switch is one variable away.
 - **Caching:** the Hugging Face weights and pip downloads are cached; CPU-only PyTorch is installed from the PyTorch CPU index.
+
+### Amendment (2026-11-24): an external trigger, because GitHub's scheduler barely fired
+- **Finding:** in four days GitHub fired 5 scheduled runs across all workflows, where the crons called for hundreds; a test workflow set to every 5 minutes ran twice. Cron syntax, default branch, enabled workflows and permissions were all checked; manual dispatch always worked. Others reported the same symptom in October 2026 ([community discussion #211641](https://github.com/orgs/community/discussions/211641)) without an answer from GitHub, and the resync commit GitHub suggests elsewhere ([#185355](https://github.com/orgs/community/discussions/185355)) did not help here. Both market runs of 2026-11-24 had to be started by hand.
+
+| Option | For | Against |
+|---|---|---|
+| Keep GitHub cron alone | Nothing to add | Not autonomous: most slots never start |
+| A self-chaining workflow on GitHub (a job that waits, then dispatches the next) | No third party | Holds a runner idle for hours; one failure breaks the chain |
+| **An external cron service calling the `workflow_dispatch` API (chosen)** | Starts on time (tested to the second); time zone America/New_York, so daylight saving is handled; testable at any hour with a dry-run job | A third-party account and a token |
+
+- **Setup:** cron-job.org, Monday to Friday, New York time: smoke test 8:30, account valuation 9:40 and hourly from 10:10 to 16:10, trading 10:00 (`mode=morning`) and 15:00 (`mode=afternoon`), both `live=true`. A disabled dry-run job (`live=false`, `publish=false`) checks the chain at any hour.
+- **Token:** a fine-grained personal access token limited to this repository with only *Actions: read and write*: it can start or cancel workflows, not read the code or the secrets. Held by the owner in cron-job.org, never in the repository. A leaked token could start runs on the paper accounts; the kill-switch variables still apply and the token is revoked in one click.
+- **GitHub's crons are kept** as a fallback: a slot started twice ends at once (`already_done`), so a late duplicate is harmless.
 
 ---
 
