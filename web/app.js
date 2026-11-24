@@ -56,6 +56,49 @@
     return html`<span className=${"state " + kind}>${label}</span>`;
   };
 
+
+  // ------------------------------------------------------------------ marks
+  /* Timestral: the pixel hourglass of its launch visual, sand falling into an M. One letter per
+     cell: D frame, G glass, W light, P peach sand, O orange sand, "." empty. */
+  const HOURGLASS = [
+    "DDDDDDDDD",
+    ".GWWWWWG.",
+    ".GWPPPOG.",
+    "..GPOOG..",
+    "...GOG...",
+    "....O....",
+    "...GOG...",
+    "..GOPOG..",
+    ".GOOGOOG.",
+    ".GOGOGOG.",
+    "DDDDDDDDD",
+  ];
+  const HG = { D: "#1f7be0", G: "#b9d7fb", W: "#e9f3ff", O: "#fa520f", P: "#ffb08f" };
+  function Timestral({ size = 16, x, y }) {
+    const cells = [];
+    HOURGLASS.forEach((row, r) => [...row].forEach((c, k) => {
+      if (c !== ".") cells.push(html`<rect key=${r + "-" + k} x=${k} y=${r} width="1.02" height="1.02" fill=${HG[c]} />`);
+    }));
+    return html`<svg className="mark" x=${x} y=${y} width=${(size * 9) / 11} height=${size} viewBox="0 0 9 11"
+      shapeRendering="crispEdges" role="img" aria-label="Timestral">${cells}</svg>`;
+  }
+
+  /* One pictogram per agent, in its colour: a wrench for the agent that uses tools, three
+     chained blocks for the fixed pipeline. */
+  function AgentIcon({ k, size = 16, x, y }) {
+    return html`<svg className=${"mark c-" + k} x=${x} y=${y} width=${size} height=${size} viewBox="0 0 24 24" fill="none"
+      stroke="var(--c)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      ${k === "tools"
+        ? html`<path d="M15 3a5 5 0 0 0-4.6 6.9l-6.9 6.9a1.9 1.9 0 0 0 2.7 2.7l6.9-6.9A5 5 0 0 0 19.9 8L17 10.9l-2.6-.6-.6-2.6L16.7 4.8A5 5 0 0 0 15 3z" />`
+        : html`<${React.Fragment}><rect x="1.5" y="8.5" width="5" height="7" rx="1" /><rect x="9.5" y="8.5" width="5" height="7" rx="1" />
+            <rect x="17.5" y="8.5" width="5" height="7" rx="1" /><path d="M6.5 12h3M14.5 12h3" /></${React.Fragment}>`}
+    </svg>`;
+  }
+  const Glyph = ({ d }) => html`<svg className="mark" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d=${d} /></svg>`;
+  const DOC = "M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7";
+  const CODE = "M8 7l-5 5 5 5M16 7l5 5-5 5";
+
   // ------------------------------------------------------------------ charts
   function ticks(lo, hi, n = 4) {
     const raw = (hi - lo) / n;
@@ -109,7 +152,7 @@
               ${pts[k].map((p, i) => html`<circle key=${i} className="pt" cx=${x(p.t)} cy=${y(p.equity)} r=${p === nearest(pts[k], t) ? 4.5 : 2.5} />`)}</g>`)}
           </svg>
           <div className="readout">${live.map((a, k) => { const p = nearest(pts[k], t); return html`<span key=${a.key} className=${"c-" + a.key}>
-            <span className="dot" style=${{ background: "var(--c)" }}></span>${a.title} ${usd2(p.equity)} <span className="muted">${when(p.at)}</span></span>`; })}</div>
+            <${AgentIcon} k=${a.key} size=${14} />${a.title} ${usd2(p.equity)} <span className="muted">${when(p.at)}</span></span>`; })}</div>
         </div>
       </section>`;
   }
@@ -181,13 +224,13 @@
   function AgentCard({ a, selected, onSelect }) {
     if (!a.started) {
       return html`<div role="button" tabIndex="0" className=${"acard c-" + a.key} aria-pressed=${selected} onClick=${onSelect} onKeyDown=${key(onSelect)}>
-        <div className="who"><b>${a.title}</b></div><p className="tag">${a.tagline}</p>
+        <div className="who"><b><${AgentIcon} k=${a.key} />${a.title}</b></div><p className="tag">${a.tagline}</p>
         <p className="muted">Not started yet.</p></div>`;
     }
     const diff = a.now.equity - a.start.equity;
     return html`
       <div role="button" tabIndex="0" className=${"acard c-" + a.key} aria-pressed=${selected} onClick=${onSelect} onKeyDown=${key(onSelect)}>
-        <div className="who"><b>${a.title}</b><span>${a.n_runs} run${a.n_runs > 1 ? "s" : ""} since ${day(a.start.at)}</span></div>
+        <div className="who"><b><${AgentIcon} k=${a.key} />${a.title}</b><span>${a.n_runs} run${a.n_runs > 1 ? "s" : ""} since ${day(a.start.at)}</span></div>
         <p className="tag">${a.tagline}</p>
         <div className="value">${usd(a.now.equity)}</div>
         <div className=${"delta " + sign(diff)}>${(diff >= 0 ? "+" : "") + usd(diff)} (${spct(diff / a.start.equity, 2)}) <span className="muted">from ${usd(a.start.equity)}</span></div>
@@ -232,7 +275,7 @@
           </div>
           <div>
             ${d.tool_steps.length > 0 && html`<${React.Fragment}>
-              <h3 style=${{ marginTop: 0 }}>Before deciding, it asked Timestral</h3>
+              <h3 style=${{ marginTop: 0 }}><${Timestral} size=${14} />Before deciding, it asked Timestral</h3>
               <ol className="steps">${d.tool_steps.map((s, i) => html`<li key=${i}><span>${s.label}${s.horizon ? `, ${s.horizon} day${s.horizon > 1 ? "s" : ""}` : ""}</span><small>${s.result}</small></li>`)}</ol>
             </${React.Fragment}>`}
             <h3 style=${d.tool_steps.length ? {} : { marginTop: 0 }}>What changed</h3>
@@ -261,7 +304,7 @@
     const qcols = tq ? Object.keys(Object.values(tq.assets)[0]) : [];
     return html`
       <section className="sec">
-        <header><h2>Timestral's forecast behind it</h2>
+        <header><h2><${Timestral} />Timestral's forecast behind it</h2>
           <span className="views" role="group" aria-label="View">
             ${[["fans", "Chart"], ["table", "Numbers"], ["raw", "Raw output"]].map(([k, t]) =>
               html`<button key=${k} aria-pressed=${view === k} onClick=${() => setView(k)}>${t}</button>`)}
@@ -360,7 +403,7 @@
         <${BothValues} agents=${data.agents} />
         <div className=${"switch c-" + a.key}>
           <span className="label">Showing</span>
-          <span className="seg">${data.agents.map((x) => html`<button key=${x.key} className=${"c-" + x.key} aria-pressed=${x.key === a.key} onClick=${() => setAgent(x.key)}>${x.title}</button>`)}</span>
+          <span className="seg">${data.agents.map((x) => html`<button key=${x.key} className=${"c-" + x.key} aria-pressed=${x.key === a.key} onClick=${() => setAgent(x.key)}><${AgentIcon} k=${x.key} size=${14} />${x.title}</button>`)}</span>
           <span className="label">${a.summary}</span>
         </div>
         ${!a.started ? html`<p className="soft">This agent has not run yet.</p>` : html`<div className=${"c-" + a.key}>
@@ -377,13 +420,15 @@
   function Diagram() {
     const box = (x, y, title, sub, ts) => html`<g key=${title + x + y}>
       <rect className=${ts ? "ts" : ""} x=${x} y=${y} width="128" height="52" />
+      ${ts && html`<${Timestral} size=${12} x=${x + 6} y=${y + 6} />`}
       <text x=${x + 64} y=${y + 22} textAnchor="middle" style=${{ fontWeight: 600 }}>${title}</text>
       <text className="sm" x=${x + 64} y=${y + 39} textAnchor="middle">${sub}</text></g>`;
     const arrow = (x, y) => html`<g key=${"a" + x + y}><line x1=${x} y1=${y} x2=${x + 30} y2=${y} />
       <path className="head" d=${`M${x + 30} ${y - 4} L${x + 37} ${y} L${x + 30} ${y + 4} z`} /></g>`;
     const cols = [8, 176, 344, 512, 680];
     const row = (y, cls, label, items) => html`<g className=${cls} key=${cls}>
-      <text className="row" x="8" y=${y - 10}>${label}</text>
+      <${AgentIcon} k=${cls.slice(2)} size=${15} x=${8} y=${y - 23} />
+      <text className="row" x="28" y=${y - 10}>${label}</text>
       ${items.map((it, i) => box(cols[i], y, it[0], it[1], it[2]))}
       ${[0, 1, 2, 3].map((i) => arrow(cols[i] + 130, y + 26))}</g>`;
     return html`
@@ -404,7 +449,7 @@
   function Measures({ data }) {
     const agents = data.agents;
     return html`<div className="scroll"><table>
-      <thead><tr><th></th>${agents.map((a) => html`<th key=${a.key} className=${"num c-" + a.key}>${a.title}</th>`)}</tr></thead>
+      <thead><tr><th></th>${agents.map((a) => html`<th key=${a.key} className=${"num c-" + a.key}><${AgentIcon} k=${a.key} size=${14} />${a.title}</th>`)}</tr></thead>
       <tbody>${data.measure_rows.map((r) => html`<${React.Fragment} key=${r.key}>
         ${r.group && html`<tr className="grp"><td colSpan=${agents.length + 1}>${r.group}</td></tr>`}
         <tr><td>${r.label}</td>${agents.map((a) => html`<td key=${a.key} className="num">${a.measures[r.key] || "n/a"}</td>`)}</tr>
@@ -416,7 +461,7 @@
       : html`<span className=${c[0] === c[1] ? "" : "warn"}>${c[0]}/${c[1]}</span>`;
     return html`
       <div className="scroll"><table>
-        <thead><tr><th>Situation</th><th>What a sound decision does</th><th className="num c-tools">Tool agent</th><th className="num c-pipeline">Pipeline agent</th></tr></thead>
+        <thead><tr><th>Situation</th><th>What a sound decision does</th><th className="num c-tools"><${AgentIcon} k="tools" size=${14} />Tool agent</th><th className="num c-pipeline"><${AgentIcon} k="pipeline" size=${14} />Pipeline agent</th></tr></thead>
         <tbody>${b.scenarios.map((s) => html`<tr key=${s.title}><td><b>${s.title}</b></td><td className="soft">${s.expectation}</td>
           <td className="num">${cell(s.tools)}</td><td className="num">${cell(s.pipeline)}</td></tr>`)}</tbody></table></div>
       <p className="muted" style=${{ fontSize: 12 }}>Passes out of repeats. The tool agent was repeated more on the scenarios its prompt was tuned on, so the bases differ.
@@ -476,14 +521,14 @@
           <p className="note">The LLM could have remembered what happened on real dates, so assets were renamed and dates shifted;
             fills at the next open, with costs. A falling market and ${withReplay[0].replay.sessions} sessions: read it as a check of behaviour, not of skill.</p>
           ${withReplay.map((a) => html`<div key=${a.key} className=${"c-" + a.key}>
-            <h3 style=${{ color: "var(--c)" }}>${a.title} · ${a.replay.first} to ${a.replay.last}</h3>
+            <h3 style=${{ color: "var(--c)" }}><${AgentIcon} k=${a.key} />${a.title} · ${a.replay.first} to ${a.replay.last}</h3>
             <${ReplayChart} replay=${a.replay} />
             <div className="scroll"><table><thead><tr><th>Question</th><th className="num">Difference since the start</th><th>Can we tell?</th></tr></thead>
               <tbody>${a.replay.comparisons.map((c) => html`<tr key=${c.label}><td>${c.label}</td><td className="num">${pts(c.difference, 2)}</td>
                 <td className="soft">${c.conclusive ? "yes: the 95% interval excludes zero" : c.measured ? "no: not distinguishable from zero" : "too early"}</td></tr>`)}</tbody></table></div>
             <p className="muted" style=${{ fontSize: 12 }}><a href=${a.replay.readme}>Full replay report</a></p></div>`)}
         </section>`}
-        ${(live.length > 0 || withReplay.length > 0) && html`<section className="sec"><header><h2>Is Timestral's risk right?</h2><span className="aside">target: 80% of outcomes inside the 80% interval</span></header>
+        ${(live.length > 0 || withReplay.length > 0) && html`<section className="sec"><header><h2><${Timestral} />Is Timestral's risk right?</h2><span className="aside">target: 80% of outcomes inside the 80% interval</span></header>
           <div className="scroll"><table><thead><tr><th>Agent</th><th>Source</th><th className="num">Horizon</th><th className="num">Forecasts</th><th className="num">Inside 80%</th><th className="num">Realised / predicted</th></tr></thead>
             <tbody>${data.agents.flatMap((a) => [
               ...(a.replay ? a.replay.risk_calibration.map((r) => ({ a, src: "replay, portfolio", h: r.horizon, n: r.n, inside: r.inside_80, ratio: r.rms_z })) : []),
@@ -540,6 +585,15 @@
   }
 
   // ------------------------------------------------------------------ app
+  /* How fresh the data is: green when the page was rebuilt in the last two hours (it is rebuilt
+     after every run and every hourly account sample), grey otherwise, with the age spelled out. */
+  function Fresh({ at }) {
+    const minutes = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 60000));
+    const ago = minutes < 60 ? `${minutes} min ago` : minutes < 2880 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`;
+    return html`<p className="fresh" title="Rebuilt from the audit log after every run and every hourly account sample">
+      <span className=${"dot " + (minutes <= 120 ? "live" : "stale")}></span>Updated ${when(at)} <span className="muted">· ${ago}</span></p>`;
+  }
+
   const readTab = () => { const t = (location.hash || "").slice(1); return TABS.some((x) => x[0] === t) ? t : "live"; };
 
   function App() {
@@ -571,10 +625,16 @@
     return html`
       <${React.Fragment}>
         <div className="top"><div className="wrap">
-          <div className="brand"><h1>Timestral Trading Agent</h1>
-            <span className="meta"><span>paper money only</span><span>updated ${when(data.generated_at)}</span><a href=${data.links.audit_log}>audit log</a><a href=${data.repo}>code</a></span></div>
+          <div className="brand">
+            <div className="title"><h1><${Timestral} size=${22} />Timestral Trading Agent</h1><span className="badge">Paper trading</span></div>
+            <div className="actions">
+              <a className="act" href=${data.links.audit_log}><${Glyph} d=${DOC} />Audit log</a>
+              <a className="act" href=${data.repo}><${Glyph} d=${CODE} />Code</a>
+            </div>
+          </div>
           <p className="lede">An autonomous agent trading two paper accounts on US ETFs and stocks. Timestral forecasts the risk, a Mistral LLM
             decides, deterministic guardrails bound every decision before it reaches the broker.</p>
+          <${Fresh} at=${data.generated_at} />
         </div></div>
         <main className="wrap">
           <nav className="guide" role="tablist" aria-label="Sections" onKeyDown=${onArrows}>
