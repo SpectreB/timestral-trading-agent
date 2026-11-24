@@ -298,6 +298,25 @@ def _replay(report: dict[str, Any] | None, repo: str, folder: str) -> dict[str, 
     }
 
 
+def _tokens(run: dict[str, Any]) -> tuple[int, int]:
+    """Mistral tokens a decision used: the tool rounds and every answer attempt."""
+    calls = [*(run["decision"].get("steps") or []), *run["decision"]["attempts"]]
+    return (
+        sum(int(c.get("prompt_tokens") or 0) for c in calls),
+        sum(int(c.get("completion_tokens") or 0) for c in calls),
+    )
+
+
+def _cost(runs: list[dict[str, Any]]) -> dict[str, str]:
+    """What a decision costs in Mistral tokens, averaged over the live runs (in, out)."""
+    if not runs:
+        return {}
+    used = [_tokens(r) for r in runs]
+    tin = sum(u[0] for u in used) / len(used)
+    tout = sum(u[1] for u in used) / len(used)
+    return {"tokens": f"{(tin + tout) / 1000:.0f}k ({tin / 1000:.0f}k in, {tout / 1000:.0f}k out)"}
+
+
 def _traits(key: str) -> list[list[str]]:
     """What sets the agent apart, in keywords, read from its configuration (D-018)."""
     if key == "tools":
@@ -334,7 +353,7 @@ def agent_data(
         "traits": _traits(a.key),
         "records": f"{repo}/tree/{AUDIT_BRANCH}/{a.prefix}",
         "started": bool(a.runs),
-        "measures": _measures(a, evals),
+        "measures": {**_measures(a, evals), **_cost(a.runs)},
         "replay": _replay(a.replay, repo, a.replay_folder),
     }
     if not a.runs:
@@ -574,6 +593,9 @@ MEASURE_HELP: dict[str, str] = {
     "past_return": "Return of the simulated account over the replayed sessions, costs included.",
     "past_vol": "Volatility of the daily returns in the replay, annualised.",
     "past_dd": "Largest fall from a peak in the replay.",
+    "tokens": "Tokens sent to and received from the Mistral LLM for one decision, tool rounds "
+    "included, averaged over the live runs. Timestral itself runs on CPU in the workflow: no "
+    "API cost.",
     "past_cov": "Share of 5-day portfolio outcomes inside Timestral's 80% risk interval. "
     "Target: 80%.",
 }
@@ -649,7 +671,7 @@ def site_data(
         "agents": [agent_data(a, evals, now, repo) for a in agents],
         "measure_rows": [
             {"group": g, "key": k, "label": lbl, "help": MEASURE_HELP.get(k, "")}
-            for g, k, lbl in _MEASURE_ROWS
+            for g, k, lbl in (*_MEASURE_ROWS, ("Cost", "tokens", "Mistral tokens per decision"))
         ],
         "min_sessions_for_ci": MIN_SESSIONS_FOR_CI,
         "rules": _rules(),
