@@ -533,7 +533,7 @@ def test_the_simulation_card_lets_the_reader_choose_agent_stance_and_start(tmp_p
     for key in ("agent", "stance", "start"):
         assert f'<select data-opt="{key}">' in card
     labels = ("Tool agent (final)", "Pipeline agent (reference)", "Tool agent + news covariates")
-    labels += ("Cautious: 30% cash, small positions", "All cash", "Equal weight, 6% each")
+    labels += ("Cautious: 30% cash, small positions", "All cash", "Equal weight, 90% invested")
     for label in labels:
         assert label in card
     # Without JavaScript the button still works, with the first choice of each list.

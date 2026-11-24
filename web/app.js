@@ -905,7 +905,9 @@
     bold: "Larger positions, never leverage.",
     current: "The portfolio it holds today.",
     cash: "As if it started today, all in cash.",
-    equal: "6% in every asset.",
+    equal: "The same share in every asset, 90% invested.",
+    standard: "The 10 ETFs and 5 stocks traded live.",
+    wide: "25 more large US stocks: more choice, the same guardrails.",
   };
   function Try({ data }) {
     const s = data.simulations;
@@ -926,7 +928,7 @@
               <span><b>${o.label.split(":")[0]}</b><small>${OPTION_NOTE[o.value] || ""}</small></span></label>`)}
           </fieldset>`)}</div>
           <div className="launch">
-            <p>You ask the <b>${name(s.choices[0])}</b>, <b>${name(s.choices[1])}</b>, starting from <b>${name(s.choices[2])}</b>.</p>
+            <p>You ask the <b>${name(s.choices[0])}</b>, <b>${name(s.choices[1])}</b>, starting from <b>${name(s.choices[2])}</b>, on <b>${name(s.choices[3])}</b>.</p>
             <a className="btn big" href=${url} target="_blank" rel="noopener"><${GitHubMark} />Request this run on GitHub ↗</a>
           </div>
           <ol className="howto">

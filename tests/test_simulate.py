@@ -158,15 +158,21 @@ def test_the_workflow_only_reacts_to_simulation_requests_and_never_reads_the_iss
     assert workflow["concurrency"] == {"group": "simulation", "cancel-in-progress": False}
 
 
-def test_only_three_words_from_closed_lists_are_taken_from_an_issue() -> None:
+def test_only_words_from_closed_lists_are_taken_from_an_issue() -> None:
     chosen, refused = parse_options("agent: tools\nstance: bold\nstart: cash\nfree text")
-    assert chosen == {"agent": "tools", "stance": "bold", "start": "cash"} and refused == []
+    assert chosen == {"agent": "tools", "stance": "bold", "start": "cash", "universe": "standard"}
+    assert refused == []
     assert parse_options("") == (DEFAULT_OPTIONS, [])
     # Case and spacing are tolerated; the first line of a key wins; unknown values are refused.
     chosen, refused = parse_options(
         "  Agent = TOOLS \nagent: pipeline\nstance: reckless\nstart:cash"
     )
-    assert chosen == {"agent": "tools", "stance": "balanced", "start": "cash"}
+    assert chosen == {
+        "agent": "tools",
+        "stance": "balanced",
+        "start": "cash",
+        "universe": "standard",
+    }
     assert refused == ["stance"]
     # Injection attempts change nothing, and are not echoed back (only our own key names are).
     evil = "agent: tools; rm -rf /\nstance: `id`\nstart: $(curl x)\n@everyone <script>"
@@ -231,7 +237,9 @@ def test_a_simulation_follows_the_chosen_options_and_still_never_trades(tmp_path
 def test_the_default_run_id_and_reply_are_unchanged() -> None:
     assert label_for(NOW, DEFAULT_OPTIONS) == "sim-100000" == label_for(NOW)
     assert label_for(NOW, {"agent": "tools"}) == "sim-100000-tools"
-    assert set(OPTIONS) == {"agent", "stance", "start"} and all(OPTIONS[k] for k in OPTIONS)
+    assert set(OPTIONS) == {"agent", "stance", "start", "universe"} and all(
+        OPTIONS[k] for k in OPTIONS
+    )
 
 
 def test_the_dashboard_form_offers_exactly_the_options_the_parser_accepts() -> None:
@@ -249,3 +257,27 @@ def test_the_dashboard_button_opens_the_request_the_workflow_expects() -> None:
 
     assert SIM_TITLE == TITLE
     assert BASELINE  # shared fixtures stay in use
+
+
+def test_the_wide_universe_adds_the_panel_stocks_in_the_existing_sector_groups() -> None:
+    from agent.config import AgentConfig
+    from agent.simulate import apply_universe
+
+    base = AgentConfig()
+    assert apply_universe(base, "standard") is base
+    wide = apply_universe(base, "wide")
+    assert len(wide.universe) == 40 and len(set(wide.symbols)) == 40
+    assert wide.symbols[:15] == base.symbols  # the live assets first, unchanged
+    groups = {a.group for a in base.universe}
+    assert wide.asset("GOOGL").group == "tech_growth" and wide.asset("BAC").group in groups
+    assert parse_options("universe: wide")[0]["universe"] == "wide"
+
+
+def test_the_equal_weight_start_invests_90_percent_whatever_the_universe() -> None:
+    from agent.config import AgentConfig
+    from agent.simulate import StartingPoint, apply_universe
+
+    for cfg in (AgentConfig(), apply_universe(AgentConfig(), "wide")):
+        prices = dict.fromkeys(cfg.symbols, 100.0)
+        held = StartingPoint(FakeBroker(prices=prices), "equal", cfg.symbols).positions()
+        assert sum(p.market_value for p in held.values()) == pytest.approx(0.9 * 100_000)

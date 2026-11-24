@@ -1129,7 +1129,14 @@ SIM_CHOICES: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
         (
             ("current", "Its current portfolio"),
             ("cash", "All cash"),
-            ("equal", "Equal weight, 6% each"),
+            ("equal", "Equal weight, 90% invested"),
+        ),
+    ),
+    "universe": (
+        "Universe",
+        (
+            ("standard", "The 15 live assets"),
+            ("wide", "Wide: 40 assets"),
         ),
     ),
 }
