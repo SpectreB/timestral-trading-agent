@@ -746,8 +746,8 @@
       <${Fold} small first="Negative is worse.">
         The rule was set before the results: lower error on stocks, calibration kept, control unharmed. The covariates move the
         forecasts but the moves cancel out; intervals widen by 2 to 3.5% for stocks and ETFs alike, which explains the slightly
-        better interval hit (stocks ${pct(c.summary.find((x) => x.variant === "prices" && x.kind === "stock").coverage_80)} with prices only).
-        ${c.model}, ${c.first} to ${c.last}, ${c.horizon} days ahead. Limits: one six-month period, 55 earnings releases, one
+        better interval hit (stocks ${pct(c.summary.find((x) => x.variant === "prices" && x.kind === "stock").coverage_80)} with prices only). ${c.model},
+        ${c.first} to ${c.last}, ${c.horizon} days ahead. Limits: one six-month period, 55 earnings releases, one
         sentiment score per article. Not tested yet: known-in-advance calendars, market variables such as volatility.</${Fold}>`;
   }
 
@@ -917,8 +917,8 @@
       <${React.Fragment}>
         <section className="sec tryhero">
           <h2 className="big">Make an agent decide, now</h2>
-          <p className="frame">It runs on today's live data, through Timestral, the LLM and the same guardrails as the live agents. <b>No order is sent.</b>
-            Its decision, reasoning and planned orders come back in about 6 minutes.</p>
+          <p className="frame">It runs on today's live data, through Timestral, the LLM and the same guardrails as the live agents. <b>No order is sent.</b> Its
+            decision, reasoning and planned orders come back in about 6 minutes.</p>
           <div className="choices">${s.choices.map((c, k) => html`<fieldset key=${c.key} className="choice">
             <legend><span className="k">${k + 1}</span>${c.label}</legend>
             ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")}>
