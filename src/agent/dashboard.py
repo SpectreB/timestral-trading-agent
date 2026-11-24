@@ -1465,7 +1465,8 @@ def _glance(agents: list[AgentView], moment: datetime | None = None) -> str:
             f"({_spct(now / start - 1, 2)})"
             f"<span>since {_e(began)} · {len(a.runs)} run(s)</span>"
             f'</div><div class="pills">{calm}</div>'
-            f'<div class="kv"><span>Value read</span><b>{_e(read)}</b><span>Last run</span><b>{_e(_when(started))}</b>'
+            f'<div class="kv"><span>Value read</span><b>{_e(read)}</b>'
+            f"<span>Last run</span><b>{_e(_when(started))}</b>"
             f"<span>Next run</span><b>{_e(upcoming)}</b></div></div>"
         )
     return f'<div class="glance">{"".join(cards)}</div>'
