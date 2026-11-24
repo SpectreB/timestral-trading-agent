@@ -95,7 +95,7 @@ ruff check . && ruff format --check . && mypy && pytest --cov=agent   # the CI c
 
 ## Operation
 
-GitHub Actions runs everything ([D-002](docs/decisions.md), [D-007](docs/decisions.md)):
+GitHub Actions runs everything. An external cron service (cron-job.org) starts the scheduled workflows on time through GitHub's API, because GitHub's own scheduler barely fired for this repository ([D-002](docs/decisions.md), [D-007](docs/decisions.md)):
 
 | Workflow | When (US Eastern time) | What |
 |---|---|---|
@@ -106,7 +106,7 @@ GitHub Actions runs everything ([D-002](docs/decisions.md), [D-007](docs/decisio
 | **Dashboard** | after every Trade, Valuation and Simulate run, and on changes to the page | Rebuilds the page and deploys it to GitHub Pages |
 | **CI** | every push and pull request | Lint, types, tests, coverage gate, secret scan |
 
-GitHub may start scheduled runs late. A run checks that the market is open, and a repeated run of the same slot does nothing.
+GitHub's own crons are kept as a fallback. A run checks that the market is open, and a repeated run of the same slot does nothing.
 
 Setup: the secrets `MISTRAL_API_KEY`, `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` (and `ALPACA_TOOLS_API_KEY`, `ALPACA_TOOLS_SECRET_KEY`, `FRED_API_KEY` for the tool agent and the news scoring), and the repository variables `TRADING_ENABLED` and `TRADING_ENABLED_TOOLS`. **These variables are the kill switches**: an agent sends orders only when its variable is `true`; otherwise its runs are recorded as dry runs. `main` is protected: changes go through pull requests with green CI.
 
@@ -168,5 +168,5 @@ CLAUDE.md             working context for the AI coding agent used on this proje
 - The live period is a few trading days: too short to compare the agents' results, which is why the evidence relies on built situations and a replay as well.
 - On a historical replay an LLM may remember what happened next. Assets are renamed and dates shifted to prevent it, but the live period remains the clean test.
 - Timestral's daily direction has no measurable skill here; the design does not rely on it.
-- GitHub may start scheduled runs late or skip them; a missed slot can be run by hand from the Actions tab.
+- The schedule depends on an external cron service; a missed slot can be run by hand from the Actions tab.
 - Reference prices come from Alpaca's free IEX feed.
