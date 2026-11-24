@@ -646,6 +646,20 @@ Interactivity is deliberately light: tooltips, folding, clicking a run or a lege
 - Enabling GitHub Pages is a repository setting: the site is public, like the repository and the audit log.
 - Revisit if reviewers need live updates or filtering (options B or F).
 
+### Amendment (2026-11-24): a React page, split into Live / How it works / Try it
+Chosen with the owner after reviewers found the page hard to enter: live activity and documentation were mixed, a newcomer did not know where to look, and the look read as generic.
+
+| Option | For | Against |
+|---|---|---|
+| A. React + Vite, built in GitHub Actions | Standard toolchain, TypeScript possible | Node needed locally to preview (not installed, disk nearly full); one more build in CI |
+| **B. React from a CDN with `htm`, no build (chosen)** | Real React, nothing to install, previews in any browser | Less standard than a Vite project, no TypeScript |
+| C. Redesign the Python-rendered page | Fastest | Not React |
+
+- **Split of concerns:** Python only writes `data.json` (`agent.web`, reusing the computations of `agent.dashboard`, so both views agree); the page (`web/`) only lays it out. LLM text is rendered as text, never as HTML.
+- **Four entry points, in the order a newcomer needs them** (revised 2026-11-24 after review): *Live* (both accounts, the differences between the agents in keywords, the last decision, Timestral's forecast and the orders folded until asked for), *How it works* (the idea, the diagram with both loops, the inputs, the guardrails, what comes next), *Evidence* (four headline checks, then the side-by-side measures, behaviour tests, replay, risk calibration and the news covariate trial, framed as a check of behaviour, not a race), *Try it* (a simulation the evaluator configures; no order sent). The lexicon is a link in the header. Details open on demand (tooltips, folded sections), never the conclusion.
+- **Timestral's raw output is shown:** per asset, the 80% interval and median 1 to 5 days ahead on one shared scale, with the **spread** (q90 - q10) and the weight the rule derives from it (1 / spread) next to the final weight; a table view; the record's JSON as stored; for the tool agent, the 7 quantiles it was given.
+- **Fallback:** the previous server-rendered page is still published as `classic.html` (no JavaScript needed). Libraries are pinned (`react@18.3.1`, `react-dom@18.3.1`, `htm@3.1.1`). Moving to option A later only replaces `web/`: the data file stays.
+
 ---
 
 ## D-013 — Forecast scoring: record observed closes as facts, derive the scores
@@ -1034,6 +1048,31 @@ Applied exactly as fixed above. Data: `docs/covariates/results.json`; shown on t
 ### Impact on further development
 - Changing the **trading** universe (more stocks, where news matters most) is kept as a possible evolution, not for this test window.
 - GDELT themes for the ETFs, in future work.
+
+---
+
+## D-021 — Agent orchestration: our own loop, no LangChain or LangGraph
+
+- **Date:** 2026-11-24 (records a choice made when the tool agent was built, D-018)
+- **Status:** Accepted by the owner on 2026-11-24. D-020 is held by the risk-budget draft set aside on 2026-11-23.
+
+### Context
+The tool agent (D-018) lets the LLM call Timestral through three tools before deciding. Agent frameworks exist for exactly this (LangChain agents, LangGraph state graphs). The question is whether one earns its place in an agent that makes one bounded decision twice a day and must show that each decision is sound.
+
+### Options
+
+| Option | For | Against |
+|---|---|---|
+| **A. Our own loop on the Mistral SDK (chosen)** | About 30 lines (`decide_with_tools`): every rule is visible and tested (6 rounds and 12 tool calls at most, `tool_choice="auto"` while exploring, then `"none"` with the strict JSON schema for the answer); every call and reply lands in the immutable record as is; one dependency, pinned; a fake client tests it at 100% coverage | Retries, checkpoints and tracing are ours to write; no ready-made multi-agent patterns |
+| B. LangChain agent | Quick start, many integrations, standard tool abstraction | Hides the loop and the prompts behind abstractions; fast-moving API with many transitive packages, for an agent that runs unattended; tracing needs callbacks or LangSmith to reach what our record already holds |
+| C. LangGraph state graph | Explicit graph, checkpoints and resumption, human-in-the-loop, multi-agent flows | Its strengths (branching, resuming long sessions, several agents talking) are not needs here: one decision, three tools, a fixed budget; more concepts than logic |
+
+### Choice and rationale
+**A.** The brief judges how we know the decisions are sound. That is easier to show when every step of the loop is plain code, covered by tests and written to the audit log, than when it sits inside a framework. The LLM only proposes; the guardrails and the independent final check are deterministic code outside the loop, and the boundary is visible in one file.
+
+### Impact
+- No framework dependency; the Mistral SDK is the only LLM dependency.
+- Revisit if the project grows into several cooperating agents (for example the news analyst and the decision-maker exchanging messages), long-running sessions, or a human approval step: LangGraph (C) would then be a serious option.
 
 ---
 

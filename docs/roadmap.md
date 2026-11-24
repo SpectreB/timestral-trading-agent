@@ -27,6 +27,7 @@ The single place to see where the project stands. Details of each decision are i
 | D-017 | Simulations requested by the evaluators through a GitHub issue (option B; full app, option D, kept in mind) | Accepted 2026-11-22 |
 | D-018 | A second agent that uses Timestral as a tool ("bounded freedom", 3 tools), on its own paper account; the final agent, the pipeline agent kept as reference | Accepted 2026-11-22 |
 | D-019 | News analysed into Timestral covariates: Mistral analyst, `news` (stocks) and `events` (earnings, company events, FRED macro dates), ETFs as control group, one `covariates` setting on the tools | Accepted for integration 2026-11-23; adoption after measurement |
+| D-021 | Agent orchestration: our own loop on the Mistral SDK, no LangChain or LangGraph (D-020 held by the risk-budget draft) | Accepted 2026-11-24 |
 
 ## Waiting for the owner
 
