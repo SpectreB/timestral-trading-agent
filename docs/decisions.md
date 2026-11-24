@@ -646,6 +646,20 @@ Interactivity is deliberately light: tooltips, folding, clicking a run or a lege
 - Enabling GitHub Pages is a repository setting: the site is public, like the repository and the audit log.
 - Revisit if reviewers need live updates or filtering (options B or F).
 
+### Amendment (2026-11-24): a React page, split into Live / How it works / Try it
+Chosen with the owner after reviewers found the page hard to enter: live activity and documentation were mixed, a newcomer did not know where to look, and the look read as generic.
+
+| Option | For | Against |
+|---|---|---|
+| A. React + Vite, built in GitHub Actions | Standard toolchain, TypeScript possible | Node needed locally to preview (not installed, disk nearly full); one more build in CI |
+| **B. React from a CDN with `htm`, no build (chosen)** | Real React, nothing to install, previews in any browser | Less standard than a Vite project, no TypeScript |
+| C. Redesign the Python-rendered page | Fastest | Not React |
+
+- **Split of concerns:** Python only writes `data.json` (`agent.web`, reusing the computations of `agent.dashboard`, so both views agree); the page (`web/`) only lays it out. LLM text is rendered as text, never as HTML.
+- **Three entry points, in the order a newcomer needs them:** *Live* (account value, last decision and its reasoning, the tool agent's calls to Timestral, Timestral's raw forecast, target portfolio, orders, every run), *How it works* (design, inputs, guardrails, side-by-side measures, behaviour tests, replay, risk calibration, covariate trial, records), *Try it* (simulation form).
+- **Timestral's raw output is shown:** per asset, the 80% interval and median 1 to 5 days ahead on one shared scale, with the **spread** (q90 - q10) and the weight the rule derives from it (1 / spread) next to the final weight; a table view; the record's JSON as stored; for the tool agent, the 7 quantiles it was given.
+- **Fallback:** the previous server-rendered page is still published as `classic.html` (no JavaScript needed). Libraries are pinned (`react@18.3.1`, `react-dom@18.3.1`, `htm@3.1.1`). Moving to option A later only replaces `web/`: the data file stays.
+
 ---
 
 ## D-013 — Forecast scoring: record observed closes as facts, derive the scores
