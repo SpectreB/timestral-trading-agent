@@ -867,6 +867,21 @@ B gives the evaluators the experience they need (run the agent and see its reaso
 - Allowing simulations to trade would only take a change of policy (and of the throttling), not of architecture: the same cycle runs with `--live` behind the kill switch.
 - If reviewers need richer interaction (choosing inputs, comparing variants), option D becomes relevant.
 
+
+### Amendment (2026-11-24): the evaluator chooses what to simulate
+The owner asked for the simulation to be interactive and personal. Chosen with the owner: the most logical choices, a closed set, nothing free-form.
+
+| Option | Values | What it does |
+|---|---|---|
+| **Agent** | tool agent (final), pipeline agent (reference), tool agent + news covariates | The agent's own configuration, model, prompt, paper account and history |
+| **Risk stance** | balanced, cautious, bold | Moves the guardrail limits: cautious keeps 30% in cash and small positions (5% per stock, 15% per ETF) and stays within 5 points of the rule; bold allows larger positions (15% per stock, 30% per ETF) and a wider move from the rule. **Never leverage** (invested at most 90%), long only, and the independent final check applies with the stance's limits |
+| **Start from** | the agent's current portfolio, all cash, equal weight (6% each) | The holdings the decision starts from: "what would it do from scratch?" |
+
+Options not taken, and why: a free prompt (a prompt injection surface and an unvalidated behaviour), a choice of covariance method or horizon (the evaluator cannot judge them and the agents were validated with one), a market scenario such as a crash (valuable, the behaviour scenarios of D-016 already cover it; kept for later).
+
+**Security.** The issue text stays untrusted. It reaches the workflow as an environment variable of a single step, never in a shell command, and `agent.simulate.parse_options` keeps only lines `agent|stance|start: <word>` whose word is in the closed list (first occurrence wins, 4,000 characters read at most). A refused value is replaced by the default, and the reply names the option (our own word), never the refused text. The workflow test fails if the issue body appears in any command. The run id carries the options that differ from the default (`..._sim-134842-tools-bold-cash`), and the record keeps the stance in its configuration and the start in its portfolios. The simulation still never sends an order: its broker refuses any order, the kill switch is forced off and the run is a dry run.
+
+**Cost.** One more model download in the workflow (209M for the tool agent) and the tool agent's paper-account keys; a simulation that picks the tool agent takes a few minutes longer than the pipeline's.
 ---
 
 ## D-018 — A second agent that uses Timestral as a tool, on its own paper account
@@ -991,6 +1006,30 @@ The brief's optional bonus: *"use news analysis to build future covariates for T
 - **Measurement universe distinct from the trading universe**: 5 stocks over about 100 sessions of news is too little to conclude. The backtest of Timestral with and without each family will use a wider panel of large US stocks across sectors, with the 10 ETFs as control. The trading universe does not change.
 - Criteria as in D-006: calibration of the 80% interval, pinball loss, ranking of risk, hit rate; separately for `news`, `events` and both.
 - Caveat: on history, the analyst model may know what followed an article (look-ahead in sentiment); article volume and announced dates are not exposed to it. Stated in the results.
+
+### Measurement design and adoption rule (fixed on 2026-11-23, before any result)
+Chosen with the owner. Priority from 2026-11-23: the covariates are measured, then adopted by the live tool agent if the rule below is met.
+
+- **Panel:** the 10 ETFs of the trading universe (control) and 30 stocks: the agents' five plus 25 large US stocks across sectors. Timestral-209M, horizon 5 days, one origin per session from 2026-06-01 (start of the news coverage) to five sessions before the end, with prices alone and with `news`, `events` and both. One analyst scoring of every article, cached; only articles published up to an origin are visible at that origin.
+- **Criteria (as in D-006):** calibration of the 80% interval, pinball loss, RMS ratio, hit rate, by variant and by kind (stock or ETF). The comparison with prices alone is paired (same forecasts) and its interval is a block bootstrap over origins, because 5-day windows overlap.
+- **Rule for a variant to be adopted** (implemented in `agent.covariate_eval`):
+  1. the pinball loss of the **stocks** is lower than with prices alone;
+  2. the stocks' 80% interval does not move more than 3 points further from 80%;
+  3. the **ETF control** loses at most 1% (a gain on ETFs would not be about the news);
+  4. verdict **clear** if the 95% interval of the stocks' gain excludes zero, **weak** if the mean is positive but the interval includes zero (the owner decides, knowing it), **no** otherwise;
+  5. before the switch, the seven behaviour scenarios (D-016) must pass with the covariate prompt at least as well as with `decide_tools_v2`.
+- **Adoption:** if the rule is met, the live tool agent switches to the covariates (prompt `decide_tools_v3`), and the dashboard and this record state the date of the switch, since its history then mixes two configurations. If not, the covariates stay integrated and documented, and the agent is unchanged. The owner chose a live switch over a shadow agent (no orders) or a third account.
+- **Caveat:** the analyst may know what followed an article, so sentiment can leak the future in this history; article volume and announced dates cannot.
+
+### Result of the measurement (2026-11-24): tried, not adopted
+Applied exactly as fixed above. Data: `docs/covariates/results.json`; shown on the dashboard ("Do news help the forecast?").
+
+- **Panel in practice:** 118 daily origins (2026-06-01 to 2026-11-16), 10 ETFs and 29 stocks with scored news (GOOGL got no article: a ticker-matching issue to fix before any new measurement), 8,451 scored articles, of which 3% carry an event type (55 earnings releases).
+- **Verdict: no for `news`, `events` and `news+events`.** The stocks' pinball loss does not fall (about -0.05% for news, 95% range -0.13% to 0.00%). The live tool agent therefore stays on prices alone; rule point 5 (behaviour scenarios with prompt v3) was not run, since the earlier points already fail.
+- **The better 80% interval is not a gain.** It moves from 78.2% to 79.1-79.5% for stocks, but the ETF control moves as much or more (78.3% to 79.5-80.2%), and intervals widen by 2 to 3.5% for stocks and ETFs alike: a general caution once covariates are present, not information from the news.
+- **The forecasts do change** (pinball differs on every forecast, the median flips sign in 11 to 23% of cases), but the changes cancel on average. This rules out a covariate that never reaches the model.
+- **Reading and limits:** the test is precise on the average effect (tight interval), not on rare events. One period of about six months, one regime, overlapping windows, few earnings releases, and one sentiment score per article from a small model, the weakest information at a 5-day horizon. It does not show that all context is noise.
+- **Next measurement, to declare before running it:** known-in-advance calendars (earnings, central banks), market variables (volatility, rates via FRED), the effect around events only on the data already scored. These bear on risk, which is Timestral's role here (D-004).
 
 ### Impact on further development
 - Changing the **trading** universe (more stocks, where news matters most) is kept as a possible evolution, not for this test window.
