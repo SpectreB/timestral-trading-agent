@@ -39,12 +39,6 @@
     dry_run_kill_switch: "dry run (kill switch off)",
     hold: "no orders",
   };
-  const SERIES = {
-    agent: ["Agent", "var(--c)", ""],
-    baseline: ["Timestral rule alone", "var(--ink2)", "4 3"],
-    equal_weight: ["Equal weight", "var(--ink3)", "1 3"],
-    spy: ["SPY (market)", "var(--etf)", "6 3"],
-  };
   const TABS = [
     ["live", "Live", "What the agents hold and decide"],
     ["how", "How it works", "Who does what, and within which limits?"],
@@ -262,34 +256,6 @@
         </svg>
         <div className="w"><span>spread ${pct(last.spread)}</span><span>rule ${pct(a.rule_weight)} → ${pct(a.final_weight)}</span></div>
 
-      </div>`;
-  }
-
-  function ReplayChart({ replay }) {
-    const W = 760, H = 220, L = 52, R = 16, T = 12, B = 28;
-    const keys = Object.keys(SERIES);
-    const all = keys.flatMap((k) => replay.curves[k]);
-    let lo = Math.min(0, ...all), hi = Math.max(0, ...all);
-    const pad = Math.max((hi - lo) * 0.12, 0.002);
-    lo -= pad; hi += pad;
-    const n = replay.curves.agent.length;
-    const x = (i) => L + (W - L - R) * (i / (n - 1));
-    const y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
-    const sessions = ["start", ...replay.sessions_list];
-    return html`
-      <div className="chart">
-        <svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-label="Cumulative return of the agent and its references over the replayed sessions">
-          ${ticks(lo, hi).map((t) => html`<g key=${t}><line className="grid" x1=${L} x2=${W - R} y1=${y(t)} y2=${y(t)} />
-            <text x=${L - 8} y=${y(t) + 4} textAnchor="end">${spct(t, 0)}</text></g>`)}
-          <line className="axis" x1=${L} x2=${W - R} y1=${y(0)} y2=${y(0)} />
-          ${[[1, "start"], [Math.floor(n / 2), "middle"], [n - 1, "end"]].map(([i, anchor]) => html`<text key=${i} x=${x(i)} y=${H - 8} textAnchor=${anchor}>${sessions[i]}</text>`)}
-          ${keys.slice().reverse().map((k) => html`<polyline key=${k} fill="none" stroke=${SERIES[k][1]}
-              strokeWidth=${k === "agent" ? 2 : 1.3} strokeDasharray=${SERIES[k][2]}
-              points=${replay.curves[k].map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")} />`)}
-        </svg>
-        <div className="legend">${keys.map((k) => html`<span key=${k}>
-          <svg className="key" width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke=${SERIES[k][1]} strokeWidth="2" strokeDasharray=${SERIES[k][2]} /></svg>
-          ${SERIES[k][0]} <span className="num">${spct(replay.curves[k][n - 1])}</span></span>`)}</div>
       </div>`;
   }
 
