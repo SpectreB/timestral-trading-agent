@@ -236,3 +236,44 @@ def test_a_failed_buy_does_not_stop_the_others() -> None:
     assert records["SPY"].startswith("error")
     assert records["TLT"] == "accepted"
     assert len(broker.submitted) == 14
+
+
+# --------------------------------------------------------------------------- the no-trade band
+
+# The tool agent's afternoon run of 2026-11-24, rounded: sell 2 points of XLE and of XOM, buy 4
+# points of TLT. Prices had drifted since the morning, so each sell was $3 short of the band.
+INCIDENT_EQUITY = 100_043.67
+INCIDENT_CURRENT = {
+    "TLT": 0.1505, "XLE": 0.07017, "XOM": 0.06027, "IWM": 0.0604, "LLY": 0.0513, "GLD": 0.0483,
+    "XLV": 0.0926, "QQQ": 0.0291, "EFA": 0.0699, "JPM": 0.0496, "EEM": 0.0290, "SPY": 0.0592,
+    "XLF": 0.0803, "AMZN": 0.0390, "NVDA": 0.0,
+}  # fmt: skip
+
+
+def _drifted(current: dict[str, float], **moves: float) -> dict[str, float]:
+    """The target: the moves asked for, and a few dollars of drift on every other asset."""
+    held = {s: w + 0.00004 for s, w in current.items() if w > 0}
+    return {**current, **held, **moves}
+
+
+def test_a_move_meant_as_the_band_still_counts_after_a_small_drift() -> None:
+    target = _drifted(INCIDENT_CURRENT, TLT=0.1905, XLE=0.0502, XOM=0.0403)
+    p = plan(target, current=INCIDENT_CURRENT, equity=INCIDENT_EQUITY)
+    assert sorted((o.symbol, o.side) for o in p.orders) == [
+        ("TLT", "buy"), ("XLE", "sell"), ("XOM", "sell"),
+    ]  # fmt: skip
+    final_check(p.post_weights, p.post_cash, CFG)
+
+
+def test_the_band_is_relaxed_step_by_step_not_dropped_at_once() -> None:
+    # The buy needs sells of 1 to 1.5 points: outside the 2-point band, within the 1-point one.
+    # The few-dollar drifts elsewhere must not become orders.
+    current = {
+        "TLT": 0.15, "XLE": 0.07, "XOM": 0.06, "IWM": 0.06, "LLY": 0.05, "GLD": 0.05,
+        "XLV": 0.09, "QQQ": 0.03, "EFA": 0.07, "JPM": 0.05, "EEM": 0.03, "SPY": 0.06,
+        "XLF": 0.08, "AMZN": 0.04, "NVDA": 0.0,
+    }  # fmt: skip
+    target = _drifted(current, TLT=0.19, XLE=0.055, XOM=0.045, XLF=0.07)
+    p = plan(target, current=current)
+    assert sorted(o.symbol for o in p.orders) == ["TLT", "XLE", "XLF", "XOM"]
+    final_check(p.post_weights, p.post_cash, CFG)
