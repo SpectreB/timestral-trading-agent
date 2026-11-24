@@ -565,7 +565,6 @@
         <p className="question">Two agents, one question: <b>should the LLM drive Timestral, or adjust what Timestral proposes?</b></p>
         <div className="agents">${data.agents.map((x) => html`<${AgentCard} key=${x.key} a=${x} selected=${x.key === a.key} onSelect=${() => setAgent(x.key)} />`)}</div>
         <${TryCta} go=${go} />
-        <p className="same">Same for both: <span>data</span><span>15 assets</span><span>guardrails</span><span>order code</span><span>own paper account</span></p>
         <${BothValues} agents=${data.agents} />
         <div className=${"switch c-" + a.key}>
           <span className="label">Showing</span>
@@ -749,6 +748,7 @@
             with the portfolio and the market context and proposes a portfolio; the guardrails correct or reject it before any order.
             Two agents test two ways of combining Timestral and the LLM, each on its own paper account.</${Fold}>
           <${Diagram} repo=${data.repo} />
+          <p className="same">Same for both agents: <span>data</span><span>15 assets</span><span>guardrails</span><span>order code</span><span>their own paper account</span></p>
         </section>
         <section className="sec tipped"><header><h2>Inputs</h2></header>
           <dl className="inputs">${data.inputs.map((r) => html`<${React.Fragment} key=${r.label}><dt>${r.label === "Forecast" ? html`<${Timestral} size=${13} />` : r.label === "Decision" ? html`<${Chonk} size=${13} />` : ""}${r.label}</dt>
@@ -780,59 +780,94 @@
 
   /* Evidence: how we know the decisions are sound. Four checks, from the most controlled to the
      most real, each read with its limits. Not a race between the agents. */
+  /* The replay of both agents on one chart, with the market for reference. */
+  function ReplayBoth({ agents }) {
+    const W = 760, H = 230, L = 52, R = 16, T = 12, B = 28;
+    const base = agents[0].replay;
+    const lines = [
+      ...agents.map((a) => ({ key: a.key, a, vals: a.replay.curves.agent, dash: "", w: 2 })),
+      { key: "spy", a: null, vals: base.curves.spy, dash: "5 3", w: 1.3 },
+    ];
+    const all = lines.flatMap((l) => l.vals);
+    let lo = Math.min(0, ...all), hi = Math.max(0, ...all);
+    const pad = Math.max((hi - lo) * 0.12, 0.002);
+    lo -= pad; hi += pad;
+    const n = base.curves.agent.length;
+    const x = (i) => L + (W - L - R) * (i / (n - 1));
+    const y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+    const sessions = ["start", ...base.sessions_list];
+    return html`
+      <div className="chart">
+        <svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-label=${lines.map((l) => `${l.a ? l.a.title : "SPY"} ${spct(l.vals[n - 1])}`).join(", ")}>
+          ${ticks(lo, hi).map((t) => html`<g key=${t}><line className="grid" x1=${L} x2=${W - R} y1=${y(t)} y2=${y(t)} />
+            <text x=${L - 8} y=${y(t) + 4} textAnchor="end">${spct(t, 0)}</text></g>`)}
+          <line className="axis" x1=${L} x2=${W - R} y1=${y(0)} y2=${y(0)} />
+          ${[[1, "start"], [Math.floor(n / 2), "middle"], [n - 1, "end"]].map(([i, anchor]) => html`<text key=${i} x=${x(i)} y=${H - 8} textAnchor=${anchor}>${sessions[i]}</text>`)}
+          ${lines.slice().reverse().map((l) => html`<polyline key=${l.key} className=${l.a ? "c-" + l.a.key : ""} fill="none"
+              stroke=${l.a ? "var(--c)" : "var(--etf)"} strokeWidth=${l.w} strokeDasharray=${l.dash}
+              points=${l.vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")} />`)}
+        </svg>
+        <div className="legend">${lines.map((l) => html`<span key=${l.key} className=${l.a ? "c-" + l.a.key : ""}>
+          ${l.a ? html`<${AgentIcon} k=${l.a.key} size=${13} />` : html`<svg className="key" width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke="var(--etf)" strokeWidth="2" strokeDasharray="5 3" /></svg>`}
+          ${l.a ? l.a.title : "SPY, the market"} <b className="num">${spct(l.vals[n - 1])}</b></span>`)}</div>
+      </div>`;
+  }
+
+  /* Evidence: how we know the decisions are sound. Four checks, from the most controlled to the
+     most real, each read with its limits. Not a race between the agents. */
   function Evidence({ data }) {
     const withReplay = data.agents.filter((a) => a.replay);
-    const live = data.agents.filter((a) => a.started && (a.calibration.length || a.risk_calibration.length));
+    const [allRisk, setAllRisk] = useState(false);
     const jump = (id) => () => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
     const five = (a) => (a.replay ? a.replay.risk_calibration.find((r) => r.horizon === 5) : null);
     const spy = withReplay.length ? withReplay[0].replay.stats.spy : null;
     const cards = [
-      data.behaviour && { id: "ev-tests", glyph: FLASK, title: "Behaviour tests", unit: "passed", values: data.agents.map((a) => [a, a.measures.tests || "n/a"]) },
+      data.behaviour && { id: "ev-tests", glyph: FLASK, title: "Situations built on purpose", unit: "passed, out of repeats", values: data.agents.map((a) => [a, a.measures.tests || "n/a"]) },
       withReplay.length && { id: "ev-replay", glyph: REWIND, title: `Replay, ${withReplay[0].replay.sessions} sessions`, unit: `return; the market (SPY) ${spct(spy.return)}`,
         values: withReplay.map((a) => [a, spct(a.replay.stats.agent.return)]) },
       withReplay.length && { id: "ev-risk", mark: true, title: "Risk interval hit, 5 days", unit: "target 80%",
         values: withReplay.map((a) => [a, five(a) ? pct(five(a).inside_80, 0) : "n/a"]) },
       data.covariates && { id: "ev-news", glyph: NEWS, title: "News as covariates", unit: "no lower error, not adopted", values: [[null, "No gain"]] },
     ].filter(Boolean);
+    const riskRows = data.agents.flatMap((a) => [
+      ...(a.replay ? a.replay.risk_calibration.map((r) => ({ a, src: "replay, portfolio", h: r.horizon, n: r.n, inside: r.inside_80, ratio: r.rms_z })) : []),
+      ...((a.started ? a.calibration : []).map((r) => ({ a, src: "live, per asset", h: r.horizon, n: r.n, inside: r.inside_80, ratio: null }))),
+    ]);
+    const headline = riskRows.filter((r) => r.src.startsWith("replay") && r.h === 5);
+    const conclusive = withReplay.some((a) => a.replay.comparisons.some((c) => c.conclusive));
     return html`
       <${React.Fragment}>
         <section className="sec"><header><h2>How we know the decisions are sound</h2></header>
-          <p className="frame">Four checks, from the most controlled to the most real. They test behaviour, not luck: over so few
-            sessions, <b>no difference between the two agents is distinguishable from chance</b>, and none is claimed.</p>
+          <p className="frame">Four checks, from the most controlled to the most real. Over so few sessions, <b>no difference
+            between the two agents is distinguishable from chance</b>, and none is claimed.</p>
           <div className="bench">${cards.map((c) => html`<button key=${c.id} className="benchcard" onClick=${jump(c.id)}>
             <span className="bt">${c.mark ? html`<${Timestral} size=${13} />` : html`<${Glyph} d=${c.glyph} />`}${c.title}</span>
             <span className="bv">${c.values.map(([a, v]) => html`<span key=${a ? a.key : "all"} className=${a ? "c-" + a.key : ""}>
               ${a && html`<${AgentIcon} k=${a.key} size=${13} />`}<b>${v}</b></span>`)}</span>
             <span className="bu">${c.unit}</span></button>`)}</div>
         </section>
-        <section className="sec tipped" id="ev-side"><header><h2>The two agents side by side</h2><span className="aside">live runs, behaviour tests, replay</span></header>
-          <p className="note">Same data, same guardrails, two ways of using Timestral. Read each row as behaviour, not as a score.</p>
+        <section className="sec tipped" id="ev-side"><header><h2>The two agents side by side</h2><span className="aside">live runs so far</span></header>
+          <p className="note">Same data, same guardrails, two ways of using Timestral: how each decides, the risk it takes, how it executes, what it costs.</p>
           <${Measures} data=${data} />
         </section>
-        ${data.behaviour && html`<section className="sec" id="ev-tests"><header><h2><${Glyph} d=${FLASK} size=${16} />Behaviour tests</h2><span className="aside">situations built on purpose, each repeated</span></header>
+        ${data.behaviour && html`<section className="sec" id="ev-tests"><header><h2><${Glyph} d=${FLASK} size=${16} />Situations built on purpose</h2><span className="aside">each repeated</span></header>
           <p className="note">Seven situations where the sound decision is known in advance. Each is repeated: an LLM can answer the same question differently.</p>
           <${Behaviour} b=${data.behaviour} /></section>`}
-        ${withReplay.length > 0 && html`<section className="sec" id="ev-replay"><header><h2><${Glyph} d=${REWIND} size=${16} />Tested on the past</h2><span className="aside">one decision a day, point-in-time data, renamed assets and shifted dates</span></header>
-          <${Fold} first=${html`A check of behaviour on ${withReplay[0].replay.sessions} past sessions, not a measure of skill.`}>
-            The LLM could have remembered what happened on real dates, so assets were renamed and dates shifted; fills at the next
-            open, with costs. The period is a falling market.</${Fold}>
-          ${withReplay.map((a) => html`<div key=${a.key} className=${"c-" + a.key}>
-            <h3 style=${{ color: "var(--c)" }}><${AgentIcon} k=${a.key} />${a.title} · ${a.replay.first} to ${a.replay.last}</h3>
-            <${ReplayChart} replay=${a.replay} />
-            <${Fold} small first=${a.replay.comparisons.some((c) => c.conclusive)
-                ? "Some differences between the layers are significant: see below."
-                : `No layer made a difference that ${a.replay.sessions} sessions can distinguish from chance.`}>
-              ${a.replay.comparisons.map((c) => `${c.label}: ${pts(c.difference, 2)}${c.conclusive ? " (significant)" : ""}.`).join(" ")}
-              <a href=${a.replay.readme}>Full replay report</a>.</${Fold}></div>`)}
+        ${withReplay.length > 0 && html`<section className="sec" id="ev-replay"><header><h2><${Glyph} d=${REWIND} size=${16} />Tested on the past</h2><span className="aside">${withReplay[0].replay.first} to ${withReplay[0].replay.last}, one decision a day</span></header>
+          <${Fold} first=${`Both agents on ${withReplay[0].replay.sessions} past sessions of a falling market: a check of conduct, not of skill.`}>
+            The LLM could have remembered what happened on real dates, so assets were renamed and dates shifted; only the data of each
+            day was available, fills at the next open, with costs.</${Fold}>
+          <${ReplayBoth} agents=${withReplay} />
+          <${Fold} small first=${conclusive ? "Some differences between the layers are significant." : "No layer of either agent made a difference these sessions can tell from chance."}>
+            ${withReplay.map((a) => `${a.title}: ` + a.replay.comparisons.map((c) => `${c.label} ${pts(c.difference, 2)}${c.conclusive ? " (significant)" : ""}`).join("; ") + ". ").join("")}
+            Reports: ${withReplay.map((a, k) => html`<${React.Fragment} key=${a.key}>${k ? ", " : ""}<a href=${a.replay.readme}>${a.title.toLowerCase()}</a></${React.Fragment}>`)}.</${Fold}>
         </section>`}
-        ${(live.length > 0 || withReplay.length > 0) && html`<section className="sec" id="ev-risk"><header><h2><${Timestral} />Is Timestral's risk right?</h2><span className="aside">target: 80%</span></header>
-          <p className="note">An 80% interval should hold 8 outcomes out of 10. Too few inside means the risk was underestimated.</p>
+        ${riskRows.length > 0 && html`<section className="sec" id="ev-risk"><header><h2><${Timestral} />Is Timestral's risk right?</h2><span className="aside">target: 80%</span></header>
+          <p className="note">An 80% interval should hold 8 outcomes out of 10. Fewer inside means the risk was underestimated.</p>
           <div className="scroll"><table><thead><tr><th>Agent</th><th>Source</th><th className="num">Horizon</th><th className="num">Forecasts</th><th className="num">Inside 80%</th><th className="num">Realised / predicted</th></tr></thead>
-            <tbody>${data.agents.flatMap((a) => [
-              ...(a.replay ? a.replay.risk_calibration.map((r) => ({ a, src: "replay, portfolio", h: r.horizon, n: r.n, inside: r.inside_80, ratio: r.rms_z })) : []),
-              ...((a.started ? a.calibration : []).map((r) => ({ a, src: "live, per asset", h: r.horizon, n: r.n, inside: r.inside_80, ratio: null }))),
-            ]).map((r, i) => html`<tr key=${i}><td className=${"c-" + r.a.key} style=${{ color: "var(--c)" }}>${r.a.title}</td><td>${r.src}</td>
+            <tbody>${(allRisk ? riskRows : headline).map((r, i) => html`<tr key=${i}><td className=${"c-" + r.a.key} style=${{ color: "var(--c)" }}>${r.a.title}</td><td>${r.src}</td>
               <td className="num">${r.h}d</td><td className="num">${r.n}</td><td className="num">${pct(r.inside, 0)}</td><td className="num">${r.ratio != null ? r.ratio.toFixed(2) : ""}</td></tr>`)}</tbody></table></div>
+          ${riskRows.length > headline.length && html`<p className="note small"><button className="more" aria-expanded=${allRisk} onClick=${() => setAllRisk(!allRisk)}>${allRisk ? "Only the 5-day replay" : "Every horizon, and the live figures"}</button></p>`}
           <p className="note small">Ratio above 1: risk underestimated. Live figures are early and correlated.</p>
         </section>`}
         ${data.covariates && html`<section className="sec" id="ev-news"><header><h2><${Glyph} d=${NEWS} size=${16} />News as covariates: do they help Timestral?</h2><span className="aside">the brief's bonus, measured</span></header><${Covariates} c=${data.covariates} /></section>`}

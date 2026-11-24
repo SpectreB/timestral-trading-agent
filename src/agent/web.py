@@ -572,6 +572,10 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
     }
 
 
+# Measures the Evidence page shows in their own sections (behaviour tests, replay, calibration):
+# left out of the side-by-side table so nothing is said twice.
+_SHOWN_ELSEWHERE = {"tests", "past_return", "past_vol", "past_dd", "past_cov"}
+
 # What each measure of the side-by-side table means and how to read it, keyed as in
 # agent.dashboard._measures. Shown on demand next to the measure's name.
 MEASURE_HELP: dict[str, str] = {
@@ -672,6 +676,7 @@ def site_data(
         "measure_rows": [
             {"group": g, "key": k, "label": lbl, "help": MEASURE_HELP.get(k, "")}
             for g, k, lbl in (*_MEASURE_ROWS, ("Cost", "tokens", "Mistral tokens per decision"))
+            if k not in _SHOWN_ELSEWHERE
         ],
         "min_sessions_for_ci": MIN_SESSIONS_FOR_CI,
         "rules": _rules(),
