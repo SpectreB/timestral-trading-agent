@@ -95,9 +95,24 @@ Two GitHub Actions workflows run the agent on a schedule (see [D-002](docs/decis
 
 Setup: add the secrets `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` and `MISTRAL_API_KEY`, and the repository variable `TRADING_ENABLED`. **`TRADING_ENABLED` is the kill switch**: orders are sent only when it is `true`; otherwise runs are recorded as dry runs. `main` is protected: changes go through pull requests with green CI, and the trading workflow only runs on a commit whose CI passed.
 
+## Stack
+
+| Layer | Choice | Why | Decision |
+|---|---|---|---|
+| Language | Python 3.11, pip and venv | One runtime for data, model and agent | [D-001, D-003](docs/decisions.md) |
+| Market data and broker | Alpaca: daily bars (completed sessions only), two paper accounts | Free paper trading with real prices, one API for data and orders | [D-002](docs/decisions.md) |
+| Forecast | Timestral 28M and 209M, run locally on CPU | Calibrated risk; no measurable direction, so used as a risk engine | [D-004, D-006](docs/decisions.md) |
+| Decision | Mistral Large 4 (`mistral-large-4-0`, pinned), native reasoning, strict JSON | Reasoning trace and a schema-valid answer in one call | [D-008](docs/decisions.md) |
+| Orchestration | Our own tool loop on the Mistral SDK, no agent framework | One bounded decision with three tools: every step plain, tested and logged | [D-021](docs/decisions.md) |
+| Safety | Deterministic guardrails and an independent final check, in Python | The LLM proposes; code decides what reaches the broker | [D-009, D-010](docs/decisions.md) |
+| Scheduling | GitHub Actions: trade twice a day, account sampled hourly | No server to run; every run leaves a log | [D-002, D-007](docs/decisions.md) |
+| Records | Immutable JSON on the `audit-log` branch, CSV tables derived | Append-only, diffable, public | [D-011](docs/decisions.md) |
+| Dashboard | React page (no build step) on GitHub Pages, data written by Python | Readable without installing anything; always agrees with the records | [D-012](docs/decisions.md) |
+| Quality | ruff, mypy, pytest with hypothesis, 100% coverage on the core, gitleaks, protected `main` | Changes reach trading only through green CI | [D-009](docs/decisions.md) |
+
 ## Dashboard
 
-A read-only dashboard is published at **https://spectreb.github.io/timestral-trading-agent/**. It is a single self-contained page generated from the audit log after every trade run: portfolio value, the target allocation against the Timestral baseline, the forecast intervals, the latest decision with the LLM's analysis, every run linked to its immutable record, executions with slippage, and the CSV export. Build it locally with `python -m agent.dashboard --audit-dir audit --out site` (see [D-012](docs/decisions.md)).
+A read-only dashboard is published at **https://spectreb.github.io/timestral-trading-agent/**, rebuilt from the audit log after every trade run and every hourly account sample. Three entry points: **Live** (account value, the last decision with the LLM's reasoning and its calls to Timestral, Timestral's raw forecast with its spread, the target portfolio, orders, every run), **How it works** (design, guardrails, the two agents side by side, behaviour tests, replay, risk calibration, the news covariate trial) and **Try it** (a simulation that never sends orders). Python writes the data (`python -m agent.web --audit-dir audit --out site`), a React page in [web/](web) lays it out; a plain page without JavaScript is published next to it ([D-012](docs/decisions.md)).
 
 ## Reading the audit log
 
