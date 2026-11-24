@@ -118,11 +118,16 @@ def plan_orders(
     initial_deployment = sum(current_value.values()) / equity <= ex.initial_deployment_max_invested
 
     last_error = ""
-    for band in dict.fromkeys((ex.no_trade_band, 0.0)):  # then relax the band if needed
+    # If the plan within the band is unsafe (a buy kept, the sells that fund it skipped), the
+    # band is relaxed step by step rather than dropped at once, so the fallback does not turn
+    # every few-dollar difference into an order.
+    b = ex.no_trade_band
+    for band in dict.fromkeys((b, b / 2, b / 4, 0.0)):
+        threshold = max(band - ex.band_tolerance, 0.0) * equity
         trades = {
             s: d
             for s, d in deltas.items()
-            if abs(d) >= MIN_NOTIONAL and (abs(d) >= band * equity or target[s] == 0)
+            if abs(d) >= MIN_NOTIONAL and (abs(d) >= threshold or target[s] == 0)
         }
         turnover = sum(abs(d) for d in trades.values()) / equity
         cap = 1.0 if initial_deployment else ex.max_turnover_per_run
