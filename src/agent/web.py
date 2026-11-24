@@ -307,14 +307,24 @@ def _tokens(run: dict[str, Any]) -> tuple[int, int]:
     )
 
 
+# Mistral's list price for Mistral Large 4, USD per million tokens, read on 2026-11-24 at
+# https://docs.mistral.ai/inference/pricing (the page mistral.ai/pricing/api redirects to).
+PRICE_IN_PER_M, PRICE_OUT_PER_M = 0.70, 2.10
+
+
 def _cost(runs: list[dict[str, Any]]) -> dict[str, str]:
-    """What a decision costs in Mistral tokens, averaged over the live runs (in, out)."""
+    """What a decision costs, averaged over the live runs: Mistral tokens (in, out) and their
+    price at the list rate. Our calls run on the sponsored plan's free tier: nothing is billed."""
     if not runs:
         return {}
     used = [_tokens(r) for r in runs]
     tin = sum(u[0] for u in used) / len(used)
     tout = sum(u[1] for u in used) / len(used)
-    return {"tokens": f"{(tin + tout) / 1000:.0f}k ({tin / 1000:.0f}k in, {tout / 1000:.0f}k out)"}
+    usd = (tin * PRICE_IN_PER_M + tout * PRICE_OUT_PER_M) / 1_000_000
+    return {
+        "tokens": f"{(tin + tout) / 1000:.0f}k ({tin / 1000:.0f}k in, {tout / 1000:.0f}k out)",
+        "usd": f"${usd:.3f}",
+    }
 
 
 def _traits(key: str) -> list[list[str]]:
@@ -600,6 +610,9 @@ MEASURE_HELP: dict[str, str] = {
     "tokens": "Tokens sent to and received from the Mistral LLM for one decision, tool rounds "
     "included, averaged over the live runs. Timestral itself runs on CPU in the workflow: no "
     "API cost.",
+    "usd": "Those tokens at Mistral's list price for Mistral Large 4: $0.70 per million in, $2.10 "
+    "per million out (docs.mistral.ai/inference/pricing, read 2026-11-24). Here the calls run on "
+    "the sponsored plan's free tier: nothing is billed.",
     "past_cov": "Share of 5-day portfolio outcomes inside Timestral's 80% risk interval. "
     "Target: 80%.",
 }
@@ -675,7 +688,11 @@ def site_data(
         "agents": [agent_data(a, evals, now, repo) for a in agents],
         "measure_rows": [
             {"group": g, "key": k, "label": lbl, "help": MEASURE_HELP.get(k, "")}
-            for g, k, lbl in (*_MEASURE_ROWS, ("Cost", "tokens", "Mistral tokens per decision"))
+            for g, k, lbl in (
+                *_MEASURE_ROWS,
+                ("Cost", "tokens", "Mistral tokens per decision"),
+                ("", "usd", "Price per decision, at list price"),
+            )
             if k not in _SHOWN_ELSEWHERE
         ],
         "min_sessions_for_ci": MIN_SESSIONS_FOR_CI,

@@ -46,10 +46,10 @@
     spy: ["SPY (market)", "var(--etf)", "6 3"],
   };
   const TABS = [
-    ["live", "Live", "What the two agents hold, what they decided and why, and Timestral's raw forecast behind it."],
-    ["how", "How it works", "Timestral, the LLM and the guardrails: who does what."],
-    ["evidence", "Evidence", "How we know the decisions are sound: tests, replay, calibration."],
-    ["try", "Try it", "Make an agent decide now, on live data. No order is sent."],
+    ["live", "Live", "What the agents hold and decide"],
+    ["how", "How it works", "Who does what, within which limits"],
+    ["evidence", "Evidence", "How we know the decisions are sound"],
+    ["try", "Try it", "Make an agent decide now"],
   ];
   const ROUTES = [...TABS.map((t) => t[0]), "lexicon"];
 
@@ -307,7 +307,6 @@
           <dt>Value read</dt><dd>${when(a.now.at)}${a.now.source === "sample" ? "" : " (at a run)"}</dd>
           <dt>Invested</dt><dd>${pct(1 - a.decision.cash, 0)}</dd>
           <dt>Last run</dt><dd>${when(a.decision.at)} · <${Outcome} o=${a.decision.outcome} /></dd>
-          <dt>Next run</dt><dd>${when(a.next_run)}</dd>
         </dl>
         ${a.alerts.length > 0 && html`<div className="alert">${a.alerts.map((x, i) => html`<div key=${i} className=${x.level === "crit" ? "down" : "warn"}>▲ ${x.text}</div>`)}</div>`}
       </div>`;
@@ -539,9 +538,19 @@
   }
 
   function Runs({ a }) {
-    return html`
+    const [shown, setShown] = useState(false);
+    if (!shown) return html`
       <section className="sec">
         <header><h2>Every run</h2><a className="aside" href=${a.records}>all records</a></header>
+        <p className="facts"><span><b>${a.runs.length}</b> runs since ${day(a.runs[a.runs.length - 1].at)}</span>
+          <span><b>${a.runs.filter((r) => r.outcome === "accepted").length}</b> accepted as proposed</span>
+          <span><b>${a.runs.reduce((t, r) => t + r.corrections, 0)}</b> guardrail corrections</span></p>
+        <button className="reveal" aria-expanded="false" onClick=${() => setShown(true)}>
+          <span><b>Show every run</b> · decision, execution, account value, orders, each linked to its record</span></button>
+      </section>`;
+    return html`
+      <section className="sec">
+        <header><h2>Every run</h2><button className="more" aria-expanded="true" onClick=${() => setShown(false)}>Hide</button><a className="aside" href=${a.records}>all records</a></header>
         <div className="scroll"><table>
           <thead><tr><th>Run</th><th>Started</th><th>Decision</th><th>Execution</th><th className="num">Account</th><th className="num">Orders</th><th className="num">Corrections</th><th></th></tr></thead>
           <tbody>${a.runs.map((r) => html`<tr key=${r.run_id}><td className="mono">${r.run_id}</td><td>${when(r.at)}</td>
@@ -564,6 +573,7 @@
       <${React.Fragment}>
         <p className="question">Two agents, one question: <b>should the LLM drive Timestral, or adjust what Timestral proposes?</b></p>
         <div className="agents">${data.agents.map((x) => html`<${AgentCard} key=${x.key} a=${x} selected=${x.key === a.key} onSelect=${() => setAgent(x.key)} />`)}</div>
+        ${data.agents.some((x) => x.started) && html`<p className="same">Next run, both agents: <b>${when(data.agents.find((x) => x.started).next_run)}</b></p>`}
         <${TryCta} go=${go} />
         <${BothValues} agents=${data.agents} />
         <div className=${"switch c-" + a.key}>
@@ -772,7 +782,6 @@
             <dt>Decisions</dt><dd><a href=${data.links.decisions}>design decisions with the options considered</a></dd>
             <dt>Code</dt><dd><a href=${data.repo}>repository</a></dd>
             ${data.links.tables.length > 0 && html`<dt>Tables (CSV)</dt><dd>${data.links.tables.map((t, i) => html`<${React.Fragment} key=${t}>${i ? " · " : ""}<a href=${t}>${t.replace("data/", "")}</a></${React.Fragment}>`)}</dd>`}
-            <dt>Plain page</dt><dd><a href=${data.links.classic}>the same records without JavaScript</a></dd>
           </dl>
         </section>
       </${React.Fragment}>`;
@@ -996,7 +1005,7 @@
           ${tab === "lexicon" && html`<${Lexicon} />`}
           </div>
           <footer className="foot"><span>Generated ${when(data.generated_at)} from the audit log.</span><span>Paper trading, not financial advice.</span>
-            <a href=${data.links.decisions}>design decisions</a><a href=${data.links.classic}>plain page</a></footer>
+            <a href=${data.links.decisions}>design decisions</a></footer>
         </main>
       </${React.Fragment}>`;
   }
