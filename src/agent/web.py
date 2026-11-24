@@ -642,7 +642,7 @@ WHATS_NEXT: tuple[dict[str, str], ...] = (
         "kind": "Soundness",
         "id": "D-016",
         "title": "How to check that the LLM behaves soundly",
-        "text": "Whether the confidence the LLM states matches how often its tilts pay off.",
+        "text": "Does the confidence the LLM states match how often its bets pay off?",
     },
 )
 
