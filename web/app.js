@@ -131,6 +131,7 @@
   const CHART = "M3 20h18M5 16l4-5 4 3 6-8";
   const GRID = "M3 5h18v14H3zM3 10h18M3 15h18M9 5v14";
   const BRACES = "M8 4c-2 0-2 1.5-2 3v2c0 1.5-1 2-2 2 1 0 2 .5 2 2v3c0 1.5 0 3 2 3M16 4c2 0 2 1.5 2 3v2c0 1.5 1 2 2 2-1 0-2 .5-2 2v3c0 1.5 0 3-2 3";
+  const ARROW = "M4 12h15M13 6l6 6-6 6";
   const BOOK = "M4 5h6a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H4zM20 5h-6a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h7z";
   const PLAY = "M7 4l13 8-13 8z";
   const SHIELD = "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4";
@@ -758,7 +759,6 @@
             with the portfolio and the market context and proposes a portfolio; the guardrails correct or reject it before any order.
             Two agents test two ways of combining Timestral and the LLM, each on its own paper account.</${Fold}>
           <${Diagram} repo=${data.repo} />
-          <p className="same">Same for both agents: <span>data</span><span>15 assets</span><span>guardrails</span><span>order code</span><span>their own paper account</span></p>
         </section>
         <section className="sec tipped"><header><h2>Inputs</h2></header>
           <dl className="inputs">${data.inputs.map((r) => html`<${React.Fragment} key=${r.label}><dt>${r.label === "Forecast" ? html`<${Timestral} size=${13} />` : r.label === "Decision" ? html`<${Chonk} size=${13} />` : ""}${r.label}</dt>
@@ -771,10 +771,11 @@
         <section className="sec"><header><h2><${Glyph} d=${SHIELD} size=${16} />What the LLM cannot override</h2><span className="aside">deterministic code, outside the LLM</span></header>
           <ul className="rules">${data.rules.map((r) => html`<li key=${r.title}><b>${r.title}</b><span>${r.text}</span></li>`)}</ul>
         </section>
-        ${data.next && data.next.length > 0 && html`<section className="sec"><header><h2>What's next</h2><span className="aside">kept in step with docs/roadmap.md</span></header>
-          <div className="next">${[["running", "Running"], ["next", "Next"], ["later", "Later, deliberately"]].map(([k, t]) => html`<div key=${k}>
-            <h3>${t}</h3>
-            <ul>${data.next.filter((n) => n.status === k).map((n) => html`<li key=${n.id + n.title}><b><span className="mono muted">${n.id}</span> ${n.title}</b><span>${n.text}</span></li>`)}</ul></div>`)}</div>
+        ${data.next && data.next.length > 0 && html`<section className="sec"><header><h2><${Glyph} d=${ARROW} size=${16} />What's next</h2></header>
+          <div className="next">${data.next.map((n) => html`<div key=${n.id} className="nextcard">
+            <span className="kind">${n.kind}</span>
+            <b>${n.text}</b>
+            <span className="muted"><span className="mono">${n.id}</span> ${n.title}</span></div>`)}</div>
         </section>`}
         <section className="sec"><header><h2>Records and documents</h2></header>
           <dl className="kv">
