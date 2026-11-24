@@ -254,3 +254,14 @@ def test_the_side_by_side_does_not_repeat_the_other_checks(tmp_path: Path) -> No
     keys = {r["key"] for r in _site(tmp_path)["measure_rows"]}
     assert "tests" not in keys and not any(k.startswith("past_") for k in keys)
     assert {"calls", "risk", "filled", "tokens"} <= keys
+
+
+def test_no_line_break_swallows_a_space_in_the_page_text() -> None:
+    """htm drops whitespace that contains a line break: text must not start a line right after an
+    inline element, nor end a line right before one, or two words get glued together."""
+    import re
+
+    app = (WEB_DIR / "app.js").read_text()
+    glued = re.findall(r"</(?:b|a|i|small|code)>\n[ \t]+[A-Za-z]", app)
+    glued += re.findall(r"[A-Za-z,.;:)]\n[ \t]+<(?:b|a|i|small|code)[ >]", app)
+    assert glued == []
