@@ -201,3 +201,16 @@ def test_whats_next_names_each_item_with_its_decision_and_title(tmp_path: Path) 
     assert {i["status"] for i in items} == {"running", "next", "later"}
     for item in items:
         assert item["id"].startswith("D-") and item["title"] and item["text"]
+
+
+def test_each_agent_states_what_sets_it_apart_from_its_configuration(tmp_path: Path) -> None:
+    from agent.web import _traits
+
+    audit = tmp_path / "audit"
+    cycle(audit)
+    _tool_cycle(audit)
+    tools, pipeline = _site(tmp_path)["agents"]
+    assert [k for k, _ in tools["traits"]] == [k for k, _ in pipeline["traits"]]  # rows line up
+    assert dict(tools["traits"])["Timestral"] == "on request, up to 12 tool calls"
+    assert dict(pipeline["traits"])["LLM freedom"] == "at most +15 pts over the rule"
+    assert _traits("news") == []

@@ -94,10 +94,21 @@
             <rect x="17.5" y="8.5" width="5" height="7" rx="1" /><path d="M6.5 12h3M14.5 12h3" /></${React.Fragment}>`}
     </svg>`;
   }
-  const Glyph = ({ d }) => html`<svg className="mark" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  const Glyph = ({ d, size = 14 }) => html`<svg className="mark" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d=${d} /></svg>`;
   const DOC = "M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7";
   const CODE = "M8 7l-5 5 5 5M16 7l5 5-5 5";
+  const SHIELD = "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4";
+  const FLASK = "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3M7.5 15h9";
+  const REWIND = "M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5M12 7v5l3 2";
+  const NEWS = "M4 5h12v14H6a2 2 0 0 1-2-2zM16 9h4v8a2 2 0 0 1-4 0M7 9h6M7 13h6";
+
+  /* A long paragraph shows its first sentence; the reader opens the rest if they want it. */
+  function Fold({ first, children }) {
+    const [open, setOpen] = useState(false);
+    return html`<p className="note">${first}${open ? html` ${children}` : " "}<button className="more" aria-expanded=${open}
+      onClick=${() => setOpen(!open)}>${open ? "Less" : "More"}</button></p>`;
+  }
 
   // ------------------------------------------------------------------ charts
   function ticks(lo, hi, n = 4) {
@@ -224,14 +235,14 @@
   function AgentCard({ a, selected, onSelect }) {
     if (!a.started) {
       return html`<div role="button" tabIndex="0" className=${"acard c-" + a.key} aria-pressed=${selected} onClick=${onSelect} onKeyDown=${key(onSelect)}>
-        <div className="who"><b><${AgentIcon} k=${a.key} />${a.title}</b></div><p className="tag">${a.tagline}</p>
+        <div className="who"><b><${AgentIcon} k=${a.key} />${a.title}</b></div><${Traits} a=${a} />
         <p className="muted">Not started yet.</p></div>`;
     }
     const diff = a.now.equity - a.start.equity;
     return html`
       <div role="button" tabIndex="0" className=${"acard c-" + a.key} aria-pressed=${selected} onClick=${onSelect} onKeyDown=${key(onSelect)}>
         <div className="who"><b><${AgentIcon} k=${a.key} />${a.title}</b><span>${a.n_runs} run${a.n_runs > 1 ? "s" : ""} since ${day(a.start.at)}</span></div>
-        <p className="tag">${a.tagline}</p>
+        <${Traits} a=${a} />
         <div className="value">${usd(a.now.equity)}</div>
         <div className=${"delta " + sign(diff)}>${(diff >= 0 ? "+" : "") + usd(diff)} (${spct(diff / a.start.equity, 2)}) <span className="muted">from ${usd(a.start.equity)}</span></div>
         <dl>
@@ -243,6 +254,9 @@
         ${a.alerts.length > 0 && html`<div className="alert">${a.alerts.map((x, i) => html`<div key=${i} className=${x.level === "crit" ? "down" : "warn"}>▲ ${x.text}</div>`)}</div>`}
       </div>`;
   }
+
+  const Traits = ({ a }) => a.traits && a.traits.length > 0 && html`<dl className="traits">
+    ${a.traits.map(([k, v]) => html`<${React.Fragment} key=${k}><dt>${k}</dt><dd>${v}</dd></${React.Fragment}>`)}</dl>`;
 
   function Decision({ a }) {
     const d = a.decision;
@@ -309,11 +323,10 @@
             ${[["fans", "Chart"], ["table", "Numbers"], ["raw", "Raw output"]].map(([k, t]) =>
               html`<button key=${k} aria-pressed=${view === k} onClick=${() => setView(k)}>${t}</button>`)}
           </span></header>
-        <p className="note">${f.model}, on ${f.context_days} days of closes up to ${f.last_close}. For each asset it gives
-          a distribution of the cumulative return 1 to ${maxH} days ahead. The <b>spread</b> is the width of the 80%
-          interval, <span className="formula">q90 − q10</span>: how uncertain Timestral is. The rule weights each asset by
-          <span className="formula">1 / spread</span>, so the riskiest assets get the least; the LLM then adjusts.
-          The median is shown for reference: Timestral has no measured directional skill here.</p>
+        <${Fold} first=${html`The wider the <b>spread</b> (<span className="formula">q90 − q10</span>), the riskier the asset and the smaller its weight.`}>
+          ${f.model}, on ${f.context_days} days of closes up to ${f.last_close}, gives for each asset a distribution of the cumulative
+          return 1 to ${maxH} days ahead. The rule weights each asset by <span className="formula">1 / spread</span>; the LLM then adjusts.
+          The median is shown for reference: Timestral has no measured directional skill here.</${Fold}>
         ${view === "fans" && html`<${React.Fragment}>
           <div className="fans">${f.assets.map((x) => html`<${Fan} key=${x.symbol} a=${x} bound=${bound} />`)}</div>
           <div className="legend"><span><i className="sq etf"></i>ETF</span><span><i className="sq stock"></i>Stock</span>
@@ -399,12 +412,13 @@
     const a = data.agents.find((x) => x.key === agent) || data.agents[0];
     return html`
       <${React.Fragment}>
+        <p className="question">Two agents, one question: <b>should the LLM drive Timestral, or adjust what Timestral proposes?</b></p>
         <div className="agents">${data.agents.map((x) => html`<${AgentCard} key=${x.key} a=${x} selected=${x.key === a.key} onSelect=${() => setAgent(x.key)} />`)}</div>
+        <p className="same">Same for both: <span>data</span><span>15 assets</span><span>guardrails</span><span>order code</span><span>own paper account</span></p>
         <${BothValues} agents=${data.agents} />
         <div className=${"switch c-" + a.key}>
           <span className="label">Showing</span>
           <span className="seg">${data.agents.map((x) => html`<button key=${x.key} className=${"c-" + x.key} aria-pressed=${x.key === a.key} onClick=${() => setAgent(x.key)}><${AgentIcon} k=${x.key} size=${14} />${x.title}</button>`)}</span>
-          <span className="label">${a.summary}</span>
         </div>
         ${!a.started ? html`<p className="soft">This agent has not run yet.</p>` : html`<div className=${"c-" + a.key}>
           <${Decision} a=${a} />
@@ -417,32 +431,61 @@
   }
 
   // ------------------------------------------------------------------ how it works
+  /* The two agents as two flows. Two different loops: only the tool agent decides to call
+     Timestral again or stop; both agents get one retry when the guardrails reject the answer. */
   function Diagram() {
-    const box = (x, y, title, sub, ts) => html`<g key=${title + x + y}>
-      <rect className=${ts ? "ts" : ""} x=${x} y=${y} width="128" height="52" />
-      ${ts && html`<${Timestral} size=${12} x=${x + 6} y=${y + 6} />`}
-      <text x=${x + 64} y=${y + 22} textAnchor="middle" style=${{ fontWeight: 600 }}>${title}</text>
-      <text className="sm" x=${x + 64} y=${y + 39} textAnchor="middle">${sub}</text></g>`;
-    const arrow = (x, y) => html`<g key=${"a" + x + y}><line x1=${x} y1=${y} x2=${x + 30} y2=${y} />
-      <path className="head" d=${`M${x + 30} ${y - 4} L${x + 37} ${y} L${x + 30} ${y + 4} z`} /></g>`;
-    const cols = [8, 176, 344, 512, 680];
-    const row = (y, cls, label, items) => html`<g className=${cls} key=${cls}>
-      <${AgentIcon} k=${cls.slice(2)} size=${15} x=${8} y=${y - 23} />
-      <text className="row" x="28" y=${y - 10}>${label}</text>
-      ${items.map((it, i) => box(cols[i], y, it[0], it[1], it[2]))}
-      ${[0, 1, 2, 3].map((i) => arrow(cols[i] + 130, y + 26))}</g>`;
+    const W = 136, H = 52;
+    const cols = [8, 186, 364, 542, 720];
+    const mid = (i) => cols[i] + W / 2;
+    const box = (i, y, title, sub, opts = {}) => html`<g key=${title + i + y}>
+      <rect className=${opts.ts ? "ts" : ""} x=${cols[i]} y=${y} width=${W} height=${opts.h || H} />
+      ${opts.ts && html`<${Timestral} size=${12} x=${cols[i] + 6} y=${y + 6} />`}
+      <text x=${mid(i)} y=${y + 21} textAnchor="middle" style=${{ fontWeight: 600 }}>${title}</text>
+      ${(Array.isArray(sub) ? sub : [sub]).map((t, k) => html`<text key=${k} className=${opts.mono ? "sm mono" : "sm"} x=${mid(i)} y=${y + 38 + 13 * k} textAnchor="middle">${t}</text>`)}</g>`;
+    const arrow = (x1, x2, y) => html`<g key=${"a" + x1 + y}><line x1=${x1} y1=${y} x2=${x2 - 7} y2=${y} />
+      <path className="head" d=${`M${x2 - 7} ${y - 4} L${x2} ${y} L${x2 - 7} ${y + 4} z`} /></g>`;
+    // A loop drawn under two boxes, from box `from` back to box `to`, with its label.
+    const loop = (from, to, y, label, cls) => {
+      const a = mid(from), b = mid(to), dip = y + 26;
+      return html`<g key=${"l" + from + to + y} className=${"loop " + cls}>
+        <path d=${`M${a} ${y} C${a} ${dip}, ${b} ${dip}, ${b} ${y + 6}`} fill="none" />
+        <path className="head" d=${`M${b - 4} ${y + 8} L${b} ${y} L${b + 4} ${y + 8} z`} />
+        <text className="sm" x=${(a + b) / 2} y=${dip + 12} textAnchor="middle">${label}</text></g>`;
+    };
+    const row = (y, k, label) => html`
+      <${AgentIcon} k=${k} size=${15} x=${8} y=${y - 25} />
+      <text className="row" x="28" y=${y - 12}>${label}</text>`;
+    const t = 62, p = 232; // the two rows; the tool box rises 12 above its row
     return html`
       <figure style=${{ margin: 0 }}>
-        <svg className="dg" viewBox="0 0 820 200" role="img"
-             aria-label="Tool agent: the LLM asks Timestral through tools, builds the portfolio, then guardrails and orders. Pipeline agent: Timestral forecasts every asset, a rule sets a baseline, the LLM adjusts it, then the same guardrails and orders.">
-          ${row(28, "c-tools", "Tool agent: the LLM asks Timestral, then builds", [
-            ["LLM", "asks, up to 12 calls"], ["Timestral tools", "forecast, evaluate", true],
-            ["LLM", "builds the portfolio"], ["Guardrails", "same limits"], ["Orders", "Alpaca paper"]])}
-          ${row(132, "c-pipeline", "Pipeline agent: Timestral first, the LLM adjusts", [
-            ["Timestral", "forecasts 15 assets", true], ["Rule", "weight ∝ 1 / spread"],
-            ["LLM", "adjusts, max +15 pts"], ["Guardrails", "correct or reject"], ["Orders", "Alpaca paper"]])}
+        <svg className="dg" viewBox="0 0 872 330" role="img"
+             aria-label="Tool agent: the LLM calls Timestral's tools, gets the answers, and decides whether to call again or stop, up to 6 rounds and 12 calls; then it decides, the guardrails check, and the orders go out. Pipeline agent: Timestral forecasts all 15 assets once, a rule sets a baseline, the LLM adjusts it, then the same guardrails and orders. In both, a rejected answer gets one retry with the reason, then the positions are held.">
+          <g className="c-tools">
+            ${row(t - 16, "tools", "Tool agent: the LLM asks Timestral, then decides")}
+            ${box(0, t, "LLM explores", "reads the market")}
+            ${box(1, t - 12, "Timestral tools", ["get_forecasts", "evaluate_portfolio", "get_baseline"], { ts: true, h: 76, mono: true })}
+            ${box(2, t, "LLM decides", "strict JSON")}
+            ${box(3, t, "Guardrails", "correct or reject")}
+            ${box(4, t, "Orders", "Alpaca paper")}
+            ${arrow(cols[0] + W, cols[1], t + 26)}
+            ${arrow(cols[1] + W, cols[2], t + 26)}
+            ${arrow(cols[2] + W, cols[3], t + 26)}
+            ${arrow(cols[3] + W, cols[4], t + 26)}
+            ${loop(1, 0, t + 64, "answers · it calls again or stops (6 rounds, 12 calls at most)", "own")}
+            ${loop(3, 2, t + 52, "rejected: one retry with the reason, then hold", "retry")}
+          </g>
+          <g className="c-pipeline">
+            ${row(p, "pipeline", "Pipeline agent: Timestral first, the LLM adjusts")}
+            ${box(0, p, "Timestral", "once, all 15 assets", { ts: true })}
+            ${box(1, p, "Rule", "weight ∝ 1 / spread")}
+            ${box(2, p, "LLM adjusts", "+15 pts at most")}
+            ${box(3, p, "Guardrails", "correct or reject")}
+            ${box(4, p, "Orders", "Alpaca paper")}
+            ${[0, 1, 2, 3].map((i) => arrow(cols[i] + W, cols[i + 1], p + 26))}
+            ${loop(3, 2, p + 52, "rejected: one retry with the reason, then hold", "retry")}
+          </g>
         </svg>
-        <figcaption className="muted" style=${{ fontSize: 12 }}>Shaded: Timestral. Both agents run the same assets, data, guardrails and order code on their own paper account; only the way Timestral and the LLM are chained differs.</figcaption>
+        <figcaption className="muted" style=${{ fontSize: 12 }}>Shaded: Timestral. Only the tool agent chooses to call Timestral again; both get one retry when the guardrails reject an answer.</figcaption>
       </figure>`;
   }
 
@@ -452,7 +495,7 @@
       <thead><tr><th></th>${agents.map((a) => html`<th key=${a.key} className=${"num c-" + a.key}><${AgentIcon} k=${a.key} size=${14} />${a.title}</th>`)}</tr></thead>
       <tbody>${data.measure_rows.map((r) => html`<${React.Fragment} key=${r.key}>
         ${r.group && html`<tr className="grp"><td colSpan=${agents.length + 1}>${r.group}</td></tr>`}
-        <tr><td>${r.label}</td>${agents.map((a) => html`<td key=${a.key} className="num">${a.measures[r.key] || "n/a"}</td>`)}</tr>
+        <tr><td>${r.key === "calls" ? html`<${Timestral} size=${13} />` : ""}${r.label}</td>${agents.map((a) => html`<td key=${a.key} className="num">${a.measures[r.key] || "n/a"}</td>`)}</tr>
       </${React.Fragment}>`)}</tbody></table></div>`;
   }
 
@@ -498,28 +541,29 @@
     return html`
       <${React.Fragment}>
         <section className="sec"><header><h2>The idea</h2></header>
-          <p className="note">Timestral, Mistral's time-series model, forecasts a distribution of returns for 15 assets. It turned out
-            well calibrated on risk but without a reliable sense of direction, so it is used as a <b>risk engine</b>: how wide its
-            interval is decides how much an asset can weigh. A Mistral LLM reads those forecasts with the portfolio and the market
-            context and proposes a portfolio. Deterministic guardrails then correct or reject the proposal before any order.
-            Two agents test two ways of combining Timestral and the LLM, each on its own paper account.</p>
+          <${Fold} first=${html`Timestral forecasts the <b>risk</b>, a Mistral LLM <b>decides</b>, deterministic guardrails <b>bound</b> the result.`}>
+            Timestral, Mistral's time-series model, turned out well calibrated on risk but without a reliable sense of direction, so
+            it is used as a risk engine: how wide its interval is decides how much an asset can weigh. The LLM reads those forecasts
+            with the portfolio and the market context and proposes a portfolio; the guardrails correct or reject it before any order.
+            Two agents test two ways of combining Timestral and the LLM, each on its own paper account.</${Fold}>
           <${Diagram} />
         </section>
         <section className="sec"><header><h2>Inputs</h2></header>
-          <dl className="inputs">${data.inputs.map((r) => html`<${React.Fragment} key=${r.label}><dt>${r.label}</dt>
+          <dl className="inputs">${data.inputs.map((r) => html`<${React.Fragment} key=${r.label}><dt>${r.label === "Forecast" ? html`<${Timestral} size=${13} />` : ""}${r.label}</dt>
             <dd>${r.items.map((i) => html`<span key=${i}>${i}</span>`)}</dd></${React.Fragment}>`)}</dl>
         </section>
-        <section className="sec"><header><h2>What the LLM cannot override</h2><span className="aside">deterministic code, outside the LLM</span></header>
+        <section className="sec"><header><h2><${Glyph} d=${SHIELD} size=${16} />What the LLM cannot override</h2><span className="aside">deterministic code, outside the LLM</span></header>
           <ul className="rules">${data.rules.map((r) => html`<li key=${r.title}><b>${r.title}</b><span>${r.text}</span></li>`)}</ul>
         </section>
         <section className="sec"><header><h2>The two agents side by side</h2><span className="aside">live runs so far, behaviour tests, 63-session replay</span></header>
           <${Measures} data=${data} />
         </section>
-        ${data.behaviour && html`<section className="sec"><header><h2>Behaviour tests</h2><span className="aside">situations built on purpose, each repeated</span></header>
+        ${data.behaviour && html`<section className="sec"><header><h2><${Glyph} d=${FLASK} size=${16} />Behaviour tests</h2><span className="aside">situations built on purpose, each repeated</span></header>
           <${Behaviour} b=${data.behaviour} /></section>`}
-        ${withReplay.length > 0 && html`<section className="sec"><header><h2>Tested on the past</h2><span className="aside">one decision a day, point-in-time data, renamed assets and shifted dates</span></header>
-          <p className="note">The LLM could have remembered what happened on real dates, so assets were renamed and dates shifted;
-            fills at the next open, with costs. A falling market and ${withReplay[0].replay.sessions} sessions: read it as a check of behaviour, not of skill.</p>
+        ${withReplay.length > 0 && html`<section className="sec"><header><h2><${Glyph} d=${REWIND} size=${16} />Tested on the past</h2><span className="aside">one decision a day, point-in-time data, renamed assets and shifted dates</span></header>
+          <${Fold} first=${html`A check of behaviour on ${withReplay[0].replay.sessions} past sessions, not a measure of skill.`}>
+            The LLM could have remembered what happened on real dates, so assets were renamed and dates shifted; fills at the next
+            open, with costs. The period is a falling market.</${Fold}>
           ${withReplay.map((a) => html`<div key=${a.key} className=${"c-" + a.key}>
             <h3 style=${{ color: "var(--c)" }}><${AgentIcon} k=${a.key} />${a.title} · ${a.replay.first} to ${a.replay.last}</h3>
             <${ReplayChart} replay=${a.replay} />
@@ -537,7 +581,7 @@
               <td className="num">${r.h}d</td><td className="num">${r.n}</td><td className="num">${pct(r.inside, 0)}</td><td className="num">${r.ratio != null ? r.ratio.toFixed(2) : ""}</td></tr>`)}</tbody></table></div>
           <p className="muted" style=${{ fontSize: 12 }}>A ratio above 1 means the risk was underestimated. Early live figures rest on few, correlated forecasts.</p>
         </section>`}
-        ${data.covariates && html`<section className="sec"><header><h2>Do news help the forecast?</h2></header><${Covariates} c=${data.covariates} /></section>`}
+        ${data.covariates && html`<section className="sec"><header><h2><${Glyph} d=${NEWS} size=${16} />Do news help the forecast?</h2></header><${Covariates} c=${data.covariates} /></section>`}
         ${data.next && data.next.length > 0 && html`<section className="sec"><header><h2>What's next</h2><span className="aside">kept in step with docs/roadmap.md</span></header>
           <div className="next">${[["running", "Running"], ["next", "Next"], ["later", "Later, deliberately"]].map(([k, t]) => html`<div key=${k}>
             <h3>${t}</h3>

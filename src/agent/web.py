@@ -292,6 +292,30 @@ def _replay(report: dict[str, Any] | None, repo: str, folder: str) -> dict[str, 
     }
 
 
+def _traits(key: str) -> list[list[str]]:
+    """What sets the agent apart, in keywords, read from its configuration (D-018)."""
+    if key == "tools":
+        cfg = tool_agent_config()
+        return [
+            ["Who decides", "the LLM"],
+            ["Timestral", f"on request, up to {cfg.tools.max_calls} tool calls"],
+            ["LLM freedom", "any weights within the limits"],
+            ["Model", cfg.forecast.model_id.split("/")[-1]],
+        ]
+    if key == "pipeline":
+        cfg = AgentConfig()
+        return [
+            ["Who decides", "the Timestral rule, the LLM adjusts"],
+            ["Timestral", f"always, once, all {len(cfg.universe)} assets"],
+            [
+                "LLM freedom",
+                f"at most +{100 * cfg.risk.max_increase_vs_baseline:.0f} pts over the rule",
+            ],
+            ["Model", cfg.forecast.model_id.split("/")[-1]],
+        ]
+    return []
+
+
 def agent_data(
     a: AgentView, evals: dict[str, Any] | None, now: datetime, repo: str
 ) -> dict[str, Any]:
@@ -301,6 +325,7 @@ def agent_data(
         "title": a.title,
         "tagline": _TAGLINE.get(a.key, a.summary),
         "summary": a.summary,
+        "traits": _traits(a.key),
         "records": f"{repo}/tree/{AUDIT_BRANCH}/{a.prefix}",
         "started": bool(a.runs),
         "measures": _measures(a, evals),
