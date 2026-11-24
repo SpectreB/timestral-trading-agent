@@ -495,6 +495,63 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
     }
 
 
+# What is running, what comes next and what was deliberately left for later. Written by hand:
+# keep it in step with docs/roadmap.md, every item with its identifier and title.
+WHATS_NEXT: tuple[dict[str, str], ...] = (
+    {
+        "status": "running",
+        "id": "D-018",
+        "title": "Two agents on their own paper accounts",
+        "text": "Both trade twice a day; the account value is sampled every hour of the US session "
+        "since 2026-11-24. The live period is the clean test: the LLM cannot know what follows.",
+    },
+    {
+        "status": "running",
+        "id": "D-002",
+        "title": "GitHub Actions cron for scheduling",
+        "text": "Scheduled runs started late on 2026-11-24. Start times are watched; an external "
+        "trigger is added if the delays persist.",
+    },
+    {
+        "status": "next",
+        "id": "D-019",
+        "title": "News analysed into covariates for Timestral",
+        "text": "News sentiment brought no gain. Next: fix the news matching for GOOGL, then "
+        "measure "
+        "what bears on risk: known-in-advance calendars (earnings, central banks) and market "
+        "variables such as volatility, with the adoption rule written before the results.",
+    },
+    {
+        "status": "next",
+        "id": "D-016",
+        "title": "How to check that the LLM behaves soundly",
+        "text": "Repeat the seven behaviour scenarios as often for both agents, so their pass "
+        "rates "
+        "rest on the same number of runs.",
+    },
+    {
+        "status": "later",
+        "id": "D-020",
+        "title": "A risk budget on the forecast portfolio volatility (draft)",
+        "text": "Cap the portfolio risk Timestral forecasts, on top of the per-asset limits. Set "
+        "aside until the live record shows whether it is needed.",
+    },
+    {
+        "status": "later",
+        "id": "D-012",
+        "title": "Dashboard: React with a build step",
+        "text": "Move the page to React with Vite and TypeScript; the data file stays the same.",
+    },
+    {
+        "status": "later",
+        "id": "D-021",
+        "title": "Agent orchestration: our own loop",
+        "text": "Consider LangGraph if the agents grow into several cooperating ones, for example "
+        "the news analyst and the decision-maker exchanging messages.",
+    },
+)
+
+
 def site_data(
     agents: list[AgentView],
     sims: list[dict[str, Any]],
@@ -527,6 +584,7 @@ def site_data(
         "behaviour": _behaviour(evals),
         "covariates": _covariates(covariates),
         "simulations": _simulations(sims, repo),
+        "next": list(WHATS_NEXT),
     }
 
 

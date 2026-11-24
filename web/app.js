@@ -24,6 +24,7 @@
     }) + " ET";
   const day = (iso) =>
     new Date(iso).toLocaleDateString("en-US", { timeZone: TZ, day: "numeric", month: "short" });
+  const key = (fn) => (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
   const sign = (x) => (x > 0 ? "up" : x < 0 ? "down" : "");
 
   const OUTCOME = {
@@ -65,42 +66,52 @@
     return out;
   }
 
-  function ValueChart({ series, start }) {
-    const [hover, setHover] = useState(null);
-    const W = 760, H = 220, L = 70, R = 16, T = 12, B = 28;
-    const ys = series.map((p) => p.equity).concat([start]);
-    let lo = Math.min(...ys), hi = Math.max(...ys);
-    const pad = Math.max((hi - lo) * 0.25, start * 0.002);
+  /* Both accounts on one time axis, each in its agent's colour. Hover (or touch) reads the
+     value of each account at that moment. */
+  function BothValues({ agents }) {
+    const live = agents.filter((a) => a.started && a.series.length);
+    const [at, setAt] = useState(null);
+    if (!live.length) return null;
+    const W = 1080, H = 260, L = 74, R = 12, T = 14, B = 28;
+    const pts = live.map((a) => a.series.map((p) => ({ ...p, t: Date.parse(p.at) })));
+    const ts = pts.flat().map((p) => p.t);
+    const t0 = Math.min(...ts), t1 = Math.max(...ts);
+    const vals = pts.flat().map((p) => p.equity).concat(live.map((a) => a.start.equity));
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    const pad = Math.max((hi - lo) * 0.25, hi * 0.002);
     lo -= pad; hi += pad;
-    const n = series.length;
-    const x = (i) => L + (W - L - R) * (n === 1 ? 0.5 : i / (n - 1));
+    const x = (t) => (t1 === t0 ? (L + W - R) / 2 : L + (W - L - R) * (t - t0) / (t1 - t0));
     const y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
-    const line = series.map((p, i) => `${x(i).toFixed(1)},${y(p.equity).toFixed(1)}`).join(" ");
     const days = [];
-    series.forEach((p, i) => { const d = day(p.at); if (!days.find((e) => e[0] === d)) days.push([d, i]); });
-    const shown = hover === null ? series.length - 1 : hover;
-    const p = series[shown];
+    pts.flat().slice().sort((p, q) => p.t - q.t).forEach((p) => { const d = day(p.at); if (!days.some((e) => e[0] === d)) days.push([d, p.t]); });
+    const nearest = (list, t) => list.reduce((best, p) => (Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best), list[0]);
+    const t = at === null ? t1 : at;
+    const onMove = (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const px = ((e.clientX - r.left) * W) / r.width;
+      setAt(t0 + ((Math.min(Math.max(px, L), W - R) - L) / (W - L - R)) * (t1 - t0));
+    };
+    const ref = live[0].start.equity;
     return html`
-      <div className="chart">
-        <svg viewBox=${`0 0 ${W} ${H}`} role="img"
-             aria-label=${`Account value from ${usd(series[0].equity)} to ${usd(series[n - 1].equity)}`}
-             onMouseLeave=${() => setHover(null)}>
-          ${ticks(lo, hi).map((t) => html`<g key=${t}>
-            <line className="grid" x1=${L} x2=${W - R} y1=${y(t)} y2=${y(t)} />
-            <text x=${L - 8} y=${y(t) + 4} textAnchor="end">${usd(t)}</text></g>`)}
-          <line className="ref" x1=${L} x2=${W - R} y1=${y(start)} y2=${y(start)} />
-          <text x=${W - R} y=${y(start) - 6} textAnchor="end">start ${usd(start)}</text>
-          ${days.map(([d, i]) => html`<text key=${d} x=${x(i)} y=${H - 8} textAnchor="middle">${d}</text>`)}
-          ${n > 1 && html`<polygon className="area" points=${`${L},${H - B} ${line} ${W - R},${H - B}`} />`}
-          ${n > 1 && html`<polyline className="line" points=${line} />`}
-          ${hover !== null && html`<line className="hover" x1=${x(hover)} x2=${x(hover)} y1=${T} y2=${H - B} />`}
-          ${series.map((q, i) => html`<circle key=${i} className="pt" cx=${x(i)} cy=${y(q.equity)} r=${i === shown ? 4.5 : 2.5} />`)}
-          ${series.map((q, i) => html`<rect key=${"h" + i} x=${x(i) - (W - L - R) / Math.max(n, 2) / 2} y=${T}
-              width=${(W - L - R) / Math.max(n, 2)} height=${H - T - B} fill="transparent"
-              onMouseEnter=${() => setHover(i)} />`)}
-        </svg>
-        <div className="readout">${usd2(p.equity)} · ${p.label === "account sample" ? "hourly sample" : "run " + p.label} · ${when(p.at)}</div>
-      </div>`;
+      <section className="sec">
+        <header><h2>Account value</h2><span className="aside">both paper accounts, read at every run and every hour of the US session</span></header>
+        <div className="chart">
+          <svg viewBox=${`0 0 ${W} ${H}`} role="img" onMouseMove=${onMove} onMouseLeave=${() => setAt(null)}
+               aria-label=${live.map((a) => `${a.title}: ${usd(a.now.equity)}`).join(", ")}>
+            ${ticks(lo, hi).map((v) => html`<g key=${v}><line className="grid" x1=${L} x2=${W - R} y1=${y(v)} y2=${y(v)} />
+              <text x=${L - 8} y=${y(v) + 4} textAnchor="end">${usd(v)}</text></g>`)}
+            <line className="ref" x1=${L} x2=${W - R} y1=${y(ref)} y2=${y(ref)} />
+            <text x=${W - R} y=${y(ref) - 6} textAnchor="end">start ${usd(ref)}</text>
+            ${days.map(([d, dt], i) => html`<text key=${d} x=${x(dt)} y=${H - 8} textAnchor=${i === 0 ? "start" : x(dt) > W - R - 40 ? "end" : "middle"}>${d}</text>`)}
+            ${at !== null && html`<line className="hover" x1=${x(t)} x2=${x(t)} y1=${T} y2=${H - B} />`}
+            ${live.map((a, k) => [a, k]).reverse().map(([a, k]) => html`<g key=${a.key} className=${"c-" + a.key}>
+              ${pts[k].length > 1 && html`<polyline className="line" points=${pts[k].map((p) => `${x(p.t).toFixed(1)},${y(p.equity).toFixed(1)}`).join(" ")} />`}
+              ${pts[k].map((p, i) => html`<circle key=${i} className="pt" cx=${x(p.t)} cy=${y(p.equity)} r=${p === nearest(pts[k], t) ? 4.5 : 2.5} />`)}</g>`)}
+          </svg>
+          <div className="readout">${live.map((a, k) => { const p = nearest(pts[k], t); return html`<span key=${a.key} className=${"c-" + a.key}>
+            <span className="dot" style=${{ background: "var(--c)" }}></span>${a.title} ${usd2(p.equity)} <span className="muted">${when(p.at)}</span></span>`; })}</div>
+        </div>
+      </section>`;
   }
 
   /* One asset: Timestral's 80% interval (q10 to q90) and median for each horizon, drawn as a
@@ -117,8 +128,11 @@
     const med = [[0, 0], ...hs.map((h) => [h.h, h.median])].map(([h, v]) => `${x(h).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
     const last = hs[hs.length - 1];
     const colour = a.type === "stock" ? "var(--stock)" : "var(--etf)";
+    const [open, setOpen] = useState(false);
+    const toggle = () => setOpen(!open);
     return html`
-      <div className="fan">
+      <div className=${"fan" + (open ? " open" : "")} role="button" tabIndex="0" aria-expanded=${open}
+           title="Show the numbers for each horizon" onClick=${toggle} onKeyDown=${key(toggle)}>
         <div className="h"><b>${a.symbol}</b><span className="muted">${a.name}</span></div>
         <svg viewBox=${`0 0 ${W} ${H}`} role="img"
              aria-label=${`${a.symbol}: 80% interval at ${maxH} days from ${spct(last.q10)} to ${spct(last.q90)}`}>
@@ -129,6 +143,9 @@
           <text x=${W - R} y=${y(last.q10) + 11} textAnchor="end" style=${{ font: "10px var(--mono)", fill: "var(--ink3)" }}>${spct(last.q10, 0)}</text>
         </svg>
         <div className="w"><span>spread ${pct(last.spread)}</span><span>rule ${pct(a.rule_weight)} → ${pct(a.final_weight)}</span></div>
+        ${open && html`<table className="mini"><thead><tr><th>Days</th><th className="num">q10</th><th className="num">Median</th><th className="num">q90</th><th className="num">Spread</th></tr></thead>
+          <tbody>${hs.map((h) => html`<tr key=${h.h}><td>${h.h}</td><td className="num">${spct(h.q10)}</td><td className="num">${spct(h.median)}</td>
+            <td className="num">${spct(h.q90)}</td><td className="num">${pct(h.spread)}</td></tr>`)}</tbody></table>`}
       </div>`;
   }
 
@@ -161,7 +178,6 @@
   }
 
   // ------------------------------------------------------------------ live
-  const key = (fn) => (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
   function AgentCard({ a, selected, onSelect }) {
     if (!a.started) {
       return html`<div role="button" tabIndex="0" className=${"acard c-" + a.key} aria-pressed=${selected} onClick=${onSelect} onKeyDown=${key(onSelect)}>
@@ -258,7 +274,7 @@
         ${view === "fans" && html`<${React.Fragment}>
           <div className="fans">${f.assets.map((x) => html`<${Fan} key=${x.symbol} a=${x} bound=${bound} />`)}</div>
           <div className="legend"><span><i className="sq etf"></i>ETF</span><span><i className="sq stock"></i>Stock</span>
-            <span>Band: 80% interval, today to ${maxH} days · line: median · same scale (±${pct(bound, 0)}) for every asset · riskiest first</span></div>
+            <span>Band: 80% interval, today to ${maxH} days · line: median · same scale (±${pct(bound, 0)}) for every asset · riskiest first · click an asset for its numbers</span></div>
         </${React.Fragment}>`}
         ${view === "table" && html`<div className="scroll"><table>
           <thead><tr><th>Asset</th>${hs.map((h) => html`<th key=${h} className="num">${h}d q10</th>`)}<th className="num">${maxH}d median</th><th className="num">${maxH}d q90</th><th className="num">Spread ${maxH}d</th><th className="num">Rule</th><th className="num">Final</th></tr></thead>
@@ -341,14 +357,13 @@
     return html`
       <${React.Fragment}>
         <div className="agents">${data.agents.map((x) => html`<${AgentCard} key=${x.key} a=${x} selected=${x.key === a.key} onSelect=${() => setAgent(x.key)} />`)}</div>
+        <${BothValues} agents=${data.agents} />
         <div className=${"switch c-" + a.key}>
           <span className="label">Showing</span>
           <span className="seg">${data.agents.map((x) => html`<button key=${x.key} className=${"c-" + x.key} aria-pressed=${x.key === a.key} onClick=${() => setAgent(x.key)}>${x.title}</button>`)}</span>
           <span className="label">${a.summary}</span>
         </div>
         ${!a.started ? html`<p className="soft">This agent has not run yet.</p>` : html`<div className=${"c-" + a.key}>
-          <section className="sec"><header><h2>Account value</h2><span className="aside">read at every run and every hour of the US session</span></header>
-            <${ValueChart} series=${a.series} start=${a.start.equity} /></section>
           <${Decision} a=${a} />
           <${Forecast} a=${a} />
           <${Holdings} a=${a} />
@@ -478,6 +493,11 @@
           <p className="muted" style=${{ fontSize: 12 }}>A ratio above 1 means the risk was underestimated. Early live figures rest on few, correlated forecasts.</p>
         </section>`}
         ${data.covariates && html`<section className="sec"><header><h2>Do news help the forecast?</h2></header><${Covariates} c=${data.covariates} /></section>`}
+        ${data.next && data.next.length > 0 && html`<section className="sec"><header><h2>What's next</h2><span className="aside">kept in step with docs/roadmap.md</span></header>
+          <div className="next">${[["running", "Running"], ["next", "Next"], ["later", "Later, deliberately"]].map(([k, t]) => html`<div key=${k}>
+            <h3>${t}</h3>
+            <ul>${data.next.filter((n) => n.status === k).map((n) => html`<li key=${n.id + n.title}><b><span className="mono muted">${n.id}</span> ${n.title}</b><span>${n.text}</span></li>`)}</ul></div>`)}</div>
+        </section>`}
         <section className="sec"><header><h2>Records and documents</h2></header>
           <dl className="kv">
             <dt>Audit log</dt><dd><a href=${data.links.audit_log}>every run, prompt, reasoning trace and order, immutable</a></dd>
@@ -536,7 +556,16 @@
       window.addEventListener("hashchange", onHash);
       return () => window.removeEventListener("hashchange", onHash);
     }, []);
-    const go = (t) => { history.replaceState(null, "", "#" + t); setTab(t); window.scrollTo(0, 0); };
+    const go = (t) => { history.replaceState(null, "", "#" + t); setTab(t); };
+    const onArrows = (e) => {
+      const i = TABS.findIndex((x) => x[0] === tab);
+      const j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : null;
+      if (j === null) return;
+      const next = TABS[(j + TABS.length) % TABS.length][0];
+      go(next);
+      const el = document.getElementById("tab-" + next);
+      if (el) el.focus();
+    };
     if (error) return html`<p className="boot">The records could not be loaded (${error}). Try the <a href="classic.html">plain page</a>.</p>`;
     if (!data) return html`<p className="boot">Loading the agent's records…</p>`;
     return html`
@@ -548,12 +577,15 @@
             decides, deterministic guardrails bound every decision before it reaches the broker.</p>
         </div></div>
         <main className="wrap">
-          <nav className="guide" role="tablist" aria-label="Sections">
-            ${TABS.map(([k, t, d], i) => html`<button key=${k} role="tab" aria-selected=${tab === k} onClick=${() => go(k)}><b><span className="k">${i + 1}</span>${t}</b><span>${d}</span></button>`)}
+          <nav className="guide" role="tablist" aria-label="Sections" onKeyDown=${onArrows}>
+            ${TABS.map(([k, t, d], i) => html`<button key=${k} id=${"tab-" + k} role="tab" aria-selected=${tab === k} aria-controls="panel"
+              tabIndex=${tab === k ? 0 : -1} onClick=${() => go(k)}><b><span className="k">${i + 1}</span>${t}</b><span>${d}</span></button>`)}
           </nav>
+          <div id="panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
           ${tab === "live" && html`<${Live} data=${data} agent=${agent} setAgent=${setAgent} />`}
           ${tab === "how" && html`<${How} data=${data} />`}
           ${tab === "try" && html`<${Try} data=${data} />`}
+          </div>
           <footer className="foot"><span>Generated ${when(data.generated_at)} from the audit log.</span><span>Paper trading, not financial advice.</span>
             <a href=${data.links.decisions}>design decisions</a><a href=${data.links.classic}>plain page</a></footer>
         </main>
