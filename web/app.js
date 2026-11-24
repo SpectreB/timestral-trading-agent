@@ -938,7 +938,10 @@
     const [agent, setAgent] = useState(null);
     const [compact, setCompact] = useState(false);
     useEffect(() => {
-      const onScroll = () => setCompact((c) => (c ? window.scrollY > 20 : window.scrollY > 90));
+      const onScroll = () => {
+        const top = document.querySelector(".top");
+        setCompact(top ? window.scrollY > top.offsetHeight : false);
+      };
       window.addEventListener("scroll", onScroll, { passive: true });
       return () => window.removeEventListener("scroll", onScroll);
     }, []);
@@ -965,7 +968,14 @@
     if (!data) return html`<p className="boot">Loading the agent's records…</p>`;
     return html`
       <${React.Fragment}>
-        <div className=${"top" + (compact ? " compact" : "")}><div className="wrap">
+        <div className=${"minibar" + (compact ? " on" : "")} aria-hidden=${!compact}><div className="wrap">
+          <span className="mb-title"><${Timestral} size=${18} />Timestral Trading Agent<span className="badge">Paper trading</span></span>
+          <span className="actions">
+            <a className="act" tabIndex=${compact ? 0 : -1} href=${data.links.audit_log}><${Glyph} d=${DOC} />Audit log</a>
+            <a className="act" tabIndex=${compact ? 0 : -1} href="#lexicon" onClick=${(e) => { e.preventDefault(); go("lexicon"); }}><${Glyph} d=${BOOK} />Lexicon</a>
+            <a className="act" tabIndex=${compact ? 0 : -1} href=${data.repo}><${Glyph} d=${CODE} />Code</a>
+          </span></div></div>
+        <div className="top"><div className="wrap">
           <div className="brand">
             <div className="title"><h1><${Timestral} size=${22} />Timestral Trading Agent</h1><span className="badge">Paper trading</span></div>
             <div className="actions">
