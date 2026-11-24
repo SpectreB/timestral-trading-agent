@@ -15,6 +15,9 @@ on:
       - src/agent/dashboard.py
       - .github/workflows/dashboard.yml
       - docs/replay/report.json
+      - docs/replay_tools/report.json
+      - docs/evals/**
+      - docs/covariates/**
   workflow_dispatch:
 
 permissions:
@@ -47,7 +50,9 @@ jobs:
           pip install --no-deps -e .
 
       - name: Build the page
-        run: python -m agent.dashboard --audit-dir audit --out site --replay-dir docs/replay
+        run: |
+          python -m agent.dashboard --audit-dir audit --out site --replay-dir docs/replay \
+            --tool-replay-dir docs/replay_tools --evals-dir docs/evals --covariates-dir docs/covariates
 
       - uses: actions/upload-pages-artifact@v5
         with:
