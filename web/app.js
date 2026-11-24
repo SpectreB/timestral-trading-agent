@@ -83,6 +83,34 @@
       shapeRendering="crispEdges" role="img" aria-label="Timestral">${cells}</svg>`;
   }
 
+  /* The Mistral LLM: the pixel cat of Mistral's visuals ("chonk"). Letters: O orange, D darker
+     orange, K black (eyes and nose), R red collar, Y yellow tag. */
+  const CHONK = [
+    "...D.......D...",
+    "...DO.....OD...",
+    "...OOOOOOOOO...",
+    "...OOKOOOKOO...",
+    "...OOOOKOOOO...",
+    "...OOOOOOOOO...",
+    "...RRRRRRRRR...",
+    "...OOOOYOOOO...",
+    "..OOODOOODOOO..",
+    "..OOOOOOOOOOO.D",
+    "..ODDOOOOODDO.D",
+    "..OOOOOOOOOOODD",
+    "..OOOOOOOOOOOD.",
+    ".DDDDDDDDDDDDD.",
+  ];
+  const CH = { O: "#f0892b", D: "#e2602a", K: "#1c1c1c", R: "#d2341c", Y: "#f4c542" };
+  function Chonk({ size = 16, x, y }) {
+    const cells = [];
+    CHONK.forEach((row, r) => [...row].forEach((c, k) => {
+      if (c !== ".") cells.push(html`<rect key=${r + "-" + k} x=${k} y=${r} width="1.02" height="1.02" fill=${CH[c]} />`);
+    }));
+    return html`<svg className="mark" x=${x} y=${y} width=${(size * 15) / 14} height=${size} viewBox="0 0 15 14"
+      shapeRendering="crispEdges" role="img" aria-label="Mistral LLM">${cells}</svg>`;
+  }
+
   /* One pictogram per agent, in its colour: a wrench for the agent that uses tools, three
      chained blocks for the fixed pipeline. */
   function AgentIcon({ k, size = 16, x, y }) {
@@ -279,7 +307,7 @@
         </p>
         <div className="decision">
           <div>
-            <h3 style=${{ marginTop: 0 }}>What the LLM wrote</h3>
+            <h3 style=${{ marginTop: 0 }}><${Chonk} size=${14} />What the LLM wrote</h3>
             <p className="reading">${short}</p>
             ${text.length > 520 && html`<button className="more" onClick=${() => setFull(!full)}>${full ? "Show less" : "Read all"}</button>`}
             ${d.corrections.length > 0 && html`<${React.Fragment}>
@@ -438,8 +466,9 @@
     const cols = [8, 186, 364, 542, 720];
     const mid = (i) => cols[i] + W / 2;
     const box = (i, y, title, sub, opts = {}) => html`<g key=${title + i + y}>
-      <rect className=${opts.ts ? "ts" : ""} x=${cols[i]} y=${y} width=${W} height=${opts.h || H} />
+      <rect className=${opts.ts ? "bx ts" : "bx"} x=${cols[i]} y=${y} width=${W} height=${opts.h || H} />
       ${opts.ts && html`<${Timestral} size=${12} x=${cols[i] + 6} y=${y + 6} />`}
+      ${opts.llm && html`<${Chonk} size=${12} x=${cols[i] + 6} y=${y + 6} />`}
       <text x=${mid(i)} y=${y + 21} textAnchor="middle" style=${{ fontWeight: 600 }}>${title}</text>
       ${(Array.isArray(sub) ? sub : [sub]).map((t, k) => html`<text key=${k} className=${opts.mono ? "sm mono" : "sm"} x=${mid(i)} y=${y + 38 + 13 * k} textAnchor="middle">${t}</text>`)}</g>`;
     const arrow = (x1, x2, y) => html`<g key=${"a" + x1 + y}><line x1=${x1} y1=${y} x2=${x2 - 7} y2=${y} />
@@ -462,9 +491,9 @@
              aria-label="Tool agent: the LLM calls Timestral's tools, gets the answers, and decides whether to call again or stop, up to 6 rounds and 12 calls; then it decides, the guardrails check, and the orders go out. Pipeline agent: Timestral forecasts all 15 assets once, a rule sets a baseline, the LLM adjusts it, then the same guardrails and orders. In both, a rejected answer gets one retry with the reason, then the positions are held.">
           <g className="c-tools">
             ${row(t - 16, "tools", "Tool agent: the LLM asks Timestral, then decides")}
-            ${box(0, t, "LLM explores", "reads the market")}
+            ${box(0, t, "LLM explores", "reads the market", { llm: true })}
             ${box(1, t - 12, "Timestral tools", ["get_forecasts", "evaluate_portfolio", "get_baseline"], { ts: true, h: 76, mono: true })}
-            ${box(2, t, "LLM decides", "strict JSON")}
+            ${box(2, t, "LLM decides", "strict JSON", { llm: true })}
             ${box(3, t, "Guardrails", "correct or reject")}
             ${box(4, t, "Orders", "Alpaca paper")}
             ${arrow(cols[0] + W, cols[1], t + 26)}
@@ -478,7 +507,7 @@
             ${row(p, "pipeline", "Pipeline agent: Timestral first, the LLM adjusts")}
             ${box(0, p, "Timestral", "once, all 15 assets", { ts: true })}
             ${box(1, p, "Rule", "weight ∝ 1 / spread")}
-            ${box(2, p, "LLM adjusts", "+15 pts at most")}
+            ${box(2, p, "LLM adjusts", "+15 pts at most", { llm: true })}
             ${box(3, p, "Guardrails", "correct or reject")}
             ${box(4, p, "Orders", "Alpaca paper")}
             ${[0, 1, 2, 3].map((i) => arrow(cols[i] + W, cols[i + 1], p + 26))}
@@ -549,7 +578,7 @@
           <${Diagram} />
         </section>
         <section className="sec"><header><h2>Inputs</h2></header>
-          <dl className="inputs">${data.inputs.map((r) => html`<${React.Fragment} key=${r.label}><dt>${r.label === "Forecast" ? html`<${Timestral} size=${13} />` : ""}${r.label}</dt>
+          <dl className="inputs">${data.inputs.map((r) => html`<${React.Fragment} key=${r.label}><dt>${r.label === "Forecast" ? html`<${Timestral} size=${13} />` : r.label === "Decision" ? html`<${Chonk} size=${13} />` : ""}${r.label}</dt>
             <dd>${r.items.map((i) => html`<span key=${i}>${i}</span>`)}</dd></${React.Fragment}>`)}</dl>
         </section>
         ${data.covariates && html`<section className="sec"><header><h2><${Glyph} d=${NEWS} size=${16} />News as covariates: do they help Timestral?</h2><span className="aside">the brief's bonus, measured</span></header><${Covariates} c=${data.covariates} /></section>`}
