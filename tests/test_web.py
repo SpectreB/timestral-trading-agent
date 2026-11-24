@@ -243,3 +243,10 @@ def test_the_cost_of_a_decision_is_measured_in_tokens(tmp_path: Path) -> None:
     answer = {"prompt_tokens": 7000, "completion_tokens": 1500}
     run = {"decision": {"steps": [step], "attempts": [answer]}}
     assert _cost([run]) == {"tokens": "12k (10k in, 2k out)"}
+
+
+def test_the_side_by_side_does_not_repeat_the_other_checks(tmp_path: Path) -> None:
+    cycle(tmp_path / "audit")
+    keys = {r["key"] for r in _site(tmp_path)["measure_rows"]}
+    assert "tests" not in keys and not any(k.startswith("past_") for k in keys)
+    assert {"calls", "risk", "filled", "tokens"} <= keys
