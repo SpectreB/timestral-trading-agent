@@ -127,6 +127,9 @@
     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d=${d} /></svg>`;
   const DOC = "M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7";
   const CODE = "M8 7l-5 5 5 5M16 7l5 5-5 5";
+  const CHART = "M3 20h18M5 16l4-5 4 3 6-8";
+  const GRID = "M3 5h18v14H3zM3 10h18M3 15h18M9 5v14";
+  const BRACES = "M8 4c-2 0-2 1.5-2 3v2c0 1.5-1 2-2 2 1 0 2 .5 2 2v3c0 1.5 0 3 2 3M16 4c2 0 2 1.5 2 3v2c0 1.5 1 2 2 2-1 0-2 .5-2 2v3c0 1.5 0 3-2 3";
   const SHIELD = "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4";
   const FLASK = "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3M7.5 15h9";
   const REWIND = "M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5M12 7v5l3 2";
@@ -327,7 +330,9 @@
       <section className="sec">
         <header><h2>Last decision</h2><span className="aside">${d.run_id} · ${when(d.at)}</span></header>
         <p className="facts"><span><${Outcome} o=${d.outcome} /></span><span>${summary}</span>
-          <button className="more" aria-expanded="false" onClick=${() => setShown(true)}>Show the decision</button></p>
+</p>
+        <button className="reveal" aria-expanded="false" onClick=${() => setShown(true)}>
+          <span><b>Show the decision</b> · what the LLM wrote, its calls to Timestral, what changed</span></button>
       </section>`;
     return html`
       <section className="sec">
@@ -338,13 +343,13 @@
           <span>model <b>${d.model}</b></span><span>prompt <b>${d.prompt}</b></span>
           ${d.portfolio_vol && d.portfolio_vol.final != null && html`<span>forecast risk, ${d.portfolio_vol.horizon} days: <b>${pct(d.portfolio_vol.final)}</b> (rule alone ${pct(d.portfolio_vol.rule)})</span>`}
           <a href=${d.record}>full record</a>
-          <button className="more" aria-expanded="true" onClick=${() => setShown(false)}>Hide</button>
         </p>
+        <button className="reveal" aria-expanded="true" onClick=${() => setShown(false)}><span><b>Hide the decision</b></span></button>
         <div className="decision">
           <div>
             <h3 style=${{ marginTop: 0 }}><${Chonk} size=${14} />What the LLM wrote</h3>
             <p className="reading">${short}</p>
-            ${text.length > 520 && html`<button className="more" onClick=${() => setFull(!full)}>${full ? "Show less" : "Read all"}</button>`}
+            ${text.length > 520 && html`<button className="more" aria-expanded=${full} onClick=${() => setFull(!full)}>${full ? "Show less" : "Read all"}</button>`}
             ${d.corrections.length > 0 && html`<${React.Fragment}>
               <h3>Corrected by the guardrails</h3>
               <table><tbody>${d.corrections.map((c, i) => html`<tr key=${i}><td>${c.rule}</td><td>${c.symbol || ""}</td>
@@ -384,8 +389,8 @@
       <section className="sec tipped">
         <header><h2><${Timestral} />Timestral's forecast behind it</h2>
           <span className="views" role="group" aria-label="View">
-            ${[["fans", "Chart"], ["table", "Numbers"], ["raw", "Raw output"]].map(([k, t]) =>
-              html`<button key=${k} aria-pressed=${view === k} onClick=${() => setView(k)}>${t}</button>`)}
+            ${[["fans", "Chart", CHART], ["table", "Numbers", GRID], ["raw", "Raw output", BRACES]].map(([k, t, d]) =>
+              html`<button key=${k} aria-pressed=${view === k} onClick=${() => setView(k)}><${Glyph} d=${d} size=${13} />${t}</button>`)}
           </span></header>
         <${Fold} first=${html`The wider the <b>spread</b> (<span className="formula">q90 − q10</span>), the riskier the asset and the smaller its weight.`}>
           ${f.model}, on ${f.context_days} days of closes up to ${f.last_close}, gives for each asset a distribution of the cumulative
@@ -500,7 +505,7 @@
               ${o.submitted_at && html`<dt>Sent</dt><dd className="num">${when(o.submitted_at)}</dd>`}
             </dl>
           </div>`}
-          ${a.orders.length > 10 && html`<button className="more" onClick=${() => setAll(!all)}>${all ? "Show the latest 10" : `Show all ${a.orders.length}`}</button>`}
+          ${a.orders.length > 10 && html`<button className="more" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? "Show the latest 10" : `Show all ${a.orders.length}`}</button>`}
           <div className="legend"><span><b>Slippage</b>: fill price against the reference price, in basis points; negative is better for us</span>
             <span className="muted">hover or tap an order for its shares and prices</span></div>`}
       </section>`;

@@ -228,3 +228,18 @@ def test_every_input_keyword_is_explained(tmp_path: Path) -> None:
     cycle(tmp_path / "audit")
     rows = _site(tmp_path)["inputs"]
     assert all(i["text"] and i["help"] for r in rows for i in r["items"])
+
+
+def test_the_cost_of_a_decision_is_measured_in_tokens(tmp_path: Path) -> None:
+    from agent.web import _cost
+
+    audit = tmp_path / "audit"
+    cycle(audit)
+    _tool_cycle(audit)
+    tools, pipeline = _site(tmp_path)["agents"]
+    assert tools["measures"]["tokens"].endswith("out)") and "in, " in pipeline["measures"]["tokens"]
+    assert _cost([]) == {}
+    step = {"prompt_tokens": 3000, "completion_tokens": 500}
+    answer = {"prompt_tokens": 7000, "completion_tokens": 1500}
+    run = {"decision": {"steps": [step], "attempts": [answer]}}
+    assert _cost([run]) == {"tokens": "12k (10k in, 2k out)"}
