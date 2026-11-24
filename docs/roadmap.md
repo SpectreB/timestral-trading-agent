@@ -9,7 +9,7 @@ The single place to see where the project stands. Details of each decision are i
 | ID | Decision | Status |
 |---|---|---|
 | D-001 | Python 3.11 | Accepted |
-| D-002 | GitHub Actions cron for scheduling | Provisional, validated in practice (runs on GitHub since 2026-11-20); to accept formally |
+| D-002 | GitHub Actions for the runs, started by an external cron service since 2026-11-24 | Accepted 2026-11-24 |
 | D-003 | pip + venv | Accepted |
 | D-004 | Timestral = risk engine for a baseline rule; the LLM adjusts it (asymmetric bounds) | Accepted |
 | D-005 | Universe: 10 ETFs + 5 stocks | Accepted |
@@ -36,7 +36,7 @@ The single place to see where the project stands. Details of each decision are i
 | P-1 | ~~Replay design~~ | Resolved 2026-11-22: see D-015 |
 | P-2 | ~~Switch the kill switch on (`TRADING_ENABLED`)~~ | Done 2026-11-22 15:27 UTC by the owner's decision: orders are sent from the first run on Mon 2026-11-23 (16:00 Paris) |
 | P-3 | ~~Confirm or revise D-012 (dashboard technology) and D-013 (forecast scoring)~~ | Resolved 2026-11-22: both confirmed as they are |
-| P-4 | Accept D-002 formally | Accept |
+| P-4 | ~~Accept D-002 formally~~ | Resolved 2026-11-24: accepted, with an external trigger (cron-job.org) because GitHub's scheduler barely fired |
 
 ## Tasks
 
