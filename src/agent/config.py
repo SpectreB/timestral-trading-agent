@@ -106,6 +106,9 @@ class ExecutionConfig:
     """D-007 and D-010."""
 
     no_trade_band: float = 0.02  # skip orders that move a weight by less than 2 pts
+    # A move meant as 2 points that drifted by a few dollars since the decision still counts.
+    # Found on 2026-11-24: two 2-point sells fell $3 short of the band and were skipped.
+    band_tolerance: float = 0.001
     max_turnover_per_run: float = 0.30
     # The cap brakes sudden *changes*; the initial deployment from cash is a different case.
     # At most this share invested counts as "starting from cash": the cap is waived once.
