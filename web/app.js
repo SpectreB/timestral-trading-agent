@@ -47,8 +47,8 @@
   };
   const TABS = [
     ["live", "Live", "What the agents hold and decide"],
-    ["how", "How it works", "Who does what, within which limits"],
-    ["evidence", "Evidence", "How we know the decisions are sound"],
+    ["how", "How it works", "Who does what, and within which limits?"],
+    ["evidence", "Evidence", "How do we know the decisions are sound?"],
     ["try", "Try it", "Make an agent decide now"],
   ];
   const ROUTES = [...TABS.map((t) => t[0]), "lexicon"];
@@ -567,7 +567,7 @@
   function TryCta({ go }) {
     return html`<a className="cta" href="#try" onClick=${(e) => { e.preventDefault(); go("try"); }}>
       <span className="cta-mark"><${Glyph} d=${PLAY} size=${14} /></span>
-      <span><b>Try it: make an agent decide now</b><span className="soft"> · live data, your choice of agent, stance and start · no order is sent</span></span>
+      <span><b>Try it: see what an agent would do today</b><span className="soft"> · you pick the agent, how cautious it is and where it starts. No orders are sent.</span></span>
       <span className="cta-go">Choose →</span></a>`;
   }
 
@@ -575,7 +575,7 @@
     const a = data.agents.find((x) => x.key === agent) || data.agents[0];
     return html`
       <${React.Fragment}>
-        <p className="question">Two agents, one question: <b>should the LLM drive Timestral, or adjust what Timestral proposes?</b></p>
+        <p className="question"><b>Should the LLM drive Timestral, or only adjust what Timestral proposes?</b> Each agent tests one answer.</p>
         <div className="agents">${data.agents.map((x) => html`<${AgentCard} key=${x.key} a=${x} selected=${x.key === a.key} onSelect=${() => setAgent(x.key)} />`)}</div>
         ${data.agents.some((x) => x.started) && html`<p className="same">Next run, both agents: <b>${when(data.agents.find((x) => x.started).next_run)}</b></p>`}
         <${TryCta} go=${go} />
@@ -715,14 +715,16 @@
   }
 
   function Behaviour({ b }) {
+    const tip = useTip();
     const cell = (c) => c == null ? html`<span className="muted">not run</span>`
       : html`<span className=${c[0] === c[1] ? "" : "warn"}>${c[0]}/${c[1]}</span>`;
     return html`
       <div className="scroll"><table>
         <thead><tr><th>Situation</th><th className="num c-tools"><${AgentIcon} k="tools" size=${14} />Tool agent</th><th className="num c-pipeline"><${AgentIcon} k="pipeline" size=${14} />Pipeline agent</th></tr></thead>
-        <tbody>${b.scenarios.map((s) => html`<tr key=${s.title}><td title=${s.expectation}>${s.title}</td>
+        <tbody>${b.scenarios.map((s) => html`<tr key=${s.title}><td><span className=${"term" + (tip.active === s.title ? " on" : "")} ...${tip.on(s.title, html`<div className="tiphead"><b>${s.title}</b></div><p className="plain">${s.expectation}</p>`)}>${s.title}</span></td>
           <td className="num">${cell(s.tools)}</td><td className="num">${cell(s.pipeline)}</td></tr>`)}</tbody></table></div>
-      <${Fold} small first="Passes out of repeats; hover a situation for what a sound decision does.">
+      ${tip.box}
+      <${Fold} small first="Passes out of repeats. Hover or tap a situation to see what a sound decision does.">
         The tool agent was repeated more on the scenarios its prompt was tuned on, so the bases differ.
         ${Object.entries(b.stability).map(([k, s]) => ` ${k === "tools" ? "Tool" : "Pipeline"} agent: the same question ${s.calls} times, answers differ by at most ${pct(s.max_difference, 0)} of the portfolio.`).join("")}</${Fold}>`;
   }
@@ -739,7 +741,7 @@
         <td>${v === "prices" ? "" : c.verdicts[v] === "no" ? "no gain" : c.verdicts[v] + " gain"}</td></tr>`;
     };
     return html`
-      <p className="note"><b>No.</b> News did not lower Timestral's error: ${c.origins} days, ${c.stocks} stocks, ${c.etfs} ETFs as control.</p>
+      <p className="note"><b>No.</b> Adding news did not lower Timestral's forecast error, tested on ${c.stocks} stocks over ${c.origins} days, with ${c.etfs} ETFs as a control group.</p>
       <div className="scroll"><table>
         <thead><tr><th>Forecast built from</th><th className="num">Error vs prices only</th><th className="num">95% range</th><th className="num">ETFs (control)</th><th>Verdict</th></tr></thead>
         <tbody>${["news", "events", "news+events"].map(row)}</tbody></table></div>
@@ -756,7 +758,7 @@
     return html`
       <${React.Fragment}>
         <section className="sec tipped"><header><h2>The idea</h2></header>
-          <${Fold} first=${html`Timestral forecasts the <b>risk</b>, a Mistral LLM <b>decides</b>, deterministic guardrails <b>bound</b> the result.`}>
+          <${Fold} first=${html`Timestral estimates how risky each asset is. A Mistral LLM chooses the portfolio, and fixed rules check it before any order goes out.`}>
             Timestral, Mistral's time-series model, turned out well calibrated on risk but without a reliable sense of direction, so
             it is used as a risk engine: how wide its interval is decides how much an asset can weigh. The LLM reads those forecasts
             with the portfolio and the market context and proposes a portfolio; the guardrails correct or reject it before any order.
@@ -849,9 +851,8 @@
     const conclusive = withReplay.some((a) => a.replay.comparisons.some((c) => c.conclusive));
     return html`
       <${React.Fragment}>
-        <section className="sec"><header><h2>How we know the decisions are sound</h2></header>
-          <p className="frame">Four checks, from the most controlled to the most real. Over so few sessions, <b>no difference
-            between the two agents is distinguishable from chance</b>, and none is claimed.</p>
+        <section className="sec"><header><h2>How do we know the decisions are sound?</h2></header>
+          <p className="frame">Four checks, from a controlled test to live trading. <b>None of them can yet tell the two agents apart from chance</b>, and we don't claim otherwise.</p>
           <div className="bench">${cards.map((c) => html`<button key=${c.id} className="benchcard" onClick=${jump(c.id)}>
             <span className="bt">${c.mark ? html`<${Timestral} size=${13} />` : html`<${Glyph} d=${c.glyph} />`}${c.title}</span>
             <span className="bv">${c.values.map(([a, v]) => html`<span key=${a ? a.key : "all"} className=${a ? "c-" + a.key : ""}>
@@ -859,23 +860,23 @@
             <span className="bu">${c.unit}</span></button>`)}</div>
         </section>
         <section className="sec tipped" id="ev-side"><header><h2>The two agents side by side</h2><span className="aside">live runs so far</span></header>
-          <p className="note">Same data, same guardrails, two ways of using Timestral: how each decides, the risk it takes, how it executes, what it costs.</p>
+          <p className="note">Both agents see the same data and face the same guardrails. Only the way they use Timestral differs.</p>
           <${Measures} data=${data} />
         </section>
-        ${data.behaviour && html`<section className="sec" id="ev-tests"><header><h2><${Glyph} d=${FLASK} size=${16} />Situations built on purpose</h2><span className="aside">each repeated</span></header>
-          <p className="note">Seven situations where the sound decision is known in advance. Each is repeated: an LLM can answer the same question differently.</p>
+        ${data.behaviour && html`<section className="sec tipped" id="ev-tests"><header><h2><${Glyph} d=${FLASK} size=${16} />Situations built on purpose</h2><span className="aside">each repeated</span></header>
+          <p className="note">Seven made-up market situations where we know what a sound decision looks like. We ran each one several times, because the LLM can answer the same question differently.</p>
           <${Behaviour} b=${data.behaviour} /></section>`}
         ${withReplay.length > 0 && html`<section className="sec" id="ev-replay"><header><h2><${Glyph} d=${REWIND} size=${16} />Tested on the past</h2><span className="aside">${withReplay[0].replay.first} to ${withReplay[0].replay.last}, one decision a day</span></header>
-          <${Fold} first=${`Both agents on ${withReplay[0].replay.sessions} past sessions of a falling market: a check of conduct, not of skill.`}>
+          <${Fold} first=${`We replayed both agents on ${withReplay[0].replay.sessions} past sessions, while the market fell ${spct(-Math.abs(spy.return))}. That is too few sessions to judge skill.`}>
             The LLM could have remembered what happened on real dates, so assets were renamed and dates shifted; only the data of each
             day was available, fills at the next open, with costs.</${Fold}>
           <${ReplayBoth} agents=${withReplay} />
-          <${Fold} small first=${conclusive ? "Some differences between the layers are significant." : "No layer of either agent made a difference these sessions can tell from chance."}>
+          <${Fold} small first=${conclusive ? "Some differences between the layers are significant." : "None of the gaps between the layers is larger than chance could explain."}>
             ${withReplay.map((a) => `${a.title}: ` + a.replay.comparisons.map((c) => `${c.label} ${pts(c.difference, 2)}${c.conclusive ? " (significant)" : ""}`).join("; ") + ". ").join("")}
             Reports: ${withReplay.map((a, k) => html`<${React.Fragment} key=${a.key}>${k ? ", " : ""}<a href=${a.replay.readme}>${a.title.toLowerCase()}</a></${React.Fragment}>`)}.</${Fold}>
         </section>`}
         ${riskRows.length > 0 && html`<section className="sec" id="ev-risk"><header><h2><${Timestral} />Is Timestral's risk right?</h2><span className="aside">target: 80%</span></header>
-          <p className="note">An 80% interval should hold 8 outcomes out of 10. Fewer inside means the risk was underestimated.</p>
+          <p className="note">An 80% interval should contain 8 outcomes out of 10. If fewer fall inside, Timestral underestimated the risk.</p>
           <div className="scroll"><table><thead><tr><th>Agent</th><th>Source</th><th className="num">Horizon</th><th className="num">Forecasts</th><th className="num">Inside 80%</th><th className="num">Realised / predicted</th></tr></thead>
             <tbody>${(allRisk ? riskRows : headline).map((r, i) => html`<tr key=${i}><td className=${"c-" + r.a.key} style=${{ color: "var(--c)" }}>${r.a.title}</td><td>${r.src}</td>
               <td className="num">${r.h}d</td><td className="num">${r.n}</td><td className="num">${pct(r.inside, 0)}</td><td className="num">${r.ratio != null ? r.ratio.toFixed(2) : ""}</td></tr>`)}</tbody></table></div>
@@ -916,8 +917,8 @@
       <${React.Fragment}>
         <section className="sec tryhero">
           <h2 className="big">Make an agent decide, now</h2>
-          <p className="frame">It runs on today's live data, through Timestral, the LLM and the same guardrails as the live agents. <b>No order is sent.</b> Its
-            decision, reasoning and planned orders come back in about 6 minutes.</p>
+          <p className="frame">The agent you pick runs once on today's market data, with the same guardrails as the live agents. <b>It sends no orders.</b> Its
+            decision and reasoning come back in about 6 minutes.</p>
           <div className="choices">${s.choices.map((c, k) => html`<fieldset key=${c.key} className="choice">
             <legend><span className="k">${k + 1}</span>${c.label}</legend>
             ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")}>
@@ -997,8 +998,8 @@
               <a className="act" href=${data.repo}><${Glyph} d=${CODE} />Code</a>
             </div>
           </div>
-          <p className="lede">An autonomous agent trading two paper accounts on US ETFs and stocks. Timestral forecasts the risk, a Mistral LLM
-            decides, deterministic guardrails bound every decision before it reaches the broker.</p>
+          <p className="lede">Two autonomous agents trade US ETFs and stocks on paper accounts. Timestral estimates the risk, a Mistral LLM chooses
+            the portfolio, and fixed rules check every decision before it reaches the broker.</p>
           <${Fresh} at=${data.generated_at} />
         </div></div>
         <main className="wrap">
