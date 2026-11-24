@@ -116,10 +116,12 @@ def test_orders_holdings_and_runs_of_a_live_run(tmp_path: Path) -> None:
     store, broker = live_run(tmp_path / "audit")
     sent = _site(tmp_path)["agents"][0]
     assert sent["orders"] and {o["status"] for o in sent["orders"]} == {"sent"}
+    assert all(o["limit_price"] and o["reference_price"] for o in sent["orders"])
     reconcile_runs(store, Lookup(states_for(broker)), LATER)
     a = _site(tmp_path)["agents"][0]
     assert {o["status"] for o in a["orders"]} == {"filled"}
     assert all(o["value"] == pytest.approx(o["quantity"] * o["price"]) for o in a["orders"])
+    assert all(o["submitted_at"] and o["limit_price"] for o in a["orders"])
     holdings = a["holdings"]
     assert [h["final"] for h in holdings] == sorted((h["final"] for h in holdings), reverse=True)
     assert holdings[0]["rationale"] and holdings[0]["value"] > 0

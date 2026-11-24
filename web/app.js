@@ -409,7 +409,7 @@
         ${h && html`<div id="hold-tip" role="tooltip" className="tipbox" style=${{ top: tip.top + 4 }}>
           <div className="tiphead"><b>${h.symbol}</b> <span className="muted">${h.name} · ${h.type === "stock" ? "stock" : "ETF"}</span></div>
           <dl>
-            <dt>Timestral rule</dt><dd className="num">${pct(h.rule)}</dd>
+            <dt><${Timestral} size=${11} />Timestral rule</dt><dd className="num">${pct(h.rule)}</dd>
             <dt><${Chonk} size=${11} />LLM proposed</dt><dd className="num">${h.proposed != null ? pct(h.proposed) : "n/a"}${h.confidence != null ? ` · confidence ${h.confidence.toFixed(2)}` : ""}</dd>
             <dt>Final, after guardrails</dt><dd className="num">${pct(h.final)} · ${usd(h.value)}</dd>
             ${h.risk_share != null && html`<dt>Share of the risk</dt><dd className="num">${pct(h.risk_share, 0)}</dd>`}
@@ -421,24 +421,51 @@
       </section>`;
   }
 
+  /* Where a tooltip opens: just under the row, measured from its section, so it is never
+     clipped by a scrolling table. */
+  const under = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return r.bottom - e.currentTarget.closest("section").getBoundingClientRect().top;
+  };
+
+  /* The orders: when, what, which way, how much, what happened. Shares, prices and slippage open
+     on hover, keyboard focus or a tap. */
   function Orders({ a }) {
     const [all, setAll] = useState(false);
+    const [tip, setTip] = useState(null); // { i, top }
     const rows = all ? a.orders : a.orders.slice(0, 10);
     const filled = a.orders.filter((o) => o.price != null);
+    const show = (i) => (e) => setTip({ i, top: under(e) });
+    const hide = () => setTip(null);
+    const o = tip && rows[tip.i];
+    const amount = (x) => (x.value != null ? usd(x.value) : x.reference_price != null ? "≈ " + usd(x.quantity * x.reference_price) : "");
     return html`
-      <section className="sec">
+      <section className="sec tipped">
         <header><h2>Orders</h2><span className="aside">${a.orders.length} orders · ${filled.length} filled</span></header>
         ${a.orders.length === 0 ? html`<p className="soft">No order sent yet.</p>` : html`
           <div className="scroll"><table>
-            <thead><tr><th>Time</th><th>Asset</th><th>Side</th><th className="num">Shares</th><th className="num">Price</th><th className="num">Value</th><th className="num">Slippage</th><th>Status</th></tr></thead>
-            <tbody>${rows.map((o, i) => html`<tr key=${i}><td className="mono">${o.at ? when(o.at) : o.run_id}</td><td><b>${o.symbol}</b></td>
-              <td className=${o.side === "buy" ? "" : "warn"}>${o.side === "buy" ? "Buy" : "Sell"}</td>
-              <td className="num">${o.quantity.toFixed(2)}</td><td className="num">${o.price != null ? usd2(o.price) : ""}</td>
-              <td className="num">${o.value != null ? usd(o.value) : ""}</td>
-              <td className="num">${o.slippage_bps != null ? o.slippage_bps.toFixed(1) + " bps" : ""}</td>
-              <td className=${o.status === "filled" ? "muted" : "warn"}>${o.status === "sent" ? "sent, awaiting the broker" : o.status}</td></tr>`)}</tbody></table></div>
+            <thead><tr><th>Time</th><th>Asset</th><th>Side</th><th className="num">Value</th><th>Status</th></tr></thead>
+            <tbody>${rows.map((x, i) => html`<tr key=${i} tabIndex="0" className=${"rowtip" + (tip && tip.i === i ? " on" : "")}
+                onMouseEnter=${show(i)} onMouseLeave=${hide} onFocus=${show(i)} onBlur=${hide}
+                onClick=${(e) => (tip && tip.i === i ? hide() : show(i)(e))}>
+              <td className="mono">${x.at ? when(x.at) : x.run_id}</td><td><b>${x.symbol}</b></td>
+              <td className=${x.side === "buy" ? "" : "warn"}>${x.side === "buy" ? "Buy" : "Sell"}</td>
+              <td className="num">${amount(x)}</td>
+              <td className=${x.status === "filled" ? "muted" : "warn"}>${x.status === "sent" ? "sent, awaiting the broker" : x.status}</td></tr>`)}</tbody></table></div>
+          ${o && html`<div role="tooltip" className="tipbox" style=${{ top: tip.top + 4, left: "auto", right: 0 }}>
+            <div className="tiphead"><b>${o.symbol}</b> <span className="muted">${o.side === "buy" ? "buy" : "sell"} · ${o.run_id}</span></div>
+            <dl>
+              <dt>Shares</dt><dd className="num">${o.quantity.toFixed(4)}</dd>
+              ${o.reference_price != null && html`<dt>Reference price</dt><dd className="num">${usd2(o.reference_price)}</dd>`}
+              ${o.limit_price != null && html`<dt>Limit price</dt><dd className="num">${usd2(o.limit_price)}</dd>`}
+              <dt>Fill price</dt><dd className="num">${o.price != null ? usd2(o.price) : "not filled yet"}</dd>
+              ${o.slippage_bps != null && html`<dt>Slippage</dt><dd className=${"num " + (o.slippage_bps <= 0 ? "up" : "down")}>${o.slippage_bps.toFixed(1)} bps</dd>`}
+              ${o.submitted_at && html`<dt>Sent</dt><dd className="num">${when(o.submitted_at)}</dd>`}
+            </dl>
+            <p>Slippage: fill against the reference price, in basis points; negative is better for us.</p>
+          </div>`}
           ${a.orders.length > 10 && html`<button className="more" onClick=${() => setAll(!all)}>${all ? "Show the latest 10" : `Show all ${a.orders.length}`}</button>`}
-          <p className="muted" style=${{ fontSize: 12 }}>Slippage against the reference price, in basis points: negative is better for us.</p>`}
+          <div className="legend"><span className="muted">hover or tap an order for its shares, prices and slippage</span></div>`}
       </section>`;
   }
 

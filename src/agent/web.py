@@ -236,6 +236,9 @@ def _orders(a: AgentView) -> list[dict[str, Any]]:
                     "price": o["avg_fill_price"] if filled else None,
                     "value": o["filled_qty"] * o["avg_fill_price"] if filled else None,
                     "slippage_bps": o.get("slippage_bps"),
+                    "limit_price": o.get("limit_price"),
+                    "reference_price": o.get("reference_price"),
+                    "submitted_at": o.get("submitted_at"),
                 }
             )
     for run in reversed(a.runs):
@@ -252,6 +255,9 @@ def _orders(a: AgentView) -> list[dict[str, Any]]:
                 "price": None,
                 "value": None,
                 "slippage_bps": None,
+                "limit_price": o.get("limit_price"),
+                "reference_price": o.get("reference_price"),
+                "submitted_at": run["started_at"],
             }
             for o in run["orders"]
         ]
