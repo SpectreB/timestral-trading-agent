@@ -89,7 +89,7 @@ def test_both_agents_with_their_live_state_the_tool_agent_first(tmp_path: Path) 
     assert set(pipeline["replay"]["curves"]) >= {"agent", "baseline", "equal_weight", "spy"}
     assert data["behaviour"]["scenarios"] and data["covariates"]["verdicts"]["news"] == "no"
     assert data["covariates"]["stocks"] == 29
-    assert data["inputs"][3]["items"][-1] == "measured, not adopted"
+    assert data["inputs"][3]["items"][-1]["text"] == "measured, not adopted"
     json.dumps(data, allow_nan=False)  # strict JSON: no NaN reaches the page
 
 
@@ -136,7 +136,7 @@ def test_an_agent_without_runs_and_a_page_without_evidence(tmp_path: Path) -> No
     assert tools["started"] is False and "decision" not in tools
     assert pipeline["started"] is False
     assert data["behaviour"] is None and data["covariates"] is None
-    assert data["inputs"][3]["items"][-1] == "built, not measured"
+    assert data["inputs"][3]["items"][-1]["text"] == "built, not measured"
     assert data["simulations"]["recent"] == []
 
 
@@ -222,3 +222,9 @@ def test_every_measure_says_what_it_means(tmp_path: Path) -> None:
     cycle(tmp_path / "audit")
     rows = _site(tmp_path)["measure_rows"]
     assert rows and all(r["help"] for r in rows)
+
+
+def test_every_input_keyword_is_explained(tmp_path: Path) -> None:
+    cycle(tmp_path / "audit")
+    rows = _site(tmp_path)["inputs"]
+    assert all(i["text"] and i["help"] for r in rows for i in r["items"])

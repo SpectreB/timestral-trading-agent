@@ -413,41 +413,73 @@ def _rules() -> list[dict[str, str]]:
 
 
 def _inputs(cov: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """What goes in, as keywords, each with one line of explanation shown on demand."""
     pipe, tool = AgentConfig(), tool_agent_config()
     etfs = sum(a.type is AssetType.ETF for a in pipe.universe)
+    ex = pipe.execution
+
+    def items(*pairs: tuple[str, str]) -> list[dict[str, str]]:
+        return [{"text": t, "help": h} for t, h in pairs]
+
     return [
         {
             "label": "Data",
-            "items": [
-                "Alpaca daily bars, completed sessions only",
-                f"{len(pipe.universe)} assets: {etfs} ETFs, {len(pipe.universe) - etfs} stocks",
-                f"{pipe.forecast.context_length}-day context",
-            ],
+            "items": items(
+                ("Alpaca daily bars, completed sessions only",
+                 "Daily prices from Alpaca; today's unfinished bar is never used."),
+                (f"{len(pipe.universe)} assets: {etfs} ETFs, {len(pipe.universe) - etfs} stocks",
+                 "ETFs across regions, sectors, bonds and gold, plus five large stocks."),
+                (f"{pipe.forecast.context_length}-day context",
+                 f"Timestral sees the last {pipe.forecast.context_length} closes of each asset."),
+            ),
         },
         {
             "label": "Forecast",
-            "items": [
-                f"{tool.forecast.model_id.split('/')[-1]} (tool agent)",
-                f"{pipe.forecast.model_id.split('/')[-1]} (pipeline agent)",
-                f"quantiles, 1 to {pipe.forecast.horizon} days ahead",
-                "run locally on CPU",
-            ],
+            "items": items(
+                (f"{tool.forecast.model_id.split('/')[-1]} (tool agent)",
+                 "The largest Timestral, used by the final agent."),
+                (f"{pipe.forecast.model_id.split('/')[-1]} (pipeline agent)",
+                 "A smaller Timestral; the backtest found the sizes indistinguishable."),
+                (f"quantiles, 1 to {pipe.forecast.horizon} days ahead",
+                 "A distribution of the cumulative return for each horizon, not one number."),
+                ("run locally on CPU", "No GPU, no API: the model runs inside each workflow run."),
+            ),
         },
-        {"label": "Decision", "items": [pipe.llm.model, "native reasoning", "strict JSON schema"]},
+        {
+            "label": "Decision",
+            "items": items(
+                (pipe.llm.model, "Mistral Large 4, pinned to an exact version."),
+                ("native reasoning",
+                 "The model reasons before answering; the trace is kept in the audit log."),
+                ("strict JSON schema", "The answer must match a schema, or it is rejected."),
+            ),
+        },
         {
             "label": "Covariates",
-            "items": [
-                "news sentiment (Alpaca News)",
-                "company events and macro dates (FRED)",
-                f"analyst {pipe.news.analyst_model}",
-                "measured, not adopted" if cov else "built, not measured",
-            ],
+            "items": items(
+                ("news sentiment (Alpaca News)",
+                 "Each article scored for sentiment and relevance, per stock."),
+                ("company events and macro dates (FRED)",
+                 "Earnings and company events from the news, macro release dates from FRED."),
+                (f"analyst {pipe.news.analyst_model}",
+                 "The smaller Mistral model that scores the articles."),
+                ("measured, not adopted", "No gain over prices alone: the live agents use prices.")
+                if cov
+                else ("built, not measured", "Integrated, not yet measured against prices alone."),
+            ),
         },
         {
             "label": "Orders",
-            "items": ["Alpaca paper accounts", "marketable limit orders", "idempotent order ids"],
+            "items": items(
+                ("Alpaca paper accounts", "One per agent, $100,000 each, fictitious money."),
+                ("marketable limit orders",
+                 f"Limit {ex.limit_price_tolerance:.1%} beyond the last price: fills like a "
+                 "market order, never far from it."),
+                ("idempotent order ids",
+                 "One id per decision and asset: a repeated run cannot send an order twice."),
+            ),
         },
-    ]
+    ]  # fmt: skip
 
 
 def _behaviour(evals: dict[str, Any] | None) -> dict[str, Any] | None:
