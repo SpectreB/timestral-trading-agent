@@ -385,28 +385,23 @@ def _rules() -> list[dict[str, str]]:
     return [
         {
             "title": "Unusable answers are rejected",
-            "text": "Invalid JSON, an unknown or missing asset, weights that do not add up: the "
-            "agent keeps its positions.",
+            "text": "Invalid JSON or weights: the positions are kept.",
         },
         {
-            "title": "Violations are corrected and logged",
-            "text": f"Long only, no leverage, cash at least {r.min_cash:.0%}, at most "
+            "title": "Violations are corrected",
+            "text": f"Long only, no leverage, cash {r.min_cash:.0%} or more, "
             f"{r.max_weight_etf:.0%} per ETF, {r.max_weight_stock:.0%} per stock, "
-            f"{r.max_weight_group:.0%} per sector. Too many corrections and the answer is "
-            "rejected.",
+            f"{r.max_weight_group:.0%} per sector.",
         },
-        {"title": "Losses trigger a circuit breaker", "text": f"Drawdown from peak: {levels}."},
+        {"title": "Losses trigger a circuit breaker", "text": f"From the peak: {levels}."},
         {
             "title": "Orders are bounded",
-            "text": f"No trade under {cfg.execution.no_trade_band:.0%} of the portfolio, turnover "
-            f"capped at {cfg.execution.max_turnover_per_run:.0%} per run, limit orders within "
-            f"{cfg.execution.limit_price_tolerance:.1%} of the last price, one order id per "
-            "decision, paper accounts only, a kill switch per agent.",
+            "text": f"{cfg.execution.no_trade_band:.0%} no-trade band, "
+            f"{cfg.execution.max_turnover_per_run:.0%} turnover cap, limit orders, kill switch.",
         },
         {
             "title": "An independent final check",
-            "text": "A deliberately simple second implementation re-verifies the core limits "
-            "before any order leaves.",
+            "text": "A second, deliberately simple check runs before any order.",
         },
     ]
 
@@ -527,52 +522,43 @@ WHATS_NEXT: tuple[dict[str, str], ...] = (
         "status": "running",
         "id": "D-018",
         "title": "Two agents on their own paper accounts",
-        "text": "Both trade twice a day; the account value is sampled every hour of the US session "
-        "since 2026-11-24. The live period is the clean test: the LLM cannot know what follows.",
+        "text": "Live trading is the clean test: the LLM cannot know what follows.",
     },
     {
         "status": "running",
         "id": "D-002",
         "title": "GitHub Actions cron for scheduling",
-        "text": "Scheduled runs started late on 2026-11-24. Start times are watched; an external "
-        "trigger is added if the delays persist.",
+        "text": "Runs start late: an external trigger if the delays persist.",
     },
     {
         "status": "next",
         "id": "D-019",
         "title": "News analysed into covariates for Timestral",
-        "text": "News sentiment brought no gain. Next: fix the news matching for GOOGL, then "
-        "measure "
-        "what bears on risk: known-in-advance calendars (earnings, central banks) and market "
-        "variables such as volatility, with the adoption rule written before the results.",
+        "text": "Sentiment brought no gain; next, calendars and volatility, rule set first.",
     },
     {
         "status": "next",
         "id": "D-016",
         "title": "How to check that the LLM behaves soundly",
-        "text": "Repeat the seven behaviour scenarios as often for both agents, so their pass "
-        "rates "
-        "rest on the same number of runs.",
+        "text": "As many repeats for both agents.",
     },
     {
         "status": "later",
         "id": "D-020",
         "title": "A risk budget on the forecast portfolio volatility (draft)",
-        "text": "Cap the portfolio risk Timestral forecasts, on top of the per-asset limits. Set "
-        "aside until the live record shows whether it is needed.",
+        "text": "Only if the live record shows the need.",
     },
     {
         "status": "later",
         "id": "D-012",
         "title": "Dashboard: React with a build step",
-        "text": "Move the page to React with Vite and TypeScript; the data file stays the same.",
+        "text": "Vite and TypeScript; same data file.",
     },
     {
         "status": "later",
         "id": "D-021",
         "title": "Agent orchestration: our own loop",
-        "text": "Consider LangGraph if the agents grow into several cooperating ones, for example "
-        "the news analyst and the decision-maker exchanging messages.",
+        "text": "LangGraph if several agents start to cooperate.",
     },
 )
 
