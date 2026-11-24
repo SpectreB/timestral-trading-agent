@@ -11,11 +11,17 @@ The `Simulate` workflow picks it up and calls this module, which:
    agent are untouched, with the requester's GitHub login;
 4. writes the reply posted in the issue: the decision, the main moves and the LLM's reading.
 
-Everything that comes from outside is untrusted: the issue text is never used, and the LLM's
-text posted back is neutralised (no @-mention, no HTML) and length-limited.
+The evaluator may choose three options (D-017, amended): the agent, a risk stance and the
+starting portfolio. They travel as `key: value` lines in the issue and are read by `parse_options`
+only: a closed list of values, so nothing else of the issue is ever used, and the text never
+reaches a shell command.
+
+Everything that comes from outside is untrusted: the issue text is reduced to those three words,
+and the LLM's text posted back is neutralised (no @-mention, no HTML) and length-limited.
 
 Usage (in the workflow):
-    python -m agent.simulate --audit-dir audit --requested-by LOGIN --comment-out comment.md
+    OPTIONS="$ISSUE_BODY" python -m agent.simulate --audit-dir audit --requested-by LOGIN \
+        --comment-out comment.md
 """
 
 from __future__ import annotations
@@ -24,7 +30,9 @@ import argparse
 import html
 import json
 import math
-from collections.abc import Mapping
+import re
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -33,8 +41,9 @@ from agent.audit import FileAuditStore
 from agent.config import AgentConfig
 from agent.data import NEW_YORK, MarketData
 from agent.decide import LLMClient
-from agent.execute import Broker
+from agent.execute import Broker, Position
 from agent.forecast import QuantileModel
+from agent.news import NewsCovariates
 from agent.run import CycleResult, run_cycle
 
 TITLE = "Simulation request"  # the workflow only reacts to issues whose title starts so
@@ -48,8 +57,112 @@ SIMULATIONS = "simulations"
 AUDIT_BRANCH = "audit-log"
 
 
-def label_for(now: datetime) -> str:
-    return f"sim-{now.astimezone(NEW_YORK):%H%M%S}"
+# What an evaluator may choose. Closed lists: anything else is ignored.
+OPTIONS: dict[str, tuple[str, ...]] = {
+    "agent": ("pipeline", "tools", "news"),  # the reference, the final agent, the final + news
+    "stance": ("balanced", "cautious", "bold"),  # how much risk the guardrails allow
+    "start": ("current", "cash", "equal"),  # the portfolio the agent starts from
+}
+DEFAULT_OPTIONS = {key: values[0] for key, values in OPTIONS.items()}
+EQUAL_WEIGHT = 0.06  # 15 assets x 6% = 90% invested, 10% cash
+_LINE = re.compile(r"^\s*(agent|stance|start)\s*[:=]\s*([a-z]+)\s*$", re.IGNORECASE)
+MAX_TEXT = 4000
+
+
+def parse_options(text: str) -> tuple[dict[str, str], list[str]]:
+    """The three options out of an issue text, and the options whose value was refused.
+
+    Only lines `agent|stance|start: <word>` count, the word must be in the closed list, the
+    first occurrence wins, and nothing of the text is echoed back (it is untrusted)."""
+    chosen, refused, seen = dict(DEFAULT_OPTIONS), [], set()
+    for line in text[:MAX_TEXT].splitlines():
+        found = _LINE.match(line)
+        if not found:
+            continue
+        key, value = found.group(1).lower(), found.group(2).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if value in OPTIONS[key]:
+            chosen[key] = value
+        else:
+            refused.append(key)
+    return chosen, refused
+
+
+def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
+    """A stance moves the guardrail limits, never past what is safe: no leverage in any case
+    (invested at most 90%), long only, and the independent final check still applies."""
+    r = cfg.risk
+    if stance == "cautious":
+        risk = replace(
+            r,
+            min_cash=0.30,
+            max_invested=0.70,
+            max_weight_etf=0.15,
+            max_weight_stock=0.05,
+            max_weight_group=0.20,
+            max_increase_vs_baseline=min(r.max_increase_vs_baseline, 0.05),
+        )
+    elif stance == "bold":
+        risk = replace(
+            r,
+            max_weight_etf=0.30,
+            max_weight_stock=0.15,
+            max_weight_group=0.40,
+            max_increase_vs_baseline=max(r.max_increase_vs_baseline, 0.30),
+        )
+    else:
+        return cfg
+    return replace(cfg, risk=risk)
+
+
+@dataclass
+class StartingPoint:
+    """The broker as the simulation sees it: the real prices, market and account, but the
+    holdings the evaluator chose, and no way to send an order."""
+
+    inner: Broker
+    start: str
+    symbols: Sequence[str]
+
+    def account(self) -> Any:
+        return self.inner.account()
+
+    def latest_prices(self, symbols: Sequence[str]) -> dict[str, float]:
+        return self.inner.latest_prices(symbols)
+
+    def is_market_open(self) -> bool:
+        return self.inner.is_market_open()
+
+    def positions(self) -> dict[str, Position]:
+        if self.start == "current":
+            return self.inner.positions()
+        if self.start == "cash":
+            return {}
+        equity = self.inner.account().equity
+        prices = self.inner.latest_prices(self.symbols)
+        value = equity * EQUAL_WEIGHT
+        return {s: Position(quantity=value / prices[s], market_value=value) for s in self.symbols}
+
+    def submit_limit_order(
+        self, symbol: str, side: Any, quantity: float, limit_price: float, client_order_id: str
+    ) -> str:
+        raise RuntimeError("a simulation never sends an order")
+
+
+_START_TEXT = {
+    "current": "the agent's current portfolio",
+    "cash": "an all-cash portfolio",
+    "equal": "an equal-weight portfolio (6% in each asset)",
+}
+
+
+def label_for(now: datetime, options: Mapping[str, str] | None = None) -> str:
+    """The run's id suffix; an option that differs from the default is part of it."""
+    chosen = {**DEFAULT_OPTIONS, **(options or {})}
+    extra = "".join(f"-{chosen[k]}" for k in OPTIONS if chosen[k] != DEFAULT_OPTIONS[k])
+    return f"sim-{now.astimezone(NEW_YORK):%H%M%S}{extra}"
 
 
 def throttle(store: FileAuditStore, now: datetime) -> str | None:
@@ -83,8 +196,20 @@ def _analysis(record: Mapping[str, Any]) -> str:
     return text if isinstance(text, str) else ""
 
 
-def comment(record: Mapping[str, Any], requester: str) -> str:
+def comment(
+    record: Mapping[str, Any],
+    requester: str,
+    options: Mapping[str, str] | None = None,
+    refused: Sequence[str] = (),
+) -> str:
     """The reply posted in the issue once the simulation is recorded."""
+    chosen = {**DEFAULT_OPTIONS, **(options or {})}
+    chosen_line = (
+        f"Options: agent **{chosen['agent']}**, stance **{chosen['stance']}**, start from "
+        f"**{chosen['start']}**."
+    )
+    if refused:  # only the names of our own options: the refused text is never echoed
+        chosen_line += f" Unknown value for {', '.join(refused)}: the default was used."
     p = record["portfolios"]
     cur, fin = p["current"], p["final"]
     proposed = p["proposed"] or {}
@@ -121,9 +246,9 @@ def comment(record: Mapping[str, Any], requester: str) -> str:
     link = f"{REPO}/blob/{AUDIT_BRANCH}/{SIMULATIONS}/runs/{rid}.json"
     return f"""### Simulation finished: {record["decision"]["outcome"].replace("_", " ")}
 
-Requested by @{requester}. A full cycle ran on the agent's current portfolio: live market data,
-Timestral forecasts, the LLM's decision and the guardrails.
-**No order was sent**: simulations never trade.
+Requested by @{requester}. {chosen_line}
+A full cycle ran on {_START_TEXT[chosen["start"]]}: live market data, Timestral forecasts, the
+LLM's decision and the guardrails. **No order was sent**: simulations never trade.
 
 **What the agent would do**
 
@@ -157,8 +282,17 @@ def simulate(
     root: Path,
     requester: str,
     env: Mapping[str, str],
+    options: Mapping[str, str] | None = None,
+    refused: Sequence[str] = (),
+    news: Callable[[Any], NewsCovariates] | None = None,
+    history_dir: Path | None = None,
 ) -> tuple[str, CycleResult | None]:
-    """Run one throttled simulation and return the reply to post (and the cycle result)."""
+    """Run one throttled simulation and return the reply to post (and the cycle result).
+
+    `cfg` is the chosen agent's configuration; the stance and the starting portfolio come from
+    `options`. `history_dir` holds the records that give the agent's peak equity."""
+    chosen = {**DEFAULT_OPTIONS, **(options or {})}
+    cfg = apply_stance(cfg, chosen["stance"])
     store = FileAuditStore(root / SIMULATIONS)
     reason = throttle(store, now)
     if reason:
@@ -168,17 +302,18 @@ def simulate(
         now=now,
         cfg=cfg,
         market=market,
-        broker=broker,
+        broker=StartingPoint(broker, chosen["start"], cfg.symbols),
         model=model,
         llm=llm,
         store=store,
         live=False,  # a simulation never trades...
         env={**env, "TRADING_ENABLED": "false"},  # ...even if live were requested by mistake
-        label=label_for(now),
+        label=label_for(now, chosen),
         requested_by=requester,
-        history=FileAuditStore(root),
+        history=FileAuditStore(history_dir or root),
+        news=news,
     )
-    return comment(store.read_run(result.run_id), requester), result
+    return comment(store.read_run(result.run_id), requester, chosen, refused), result
 
 
 def main() -> None:  # pragma: no cover - CLI wiring, runs in the Simulate workflow
@@ -196,11 +331,16 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the Simulate workf
     parser.add_argument("--audit-dir", default="audit", type=Path)
     parser.add_argument("--requested-by", required=True)
     parser.add_argument("--comment-out", default="comment.md", type=Path)
+    parser.add_argument("--options-env", default="OPTIONS", help="env variable with the issue text")
     args = parser.parse_args()
 
     load_dotenv()
-    cfg = AgentConfig()
-    key, secret = os.environ["ALPACA_API_KEY"], os.environ["ALPACA_SECRET_KEY"]
+    from agent.run import alpaca_keys, config_for, news_provider
+
+    options, refused = parse_options(os.environ.get(args.options_env, ""))
+    agent = options["agent"]
+    cfg = apply_stance(config_for(agent), options["stance"])
+    key, secret = alpaca_keys(agent, os.environ)  # each agent's own paper account
     reply, _ = simulate(
         now=datetime.now(UTC),
         cfg=cfg,
@@ -211,6 +351,10 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the Simulate workf
         root=args.audit_dir,
         requester=args.requested_by,
         env=os.environ,
+        options=options,
+        refused=refused,
+        news=news_provider(cfg, args.audit_dir, os.environ),
+        history_dir=args.audit_dir if agent == "pipeline" else args.audit_dir / "agents" / "tools",
     )
     args.comment_out.write_text(reply, encoding="utf-8")
     print(reply)

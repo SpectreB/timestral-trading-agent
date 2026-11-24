@@ -165,10 +165,11 @@ def test_the_page_is_self_contained(tmp_path: Path) -> None:
     assert all(url.startswith("https://github.com/SpectreB/") for url in external)
 
 
-def test_light_and_dark_themes_and_phone_layout_are_defined(tmp_path: Path) -> None:
+def test_the_page_is_light_by_default_dark_is_opt_in_and_it_fits_a_phone(tmp_path: Path) -> None:
     _, _, _, store = cycle(tmp_path)
     html = page(store)
-    assert "prefers-color-scheme:dark" in html and 'data-theme="dark"' in html
+    # A dark system theme must not darken the page: readers found it hard to read.
+    assert "prefers-color-scheme" not in html and 'data-theme="dark"' in html
     assert "viewport" in html and "max-width:560px" in html
 
 
@@ -298,8 +299,8 @@ def _report(tmp_path: Path, closes_after: tuple[float, ...] = (101.0, 102.0, 101
 def test_the_page_is_organised_around_the_readers_questions(tmp_path: Path) -> None:
     _, _, _, store = cycle(tmp_path)
     html = page(store)
-    order = [html.index(h) for h in ("dry run", "At the last run", "Performance",
-                                     "What it holds", "Can we trust it?", "Export")]  # fmt: skip
+    order = [html.index(h) for h in ("At the last run", "Performance", "Trades", "What it holds",
+                                     "Can we trust it?", "Export")]  # fmt: skip
     assert order == sorted(order)
     assert html.count('class="ev"') == 7  # evidence stays folded away until asked for
 
@@ -307,9 +308,25 @@ def test_the_page_is_organised_around_the_readers_questions(tmp_path: Path) -> N
 def test_the_status_banner_shows_when_it_ran_and_what_runs_next(tmp_path: Path) -> None:
     _, _, _, store = cycle(tmp_path)
     html = page(store)
-    assert "Last run <b>Mon 23 Nov, 10:00 ET</b> (morning)" in html
-    assert "Next run about <b>Mon 23 Nov, 15:00 ET</b>" in html
-    assert "prompt decide_v1" in html and "No alert at the last run" in html
+    # Last and next run are stacked in one small block, not two separate boxes.
+    assert "<span>Last run</span><b>Mon 23 Nov, 10:00 ET</b>" in html
+    # Counted from the page's own time (Mon 17:00 ET), not from the last run: Tue 10:00 ET.
+    assert "<span>Next run</span><b>Tue 24 Nov, 10:00 ET</b>" in html
+    assert "prompt decide_v1" in html
+    # A page with nothing wrong says nothing about alerts: silence is the good news.
+    assert "No alert at the last run" not in html and 'class="alerts"' not in html
+
+
+def test_the_next_slot_is_counted_from_now_not_from_the_last_run() -> None:
+    from agent.dashboard import _next_slot, _when
+
+    def slot(moment: str) -> str:
+        return _when(_next_slot(datetime.fromisoformat(moment)))
+
+    assert slot("2026-11-23T08:00:00-05:00") == "Mon 23 Nov, 10:00 ET"
+    assert slot("2026-11-23T10:00:00-05:00") == "Mon 23 Nov, 15:00 ET"  # a slot is not its own next
+    assert slot("2026-11-23T22:00:00+00:00") == "Tue 24 Nov, 10:00 ET"  # 17:00 ET: tomorrow
+    assert slot("2026-11-20T16:00:00-05:00") == "Mon 23 Nov, 10:00 ET"  # Friday evening: Monday
 
 
 def test_the_next_run_skips_the_weekend() -> None:
@@ -350,6 +367,20 @@ def test_the_last_run_lists_its_biggest_moves_with_the_reason(tmp_path: Path) ->
     assert "Orders: 15 dry_run" in html
 
 
+def test_the_allocation_shows_dollar_amounts_types_and_changes(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    html = page(store)
+    # Target value = weight x account value ($100,000 in the test account), next to the weight.
+    assert "<b>$6,000</b> 6.0%" in html
+    assert "SPY: $6,000 target (6.0%)" in html
+    assert '<th class="num">Target value</th>' in html and "<td class='num'>$6,000</td>" in html
+    # Stocks and ETFs have their own colour, with a legend; every position was bought here.
+    assert 'class="bar stock"' in html and 'class="bar"' in html
+    assert '<i class="sw stock"></i>Stock' in html
+    rows = html.split("What it holds")[1].split('<div class="legend">')[0]
+    assert "▲ 6.0" in rows and "▼" not in rows
+
+
 def test_a_long_analysis_is_excerpted_with_the_full_text_one_click_away(tmp_path: Path) -> None:
     answer = proposal()
     answer["analysis"] = "Risk-off regime. " * 40
@@ -369,7 +400,7 @@ def test_the_unchanged_portfolio_is_stated_plainly(tmp_path: Path) -> None:
 def test_performance_waits_for_the_first_closed_session(tmp_path: Path) -> None:
     _, _, _, store = cycle(tmp_path)
     html = page(store)
-    assert "No trading session has closed since the first run" in html
+    assert "No session has closed since the first run" in html
     assert "What does each layer add?" not in html
     assert "0.0% from peak" in html or "0.0% invested" in html or "drawdown" in html
 
@@ -489,8 +520,64 @@ def test_a_fully_filled_run_raises_no_execution_alert(tmp_path: Path) -> None:
     store, broker = live_run(tmp_path)
     reconcile_runs(store, Lookup(states_for(broker)), LATER)
     html = page(store)
-    assert "No alert at the last run" in html and "unfilled" not in html
+    assert "unfilled" not in html and 'class="alerts"' not in html
     assert "15/15 filled, average slippage +10.0 bps" in html
+
+
+def test_the_simulation_card_lets_the_reader_choose_agent_stance_and_start(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path)
+    html = page(store)
+    card = html.split("<h2>Run it yourself</h2>")[1].split("</div></div>")[0]
+    for key in ("agent", "stance", "start"):
+        assert f'<select data-opt="{key}">' in card
+    labels = ("Tool agent (final)", "Pipeline agent (reference)", "Tool agent + news covariates")
+    labels += ("Cautious: 30% cash, small positions", "All cash", "Equal weight, 6% each")
+    for label in labels:
+        assert label in card
+    # Without JavaScript the button still works, with the first choice of each list.
+    assert "body=agent%3A+tools%0Astance%3A+balanced%0Astart%3A+current" in card
+    # With it, the same link is rebuilt from the selects (title and text stay fixed).
+    assert 'id="sim-go"' in card and 'data-base="https://github.com/' in card
+    assert "sel.map(s=>s.dataset.opt+': '+s.value)" in html
+
+
+def test_the_trades_are_shown_up_front_as_the_paper_trading_activity(tmp_path: Path) -> None:
+    store, broker = live_run(tmp_path)
+    reconcile_runs(store, Lookup(states_for(broker)), LATER)
+    html = page(store)
+    card = html.split('<div class="card sec-agent"><h2>Trades</h2>')[1].split("</table></div>")[0]
+    assert "15 orders" in card and "15 filled" in card and "bought" in card and "sold" in card
+    assert card.count('class="side buy"') == 12 and "▲ Buy" in card  # the latest twelve
+    assert "The 3 earlier orders" in html
+    assert "<th>When</th>" in card and "UTC" in card
+    # Before any order has reached the broker, the card says so instead of showing an empty table.
+    _, _, _, dry = cycle(tmp_path / "dry")
+    assert "No order has been sent to the broker yet." in page(dry)  # a dry run sent nothing
+
+
+def test_orders_sent_but_not_reconciled_yet_are_shown_as_sent(tmp_path: Path) -> None:
+    store, _ = live_run(tmp_path)  # live orders, no reconciliation file yet
+    html = page(store)
+    card = html.split('<div class="card sec-agent"><h2>Trades</h2>')[1].split("</table></div>")[0]
+    # One note for the whole table instead of a badge on every row.
+    assert "15 orders" in card and "awaiting the broker&#x27;s final state" in card
+    assert "0 filled" not in card and "not reconciled yet" not in card
+    assert "No order has been sent" not in html
+
+
+def test_more_than_twelve_trades_fold_the_earlier_ones(tmp_path: Path) -> None:
+    from agent.dashboard import _trades
+
+    order = {"symbol": "SPY", "side": "sell", "quantity": 2.0, "status": "cancelled",
+             "filled_qty": 0.0, "avg_fill_price": None, "filled_at": None,
+             "submitted_at": "2026-11-23T15:42:09+00:00"}  # fmt: skip
+    fills = [{"run_id": "r1", "orders": [order] * 13}]
+    html = _trades(fills, [])
+    assert "The 1 earlier orders" in html and html.count("▼ Sell") == 13
+    assert "cancelled" in html and "filled" not in html  # nothing filled: no filled/bought chips
+    assert "earlier orders" not in _trades(
+        [{"run_id": "r1", "orders": [order]}], []
+    )  # few: no fold
 
 
 def test_a_long_series_labels_the_time_axis_sparingly(tmp_path: Path) -> None:
@@ -575,10 +662,14 @@ def test_both_agents_are_compared_and_the_tool_agent_comes_first(tmp_path: Path)
     audit, site = tmp_path / "audit", tmp_path / "site"
     cycle(audit)
     _tool_cycle(audit)
-    replay_dir = tmp_path / "docs_replay"
-    replay_dir.mkdir()
-    (replay_dir / "report.json").write_text(json.dumps(_replay_report(tmp_path)))
-    html = build(audit, site, STAMP, replay_dir=replay_dir).read_text(encoding="utf-8")
+    replay_dir, tool_replay_dir = tmp_path / "docs_replay", tmp_path / "docs_replay_tools"
+    base = _replay_report(tmp_path)  # one report, shown for both agents with their own result
+    for folder, ret in ((replay_dir, -0.0123), (tool_replay_dir, 0.0456)):
+        folder.mkdir()
+        (folder / "report.json").write_text(json.dumps({**base, "account_return": ret}))
+    html = build(
+        audit, site, STAMP, replay_dir=replay_dir, tool_replay_dir=tool_replay_dir
+    ).read_text(encoding="utf-8")
     assert "Two ways of using Timestral" in html
     assert html.index('id="tab-tools"') < html.index('id="tab-pipeline"')
     assert 'id="panel-tools" data-panel="tools" aria-labelledby="tab-tools">' in html
@@ -593,11 +684,226 @@ def test_both_agents_are_compared_and_the_tool_agent_comes_first(tmp_path: Path)
     assert "probability of a loss" in html and "the rule-based weights" in html
     assert "1 asset(s) at 5 day(s)" in html
     assert "/blob/audit-log/agents/tools/runs/2026-11-23_morning.json" in html
-    assert "none (fixed pipeline)" in html and "5.0" in html
-    # The replay card.
-    assert "Tested on the past: the pipeline agent" in html
-    assert "Simulated account: -1.23%" in html
+    # The head-to-head card compares the two on concrete measures, each column in its colour.
+    assert "How do they compare?" in html and 'class="num c-tools"' in html
+    assert 'class="num c-pipeline"' in html
+    assert "Timestral calls per decision" in html and "1 fixed run" in html
+    # The replay is a dropdown under Performance, one per agent.
+    assert html.count("<b>Tested on the past</b>") == 2
+    assert "Simulated account: -1.23%" in html and "Simulated account: +4.56%" in html
     assert "/blob/main/docs/replay/README.md" in html
+    assert "/blob/main/docs/replay_tools/README.md" in html
+    # The two agents as two flows, instead of a list of sentences.
+    assert 'class="dg"' in html and "asks, up to 12 calls" in html and "baseline: 1 / width" in html
+    assert "How they differ" not in html
+
+
+def _evals_dir(tmp_path: Path) -> Path:
+    folder = tmp_path / "evals"
+    (folder / "tools_v2").mkdir(parents=True)
+
+    def results(passes: list[bool], key: str = "calm") -> dict[str, Any]:
+        scenario = {"key": key, "title": "Nothing happens", "expectation": "Stays close.",
+                    "passed": all(passes), "runs": [{"repeat": i, "passed": x}
+                                                    for i, x in enumerate(passes)]}  # fmt: skip
+        return {"scenarios": [scenario], "stability": {"calls": 5, "max_pairwise_turnover": 0.06}}
+
+    (folder / "results.json").write_text(json.dumps(results([False, False])))
+    (folder / "tools_v2" / "results.json").write_text(json.dumps(results([True, False, True])))
+    (folder / "tools_v2" / "focus_10_runs_v2.json").write_text(
+        json.dumps({"calm": [True] * 7 + [False] * 3, "details": {}})
+    )
+    return folder
+
+
+def test_the_page_says_why_the_agents_should_not_do_anything_silly(tmp_path: Path) -> None:
+    audit, site = tmp_path / "audit", tmp_path / "site"
+    cycle(audit)
+    html = build(audit, site, STAMP, evals_dir=_evals_dir(tmp_path)).read_text(encoding="utf-8")
+    assert "Why it should not do anything silly" in html
+    # The rules, with the limits read from the configuration.
+    for fragment in ("Unusable answers are rejected", "at most 25% per ETF, 10% per stock",
+                     "cash at least 10%", "3% alert, 5% no new risk", "turnover capped at 30%",
+                     "An independent final check"):  # fmt: skip
+        assert fragment in html
+    # The behaviour tests: the tool agent's longer series replaces its short one, failures show.
+    assert "How the LLM behaves when tested" in html
+    assert "0/2" in html and "7/10" in html and "2/3" not in html
+    assert "differ by at most 6 points" in html
+
+
+def test_the_behaviour_table_copes_with_a_missing_agent_or_scenario() -> None:
+    from agent.dashboard import _behaviour
+
+    one = {"scenarios": [{"key": "crash", "title": "Crash", "expectation": "x", "passed": True,
+                          "runs": [{"repeat": 0, "passed": True}]}],
+           "stability": {"calls": 5, "max_pairwise_turnover": 0.02}}  # fmt: skip
+    other = {**one, "scenarios": [{**one["scenarios"][0], "key": "calm"}]}
+    assert _behaviour({"pipeline": None, "tools": None}) == ""
+    only = _behaviour({"pipeline": one, "tools": None})
+    assert "1/1" in only and "not measured" in only and "Tool agent: asked" not in only
+    assert "not measured" in _behaviour({"pipeline": one, "tools": other})
+
+
+def test_the_page_lists_its_inputs_as_keywords_and_colours_its_sections(tmp_path: Path) -> None:
+    audit, site = tmp_path / "audit", tmp_path / "site"
+    cycle(audit)
+    _tool_cycle(audit)
+    html = build(audit, site, STAMP).read_text(encoding="utf-8")
+    for keyword in ("Alpaca daily bars", "10 ETFs, 5 stocks", "Timestral-28M (pipeline agent)",
+                    "Timestral-209M (tool agent)", "mistral-large-4-0",
+                    "sources: Alpaca News, FRED",
+                    "analyst: mistral-small-2603", "news: article volume and sentiment",
+                    "events: earnings, company events, macro dates",
+                    "built; not yet measured or used live"):  # fmt: skip
+        assert keyword in html
+    for key in ("cmp", "safe", "how", "sim", "agent"):  # the agents' own cards share their colour
+        assert f'class="card sec-{key}"' in html
+    # Green is kept for gains: the opening cards and the rules use neutral badges.
+    head = html.split("Two ways of using Timestral")[0]
+    assert "b-good" not in head.split('class="glance"')[1]
+
+
+def _covariate_results() -> dict[str, Any]:
+    def summary(variant: str, cov: float) -> list[dict[str, Any]]:
+        return [
+            {"variant": variant, "kind": k, "n": 10, "coverage_80": cov, "pinball": 0.01,
+             "rms_ratio": 1.0, "hit_rate": 0.5}
+            for k in ("stock", "etf")
+        ]  # fmt: skip
+
+    variants = ("news", "events", "news+events")
+    return {
+        "horizon": 5, "origins": 118, "first_origin": "2026-06-01", "last_origin": "2026-11-16",
+        "stocks": 30, "stocks_with_news": 29, "etfs": 10,
+        "summary": summary("prices", 0.78) + [r for v in variants for r in summary(v, 0.79)],
+        "paired": [
+            {"variant": v, "kind": k, "origins": 118, "mean_diff": -1e-5, "relative": -0.001,
+             "ci95": [-2e-5, 1e-6]}
+            for v in variants for k in ("stock", "etf")
+        ],
+        "verdicts": [{"variant": v, "decision": "no"} for v in variants],
+    }  # fmt: skip
+
+
+def test_the_covariate_trial_is_shown_as_tried_and_not_adopted(tmp_path: Path) -> None:
+    audit, site, cov = tmp_path / "audit", tmp_path / "site", tmp_path / "cov"
+    cycle(audit)
+    _tool_cycle(audit)
+    cov.mkdir()
+    (cov / "results.json").write_text(json.dumps(_covariate_results()), encoding="utf-8")
+    html = build(audit, site, STAMP, covariates_dir=cov).read_text(encoding="utf-8")
+    assert 'class="card sec-cov"' in html
+    for text in ("Tried, not adopted", "29 stocks and 10 ETFs on 118 past days", "Prices only",
+                 "News and events", "no gain", "measured, not adopted", "What it cannot tell",
+                 "Not tested: known-in-advance calendars"):  # fmt: skip
+        assert text.replace("What it cannot tell", "what it cannot tell") in html
+    assert "not yet measured or used live" not in html
+    without = build(audit, tmp_path / "site2", STAMP).read_text(encoding="utf-8")
+    assert "Do news help the forecast?" not in without
+    assert "not yet measured or used live" in without
+
+
+def test_the_two_agents_are_compared_on_measures_beyond_money(tmp_path: Path) -> None:
+    audit, site = tmp_path / "audit", tmp_path / "site"
+    store, broker = live_run(audit)
+    reconcile_runs(store, Lookup(states_for(broker)), LATER)
+    _tool_cycle(audit)
+    base = _replay_report(tmp_path)
+    base["risk_calibration"] = [{"horizon": 5, "n": 59, "inside_80": 0.68, "rms_z": 1.26}]
+    for name in ("past_pipeline", "past_tools"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "report.json").write_text(json.dumps(base))
+    html = build(
+        audit,
+        site,
+        STAMP,
+        replay_dir=tmp_path / "past_pipeline",
+        tool_replay_dir=tmp_path / "past_tools",
+        evals_dir=_evals_dir(tmp_path),
+    ).read_text(encoding="utf-8")
+    table = html.split("<h2>How do they compare?</h2>")[1].split("</table>")[0]
+    cells = {
+        m.group(1): re.findall(r"<td class='num'>([^<]*)</td>", m.group(2))
+        for m in re.finditer(r"<tr><td>([^<]+)</td>(.*?)</tr>", table)
+    }
+    # Columns follow the colour code: the tool agent first, then the pipeline agent.
+    assert table.index("c-tools") < table.index("c-pipeline")
+    assert all(len(v) == 2 for v in cells.values())
+    assert cells["Timestral calls per decision"] == ["5.0", "1 fixed run"]
+    assert cells["Orders filled"] == ["n/a", "15/15"]  # the tool agent has no fills yet
+    assert cells["Average slippage"] == ["n/a", "+10.0 bps"]
+    assert cells["Risk interval hit (5 days, target 80%)"] == ["68%", "68%"]
+    assert cells["Behaviour tests passed (more repeats for the tool agent)"] == [
+        "7/10 (70%)",
+        "0/2 (0%)",
+    ]  # the tool agent: its 10-repeat series
+    for key in ("Return over 63 replayed sessions", "Volatility, annualised",
+                "Largest fall from a peak"):  # fmt: skip
+        assert all(c.endswith("%") for c in cells[key])
+    assert all(
+        c != "n/a" for c in cells["Invested share"] + cells["Points traded per run (median)"]
+    )
+
+
+def test_measures_that_cannot_be_computed_are_left_out_not_invented(tmp_path: Path) -> None:
+    from agent.dashboard import AgentView, _measures
+
+    record = chronological(_tool_cycle(tmp_path).read_runs())[0]
+    record["risk"] = None  # a run recorded without its risk figures
+    fills = [
+        {"run_id": "r", "summary": {"n_orders": 2, "n_filled": 1, "slippage_bps_weighted": None}}
+    ]
+    view = AgentView(
+        "pipeline", "Pipeline agent", "", [record], fills, [], None, replay={"sessions": 0}
+    )
+    out = _measures(view, {"tools": None, "pipeline": None})
+    assert out["risk"] == "n/a" and out["filled"] == "1/2" and "slippage" not in out
+    assert "past_return" not in out and "tests" not in out and out["accepted"] == "1/1"
+    assert _measures(AgentView("tools", "Tool agent", "", [], [], [], None), None) == {}
+
+
+def test_each_agent_opens_with_where_it_started_and_where_it_is(tmp_path: Path) -> None:
+    audit, site = tmp_path / "audit", tmp_path / "site"
+    cycle(audit)
+    _tool_cycle(audit)
+    html = build(audit, site, STAMP).read_text(encoding="utf-8")
+    head = html.split("Two ways of using Timestral")[0]
+    # Two cards before any other content: start, an arrow, now, the change, the status.
+    assert head.count('class="gcard') == 2 and head.count('class="journey"') == 2
+    assert '<span class="from">$100,000</span>' in head and "since " in head
+    assert "Tool agent" in head and "Pipeline agent" in head
+    assert "accepted" in head and "No alert" not in head  # silence is the good news
+    # The allocation says what the portfolio was at the start, and now.
+    assert "Start, " in html and ": 0% invested" in html and "Now: " in html
+    # Each card has its agent's colour class; the colour code is the same everywhere.
+    assert 'class="gcard tools"' in head and 'class="gcard pipeline"' in head
+
+
+def test_a_loss_is_red_and_a_gain_is_green_with_the_sign(tmp_path: Path) -> None:
+    from agent.dashboard import AgentView, _glance
+
+    def view(first: float, last: float) -> AgentView:
+        store = _tool_cycle(tmp_path / f"{first}-{last}")
+        record = chronological(store.read_runs())[0]
+        runs = [json.loads(json.dumps(record)) for _ in range(2)]  # a start and a latest run
+        runs[0]["account"]["equity"], runs[1]["account"]["equity"] = first, last
+        return AgentView("tools", "Tool agent", "", runs, [], [], None)
+
+    down = _glance([view(100_000.0, 96_307.0)])
+    assert 'class="to down"' in down and "-$3,693 (-3.69%)" in down
+    up = _glance([view(100_000.0, 101_000.0)])
+    assert 'class="to up"' in up and "$1,000 (+1.00%)" in up
+    assert "Not started yet" in _glance(
+        [AgentView("pipeline", "Pipeline agent", "", [], [], [], None)]
+    )
+
+
+def test_without_evaluation_results_the_page_keeps_the_rules_only(tmp_path: Path) -> None:
+    audit, site = tmp_path / "audit", tmp_path / "site"
+    cycle(audit)
+    html = build(audit, site, STAMP).read_text(encoding="utf-8")
+    assert "Rules it cannot cross" in html and "How the LLM behaves when tested" not in html
 
 
 def test_a_tool_agent_without_runs_yet_is_announced_and_not_selected(tmp_path: Path) -> None:
@@ -605,7 +911,7 @@ def test_a_tool_agent_without_runs_yet_is_announced_and_not_selected(tmp_path: P
     cycle(audit)
     (audit / "agents" / "tools" / "runs").mkdir(parents=True)
     html = build(audit, tmp_path / "site", STAMP).read_text(encoding="utf-8")
-    assert "not started yet" in html
+    assert "Not started yet" in html
     assert 'id="panel-tools" data-panel="tools" aria-labelledby="tab-tools" hidden>' in html
     assert "This agent has not recorded a run" in html
     assert "Tested on the past" not in html  # no replay report given
@@ -619,6 +925,6 @@ def test_a_page_with_only_the_tool_agent_still_lists_simulations(tmp_path: Path)
     tool = AgentView("tools", "Tool agent", TOOLS_SUMMARY, runs, [], [], None, "agents/tools/")
     html = render([], [], STAMP, tool_agent=tool, replay={"sessions": 0})
     assert "Two ways of using Timestral" in html and "Run it yourself" in html
-    assert "0 accepted · 0 corrected · 1 held" in html
+    assert "0/1" in html  # the one decision was a fallback hold: 0 accepted out of 1
     empty = render([], [], STAMP, tool_agent=AgentView("tools", "Tool agent", "", [], [], [], None))
     assert "No runs yet" in empty
