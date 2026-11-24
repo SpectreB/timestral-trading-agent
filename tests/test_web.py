@@ -216,3 +216,9 @@ def test_each_agent_states_what_sets_it_apart_from_its_configuration(tmp_path: P
     assert dict(tools["traits"])["Timestral"] == "on request, up to 12 tool calls"
     assert dict(pipeline["traits"])["LLM freedom"] == "at most +15 pts over the rule"
     assert _traits("news") == []
+
+
+def test_every_measure_says_what_it_means(tmp_path: Path) -> None:
+    cycle(tmp_path / "audit")
+    rows = _site(tmp_path)["measure_rows"]
+    assert rows and all(r["help"] for r in rows)
