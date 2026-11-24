@@ -1051,6 +1051,31 @@ Applied exactly as fixed above. Data: `docs/covariates/results.json`; shown on t
 
 ---
 
+## D-021 — Agent orchestration: our own loop, no LangChain or LangGraph
+
+- **Date:** 2026-11-24 (records a choice made when the tool agent was built, D-018)
+- **Status:** Accepted by the owner on 2026-11-24. D-020 is held by the risk-budget draft set aside on 2026-11-23.
+
+### Context
+The tool agent (D-018) lets the LLM call Timestral through three tools before deciding. Agent frameworks exist for exactly this (LangChain agents, LangGraph state graphs). The question is whether one earns its place in an agent that makes one bounded decision twice a day and must show that each decision is sound.
+
+### Options
+
+| Option | For | Against |
+|---|---|---|
+| **A. Our own loop on the Mistral SDK (chosen)** | About 30 lines (`decide_with_tools`): every rule is visible and tested (6 rounds and 12 tool calls at most, `tool_choice="auto"` while exploring, then `"none"` with the strict JSON schema for the answer); every call and reply lands in the immutable record as is; one dependency, pinned; a fake client tests it at 100% coverage | Retries, checkpoints and tracing are ours to write; no ready-made multi-agent patterns |
+| B. LangChain agent | Quick start, many integrations, standard tool abstraction | Hides the loop and the prompts behind abstractions; fast-moving API with many transitive packages, for an agent that runs unattended; tracing needs callbacks or LangSmith to reach what our record already holds |
+| C. LangGraph state graph | Explicit graph, checkpoints and resumption, human-in-the-loop, multi-agent flows | Its strengths (branching, resuming long sessions, several agents talking) are not needs here: one decision, three tools, a fixed budget; more concepts than logic |
+
+### Choice and rationale
+**A.** The brief judges how we know the decisions are sound. That is easier to show when every step of the loop is plain code, covered by tests and written to the audit log, than when it sits inside a framework. The LLM only proposes; the guardrails and the independent final check are deterministic code outside the loop, and the boundary is visible in one file.
+
+### Impact
+- No framework dependency; the Mistral SDK is the only LLM dependency.
+- Revisit if the project grows into several cooperating agents (for example the news analyst and the decision-maker exchanging messages), long-running sessions, or a human approval step: LangGraph (C) would then be a serious option.
+
+---
+
 ## Open decisions
 
 - Fallback when the LLM proposal is rejected: keep positions (provisional) vs apply baseline vs do nothing (D-010)
