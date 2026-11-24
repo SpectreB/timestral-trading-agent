@@ -144,7 +144,7 @@ def test_simulations_offer_the_closed_choices_and_list_past_runs(tmp_path: Path)
     cycle(tmp_path / "audit")
     cycle(tmp_path / "audit" / "simulations")
     sims = _site(tmp_path)["simulations"]
-    assert [c["key"] for c in sims["choices"]] == ["agent", "stance", "start"]
+    assert [c["key"] for c in sims["choices"]] == ["agent", "stance", "start", "universe"]
     assert sims["recent"][0]["requested_by"] == "unknown"
     assert "/simulations/runs/" in sims["recent"][0]["record"]
 

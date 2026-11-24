@@ -38,7 +38,8 @@ from pathlib import Path
 from typing import Any
 
 from agent.audit import FileAuditStore
-from agent.config import AgentConfig
+from agent.config import AgentConfig, Asset, AssetType
+from agent.covariate_eval import PANEL_STOCKS
 from agent.data import NEW_YORK, MarketData
 from agent.decide import LLMClient
 from agent.execute import Broker, Position
@@ -62,10 +63,18 @@ OPTIONS: dict[str, tuple[str, ...]] = {
     "agent": ("pipeline", "tools", "news"),  # the reference, the final agent, the final + news
     "stance": ("balanced", "cautious", "bold"),  # how much risk the guardrails allow
     "start": ("current", "cash", "equal"),  # the portfolio the agent starts from
+    "universe": ("standard", "wide"),  # the 15 assets traded live, or 25 more large stocks
 }
 DEFAULT_OPTIONS = {key: values[0] for key, values in OPTIONS.items()}
-EQUAL_WEIGHT = 0.06  # 15 assets x 6% = 90% invested, 10% cash
-_LINE = re.compile(r"^\s*(agent|stance|start)\s*[:=]\s*([a-z]+)\s*$", re.IGNORECASE)
+EQUAL_INVESTED = 0.90  # the equal-weight start: 90% invested, spread evenly, 10% cash
+_LINE = re.compile(r"^\s*(agent|stance|start|universe)\s*[:=]\s*([a-z]+)\s*$", re.IGNORECASE)
+
+# The wide universe: the large US stocks of the covariate measurement panel (D-019), each in the
+# sector group the guardrails already use, so the 30%-per-group cap applies across both lists.
+_GROUP = {
+    "tech": "tech_growth", "comm": "tech_growth", "fin": "financials", "energy": "energy",
+    "health": "health", "consumer": "consumer", "staples": "staples", "industrial": "industrials",
+}  # fmt: skip
 MAX_TEXT = 4000
 
 
@@ -88,6 +97,20 @@ def parse_options(text: str) -> tuple[dict[str, str], list[str]]:
         else:
             refused.append(key)
     return chosen, refused
+
+
+def apply_universe(cfg: AgentConfig, universe: str) -> AgentConfig:
+    """`wide` adds the panel's large stocks to the 15 assets traded live: about 40 assets, the
+    same guardrails. Simulations only: the live agents keep their universe."""
+    if universe != "wide":
+        return cfg
+    held = set(cfg.symbols)
+    extra = tuple(
+        Asset(symbol, name, AssetType.STOCK, _GROUP[group])
+        for symbol, name, group in PANEL_STOCKS
+        if symbol not in held
+    )
+    return replace(cfg, universe=(*cfg.universe, *extra))
 
 
 def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
@@ -142,7 +165,7 @@ class StartingPoint:
             return {}
         equity = self.inner.account().equity
         prices = self.inner.latest_prices(self.symbols)
-        value = equity * EQUAL_WEIGHT
+        value = equity * EQUAL_INVESTED / len(self.symbols)
         return {s: Position(quantity=value / prices[s], market_value=value) for s in self.symbols}
 
     def submit_limit_order(
@@ -154,7 +177,7 @@ class StartingPoint:
 _START_TEXT = {
     "current": "the agent's current portfolio",
     "cash": "an all-cash portfolio",
-    "equal": "an equal-weight portfolio (6% in each asset)",
+    "equal": "an equal-weight portfolio (90% invested, spread evenly)",
 }
 
 
@@ -206,7 +229,7 @@ def comment(
     chosen = {**DEFAULT_OPTIONS, **(options or {})}
     chosen_line = (
         f"Options: agent **{chosen['agent']}**, stance **{chosen['stance']}**, start from "
-        f"**{chosen['start']}**."
+        f"**{chosen['start']}**, universe **{chosen['universe']}**."
     )
     if refused:  # only the names of our own options: the refused text is never echoed
         chosen_line += f" Unknown value for {', '.join(refused)}: the default was used."
@@ -292,7 +315,7 @@ def simulate(
     `cfg` is the chosen agent's configuration; the stance and the starting portfolio come from
     `options`. `history_dir` holds the records that give the agent's peak equity."""
     chosen = {**DEFAULT_OPTIONS, **(options or {})}
-    cfg = apply_stance(cfg, chosen["stance"])
+    cfg = apply_stance(apply_universe(cfg, chosen["universe"]), chosen["stance"])
     store = FileAuditStore(root / SIMULATIONS)
     reason = throttle(store, now)
     if reason:
