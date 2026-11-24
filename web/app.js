@@ -104,9 +104,9 @@
   const NEWS = "M4 5h12v14H6a2 2 0 0 1-2-2zM16 9h4v8a2 2 0 0 1-4 0M7 9h6M7 13h6";
 
   /* A long paragraph shows its first sentence; the reader opens the rest if they want it. */
-  function Fold({ first, children }) {
+  function Fold({ first, children, small }) {
     const [open, setOpen] = useState(false);
-    return html`<p className="note">${first}${open ? html` ${children}` : " "}<button className="more" aria-expanded=${open}
+    return html`<p className=${small ? "note small" : "note"}>${first}${open ? html` ${children}` : " "}<button className="more" aria-expanded=${open}
       onClick=${() => setOpen(!open)}>${open ? "Less" : "More"}</button></p>`;
   }
 
@@ -485,7 +485,6 @@
             ${loop(3, 2, p + 52, "rejected: one retry with the reason, then hold", "retry")}
           </g>
         </svg>
-        <figcaption className="muted" style=${{ fontSize: 12 }}>Shaded: Timestral. Only the tool agent chooses to call Timestral again; both get one retry when the guardrails reject an answer.</figcaption>
       </figure>`;
   }
 
@@ -504,35 +503,36 @@
       : html`<span className=${c[0] === c[1] ? "" : "warn"}>${c[0]}/${c[1]}</span>`;
     return html`
       <div className="scroll"><table>
-        <thead><tr><th>Situation</th><th>What a sound decision does</th><th className="num c-tools"><${AgentIcon} k="tools" size=${14} />Tool agent</th><th className="num c-pipeline"><${AgentIcon} k="pipeline" size=${14} />Pipeline agent</th></tr></thead>
-        <tbody>${b.scenarios.map((s) => html`<tr key=${s.title}><td><b>${s.title}</b></td><td className="soft">${s.expectation}</td>
+        <thead><tr><th>Situation</th><th className="num c-tools"><${AgentIcon} k="tools" size=${14} />Tool agent</th><th className="num c-pipeline"><${AgentIcon} k="pipeline" size=${14} />Pipeline agent</th></tr></thead>
+        <tbody>${b.scenarios.map((s) => html`<tr key=${s.title}><td title=${s.expectation}>${s.title}</td>
           <td className="num">${cell(s.tools)}</td><td className="num">${cell(s.pipeline)}</td></tr>`)}</tbody></table></div>
-      <p className="muted" style=${{ fontSize: 12 }}>Passes out of repeats. The tool agent was repeated more on the scenarios its prompt was tuned on, so the bases differ.
-        ${Object.entries(b.stability).map(([k, s]) => ` ${k === "tools" ? "Tool" : "Pipeline"} agent: the same question ${s.calls} times, answers differ by at most ${pct(s.max_difference, 0)} of the portfolio.`).join("")}</p>`;
+      <${Fold} small first="Passes out of repeats; hover a situation for what a sound decision does.">
+        The tool agent was repeated more on the scenarios its prompt was tuned on, so the bases differ.
+        ${Object.entries(b.stability).map(([k, s]) => ` ${k === "tools" ? "Tool" : "Pipeline"} agent: the same question ${s.calls} times, answers differ by at most ${pct(s.max_difference, 0)} of the portfolio.`).join("")}</${Fold}>`;
   }
 
   function Covariates({ c }) {
     const label = { prices: "Prices only", news: "News sentiment", events: "Company events", "news+events": "News and events" };
     const row = (v) => {
       const st = c.summary.find((s) => s.variant === v && s.kind === "stock");
-      const et = c.summary.find((s) => s.variant === v && s.kind === "etf");
       const ps = c.paired.find((p) => p.variant === v && p.kind === "stock");
       const pe = c.paired.find((p) => p.variant === v && p.kind === "etf");
-      return html`<tr key=${v}><td>${label[v]}</td><td className="num">${pct(st.coverage_80)}</td><td className="num">${pct(et.coverage_80)}</td>
-        <td className="num">${ps ? `${spct(ps.relative, 2)} (${spct(ps.ci95[0] / st.pinball, 2)} to ${spct(ps.ci95[1] / st.pinball, 2)})` : "reference"}</td>
-        <td className="num">${pe ? spct(pe.relative, 2) : "reference"}</td>
+      return html`<tr key=${v}><td>${label[v]}</td><td className="num">${spct(ps.relative, 2)}</td>
+        <td className="num muted">${spct(ps.ci95[0] / st.pinball, 2)} to ${spct(ps.ci95[1] / st.pinball, 2)}</td>
+        <td className="num">${spct(pe.relative, 2)}</td>
         <td>${v === "prices" ? "" : c.verdicts[v] === "no" ? "no gain" : c.verdicts[v] + " gain"}</td></tr>`;
     };
     return html`
-      <p className="note"><b>Tried, not adopted.</b> ${c.model} forecast ${c.stocks} stocks and ${c.etfs} ETFs on ${c.origins} past days
-        (${c.first} to ${c.last}, ${c.horizon} days ahead), with and without news covariates. The ETFs are the control: no company news.
-        The rule was written before the results: lower error on stocks, calibration kept, control unharmed.</p>
+      <p className="note"><b>No.</b> News did not lower Timestral's error: ${c.origins} days, ${c.stocks} stocks, ${c.etfs} ETFs as control.</p>
       <div className="scroll"><table>
-        <thead><tr><th>Forecast built from</th><th className="num">80% interval hit, stocks</th><th className="num">ETFs</th><th className="num">Error vs prices only, stocks (95% range)</th><th className="num">ETFs (control)</th><th>Verdict</th></tr></thead>
-        <tbody>${["prices", "news", "events", "news+events"].map(row)}</tbody></table></div>
-      <p className="muted" style=${{ fontSize: 12 }}>Negative error figures are worse. The covariates change the forecasts, but the changes cancel out; the slightly better
-        interval hit comes from intervals 2 to 3.5% wider for stocks and ETFs alike, not from the news. Limits: one six-month period, 55 earnings
-        releases, one sentiment score per article. Not tested yet: known-in-advance calendars and market variables such as volatility.</p>`;
+        <thead><tr><th>Forecast built from</th><th className="num">Error vs prices only</th><th className="num">95% range</th><th className="num">ETFs (control)</th><th>Verdict</th></tr></thead>
+        <tbody>${["news", "events", "news+events"].map(row)}</tbody></table></div>
+      <${Fold} small first="Negative is worse.">
+        The rule was set before the results: lower error on stocks, calibration kept, control unharmed. The covariates move the
+        forecasts but the moves cancel out; intervals widen by 2 to 3.5% for stocks and ETFs alike, which explains the slightly
+        better interval hit (stocks ${pct(c.summary.find((x) => x.variant === "prices" && x.kind === "stock").coverage_80)} with prices only).
+        ${c.model}, ${c.first} to ${c.last}, ${c.horizon} days ahead. Limits: one six-month period, 55 earnings releases, one
+        sentiment score per article. Not tested yet: known-in-advance calendars, market variables such as volatility.</${Fold}>`;
   }
 
   function How({ data }) {
@@ -567,10 +567,11 @@
           ${withReplay.map((a) => html`<div key=${a.key} className=${"c-" + a.key}>
             <h3 style=${{ color: "var(--c)" }}><${AgentIcon} k=${a.key} />${a.title} · ${a.replay.first} to ${a.replay.last}</h3>
             <${ReplayChart} replay=${a.replay} />
-            <div className="scroll"><table><thead><tr><th>Question</th><th className="num">Difference since the start</th><th>Can we tell?</th></tr></thead>
-              <tbody>${a.replay.comparisons.map((c) => html`<tr key=${c.label}><td>${c.label}</td><td className="num">${pts(c.difference, 2)}</td>
-                <td className="soft">${c.conclusive ? "yes: the 95% interval excludes zero" : c.measured ? "no: not distinguishable from zero" : "too early"}</td></tr>`)}</tbody></table></div>
-            <p className="muted" style=${{ fontSize: 12 }}><a href=${a.replay.readme}>Full replay report</a></p></div>`)}
+            <${Fold} small first=${a.replay.comparisons.some((c) => c.conclusive)
+                ? "Some differences between the layers are significant: see below."
+                : `No layer made a difference that ${a.replay.sessions} sessions can distinguish from chance.`}>
+              ${a.replay.comparisons.map((c) => `${c.label}: ${pts(c.difference, 2)}${c.conclusive ? " (significant)" : ""}.`).join(" ")}
+              <a href=${a.replay.readme}>Full replay report</a>.</${Fold}></div>`)}
         </section>`}
         ${(live.length > 0 || withReplay.length > 0) && html`<section className="sec"><header><h2><${Timestral} />Is Timestral's risk right?</h2><span className="aside">target: 80% of outcomes inside the 80% interval</span></header>
           <div className="scroll"><table><thead><tr><th>Agent</th><th>Source</th><th className="num">Horizon</th><th className="num">Forecasts</th><th className="num">Inside 80%</th><th className="num">Realised / predicted</th></tr></thead>
@@ -579,7 +580,7 @@
               ...((a.started ? a.calibration : []).map((r) => ({ a, src: "live, per asset", h: r.horizon, n: r.n, inside: r.inside_80, ratio: null }))),
             ]).map((r, i) => html`<tr key=${i}><td className=${"c-" + r.a.key} style=${{ color: "var(--c)" }}>${r.a.title}</td><td>${r.src}</td>
               <td className="num">${r.h}d</td><td className="num">${r.n}</td><td className="num">${pct(r.inside, 0)}</td><td className="num">${r.ratio != null ? r.ratio.toFixed(2) : ""}</td></tr>`)}</tbody></table></div>
-          <p className="muted" style=${{ fontSize: 12 }}>A ratio above 1 means the risk was underestimated. Early live figures rest on few, correlated forecasts.</p>
+          <p className="note small">Ratio above 1: risk underestimated. Live figures are early and correlated.</p>
         </section>`}
         ${data.covariates && html`<section className="sec"><header><h2><${Glyph} d=${NEWS} size=${16} />Do news help the forecast?</h2></header><${Covariates} c=${data.covariates} /></section>`}
         ${data.next && data.next.length > 0 && html`<section className="sec"><header><h2>What's next</h2><span className="aside">kept in step with docs/roadmap.md</span></header>
@@ -608,9 +609,7 @@
     return html`
       <${React.Fragment}>
         <section className="sec"><header><h2>Make an agent decide now</h2></header>
-          <p className="callout"><b>No order is ever sent.</b> The agent runs on today's live data with the options you choose, and
-            its decision, reasoning and planned orders are posted back. About 6 minutes. You need a GitHub account: the button opens a
-            pre-filled issue, which is what starts the run.</p>
+          <p className="callout"><b>No order is ever sent.</b> The button opens a pre-filled GitHub issue; the agent's decision is posted back in about 6 minutes.</p>
           <div className="form">
             ${s.choices.map((c) => html`<label key=${c.key}>${c.label}
               <select value=${opts[c.key]} onChange=${(e) => setOpts({ ...opts, [c.key]: e.target.value })}>
