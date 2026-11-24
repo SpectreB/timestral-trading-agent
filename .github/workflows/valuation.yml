@@ -1,0 +1,75 @@
+# Samples the value of both paper accounts between runs (account value over time on the dashboard).
+#
+# A trading run records the account once, when it starts; between two runs the positions move
+# with the market. This workflow reads each account every hour of the US session (and just after
+# the close, which gives the closing value) and appends one small file per agent to the
+# `audit-log` branch. It only reads from the broker: no order can come from here, so it does not
+# use the CI gate or the kill switches. GitHub may start scheduled jobs late: each sample carries
+# its own timestamp.
+name: Valuation
+
+on:
+  schedule:
+    - cron: "40 14 * * 1-5" # 09:40 ET, just after the open
+    - cron: "10 15-21 * * 1-5" # hourly 10:10 ET to 16:10 ET, the last one after the close
+  workflow_dispatch:
+
+# Never at the same time as another sample; a run of the Trade workflow may push meanwhile, the
+# push below retries after a rebase.
+concurrency:
+  group: valuation
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the samples to the audit-log branch
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/checkout@v7
+        with:
+          ref: audit-log
+          path: audit
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install (no model needed)
+        run: |
+          pip install alpaca-py==0.45.0 pydantic==2.14.4 numpy==2.4.6 pandas==3.1.1 python-dotenv==1.2.4
+          pip install --no-deps -e .
+
+      - name: Sample the pipeline agent's account
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python -m agent.valuation --agent pipeline --audit-dir audit
+
+      - name: Sample the tool agent's account
+        if: always()
+        env:
+          ALPACA_TOOLS_API_KEY: ${{ secrets.ALPACA_TOOLS_API_KEY }}
+          ALPACA_TOOLS_SECRET_KEY: ${{ secrets.ALPACA_TOOLS_SECRET_KEY }}
+        run: |
+          if [ -z "$ALPACA_TOOLS_API_KEY" ]; then echo "Tool agent account not configured: skipped."; exit 0; fi
+          python -m agent.valuation --agent tools --audit-dir audit/agents/tools
+
+      - name: Publish the samples
+        if: always()
+        run: |
+          cd audit
+          git config user.name "trading-agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "No new samples."; exit 0; fi
+          git commit -m "Valuation: ${GITHUB_RUN_ID} ($(date -u +%FT%TZ))"
+          for attempt in 1 2 3 4; do
+            git pull --rebase origin audit-log && git push origin HEAD:audit-log && exit 0
+            echo "Push failed (attempt $attempt), retrying."; sleep $((attempt * 5))
+          done
+          exit 1
