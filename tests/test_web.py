@@ -193,3 +193,11 @@ def test_a_run_without_a_risk_block_has_no_portfolio_volatility() -> None:
         "final": 0.01,
         "rule": 0.02,
     }
+
+
+def test_whats_next_names_each_item_with_its_decision_and_title(tmp_path: Path) -> None:
+    cycle(tmp_path / "audit")
+    items = _site(tmp_path)["next"]
+    assert {i["status"] for i in items} == {"running", "next", "later"}
+    for item in items:
+        assert item["id"].startswith("D-") and item["title"] and item["text"]
