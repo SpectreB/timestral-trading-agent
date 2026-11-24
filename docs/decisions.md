@@ -540,6 +540,13 @@ Volatility targeting with Timestral is kept as a strong candidate: it would stre
 - Positions outside the universe, an unexpected short or leverage in the account stop the run.
 - **An unavailable LLM never crashes a run (added 2026-11-22).** The first replay attempt stopped after six decisions on a read timeout from the Mistral API: in a live run the same event would have lost the slot with no record. Now the Mistral client has an explicit 10-minute timeout and retries transient failures (connection errors, 429, 5xx) with a backoff, and a call that still fails counts as a rejected attempt (`llm_call_failed`): the agent asks once more with the same question, then holds its positions, and the run is recorded like any other rejection, with an alert on the dashboard. The replay uses the opposite policy (it raises, then resumes), because an outage must not be recorded there as a decision to hold.
 
+### Fix (2026-11-24): the no-trade band and its fallback
+In the tool agent's afternoon run of 2026-11-24, the LLM sold 2 points of XLE and of XOM to buy 4 points of TLT. Prices had drifted since the morning, so each sell came to $1,997 against a band of $2,001: both were skipped, the TLT buy alone left 7% cash, the final check refused it (correctly), and the planner fell back to **no band at all**, sending nine orders of about $1 each besides the three intended ones. No risk was taken, but the orders were noise.
+
+- **Tolerance:** a move counts against the band with 0.1 point of slack (`band_tolerance`), so a change decided as 2 points still counts after a few dollars of drift.
+- **Step-by-step fallback:** when the plan within the band is unsafe, the band is relaxed to 1 point, then 0.5, and only then dropped, so the fallback keeps the trades the decision needs and not every few-dollar difference.
+- Both are tested on that run's figures. Not done: keeping, by rule, the sells a kept buy needs to respect the cash floor; the final check already refuses any plan that would breach it.
+
 ---
 
 ## D-011 — Audit log: format, storage and immutability
