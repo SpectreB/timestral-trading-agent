@@ -622,50 +622,27 @@ MEASURE_HELP: dict[str, str] = {
     "Target: 80%.",
 }
 
-# What is running, what comes next and what was deliberately left for later. Written by hand:
-# keep it in step with docs/roadmap.md, every item with its identifier and title.
+# What comes next: three items, each with the decision it extends. Written by hand: keep it
+# in step with docs/roadmap.md.
 WHATS_NEXT: tuple[dict[str, str], ...] = (
     {
-        "status": "running",
-        "id": "D-018",
-        "title": "Two agents on their own paper accounts",
-        "text": "Live trading is the clean test: the LLM cannot know what follows.",
-    },
-    {
-        "status": "running",
-        "id": "D-002",
-        "title": "GitHub Actions cron for scheduling",
-        "text": "Runs start late: an external trigger if the delays persist.",
-    },
-    {
-        "status": "next",
+        "kind": "New covariates",
         "id": "D-019",
         "title": "News analysed into covariates for Timestral",
-        "text": "Sentiment brought no gain; next, calendars and volatility, rule set first.",
+        "text": "Known-in-advance calendars (earnings, central banks) and market volatility, with "
+        "the adoption rule written before the measurement.",
     },
     {
-        "status": "next",
+        "kind": "A wider scope",
+        "id": "D-005",
+        "title": "Asset universe: diversified ETFs + major single stocks (15 assets)",
+        "text": "More single stocks, where company news should matter most.",
+    },
+    {
+        "kind": "Soundness",
         "id": "D-016",
         "title": "How to check that the LLM behaves soundly",
-        "text": "As many repeats for both agents.",
-    },
-    {
-        "status": "later",
-        "id": "D-020",
-        "title": "A risk budget on the forecast portfolio volatility (draft)",
-        "text": "Only if the live record shows the need.",
-    },
-    {
-        "status": "later",
-        "id": "D-012",
-        "title": "Dashboard: React with a build step",
-        "text": "Vite and TypeScript; same data file.",
-    },
-    {
-        "status": "later",
-        "id": "D-021",
-        "title": "Agent orchestration: our own loop",
-        "text": "LangGraph if several agents start to cooperate.",
+        "text": "Whether the confidence the LLM states matches how often its tilts pay off.",
     },
 )
 
