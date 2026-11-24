@@ -335,7 +335,7 @@
           <span><b>Show the decision</b></span><span className="rv-end"><${Outcome} o=${d.outcome} /></span></button>
       </section>`;
     return html`
-      <section className="sec">
+      <section className="sec open">
         <header><h2>Last decision</h2><span className="aside">${d.run_id} · ${when(d.at)}</span></header>
         <p className="facts">
           <span><${Outcome} o=${d.outcome} /></span>
@@ -393,7 +393,7 @@
     const tq = f.tool_quantiles;
     const qcols = tq ? Object.keys(Object.values(tq.assets)[0]) : [];
     return html`
-      <section className="sec tipped">
+      <section className="sec tipped open">
         <header><h2><${Timestral} />Timestral's forecast behind it</h2>
           <button className="more" aria-expanded="true" onClick=${() => setShown(false)}>Hide</button>
           <span className="views" role="group" aria-label="View">
@@ -497,7 +497,7 @@
     const o = tip && rows[tip.i];
     const amount = (x) => (x.value != null ? usd(x.value) : x.reference_price != null ? "≈ " + usd(x.quantity * x.reference_price) : "");
     return html`
-      <section className="sec tipped">
+      <section className="sec tipped open">
         <header><h2>Orders</h2><button className="more" aria-expanded="true" onClick=${() => setShown(false)}>Hide</button></header>
         ${a.orders.length === 0 ? html`<p className="soft">No order sent yet.</p>` : html`
           <div className="scroll"><table>
@@ -535,7 +535,7 @@
           <span><b>Show every run</b></span><span className="rv-end muted">${a.runs.length}</span></button>
       </section>`;
     return html`
-      <section className="sec">
+      <section className="sec open">
         <header><h2>Every run</h2><button className="more" aria-expanded="true" onClick=${() => setShown(false)}>Hide</button><a className="aside" href=${a.records}>all records</a></header>
         <div className="scroll"><table>
           <thead><tr><th>Run</th><th>Started</th><th>Decision</th><th>Execution</th><th className="num">Account</th><th className="num">Orders</th><th className="num">Corrections</th><th></th></tr></thead>
@@ -567,11 +567,9 @@
           <span className="seg">${data.agents.map((x) => html`<button key=${x.key} className=${"c-" + x.key} aria-pressed=${x.key === a.key} onClick=${() => setAgent(x.key)}><${AgentIcon} k=${x.key} size=${14} />${x.title}</button>`)}</span>
         </div>
         ${!a.started ? html`<p className="soft">This agent has not run yet.</p>` : html`<div className=${"c-" + a.key}>
-          <${Decision} a=${a} />
-          <${Forecast} a=${a} />
+          <div className="pair"><${Decision} a=${a} /><${Forecast} a=${a} /></div>
           <${Holdings} a=${a} />
-          <${Orders} a=${a} />
-          <${Runs} a=${a} />
+          <div className="pair"><${Orders} a=${a} /><${Runs} a=${a} /></div>
         </div>`}
       </${React.Fragment}>`;
   }
@@ -937,6 +935,30 @@
     const [tab, setTab] = useState(readTab);
     const [agent, setAgent] = useState(null);
     const [compact, setCompact] = useState(false);
+    const [sections, setSections] = useState([]);
+    const [current, setCurrent] = useState(0);
+    useEffect(() => {
+      const t = setTimeout(() => {
+        const found = [...document.querySelectorAll("#panel section.sec")].map((el, n) => {
+          const h = el.querySelector("h2");
+          if (!el.id) el.id = "sec-" + n;
+          return h ? { id: el.id, label: h.textContent.trim() } : null;
+        }).filter(Boolean);
+        setSections(found);
+      }, 50);
+      return () => clearTimeout(t);
+    }, [tab, data, agent]);
+    useEffect(() => {
+      const onScroll = () => {
+        const els = sections.map((x) => document.getElementById(x.id)).filter(Boolean);
+        let k = 0;
+        els.forEach((el, n) => { if (el.getBoundingClientRect().top < 140) k = n; });
+        setCurrent(k);
+      };
+      onScroll();
+      window.addEventListener("scroll", onScroll, { passive: true });
+      return () => window.removeEventListener("scroll", onScroll);
+    }, [sections]);
     useEffect(() => {
       const onScroll = () => {
         const top = document.querySelector(".top");
@@ -957,7 +979,7 @@
     const go = (t) => { history.replaceState(null, "", "#" + t); setTab(t); window.scrollTo(0, 0); };
     const onArrows = (e) => {
       const i = TABS.findIndex((x) => x[0] === tab);
-      const j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : null;
+      const j = ["ArrowRight", "ArrowDown"].includes(e.key) ? i + 1 : ["ArrowLeft", "ArrowUp"].includes(e.key) ? i - 1 : null;
       if (j === null) return;
       const next = TABS[(j + TABS.length) % TABS.length][0];
       go(next);
@@ -988,17 +1010,25 @@
             the portfolio, and fixed rules check every decision before it reaches the broker.</p>
           <${Fresh} at=${data.generated_at} />
         </div></div>
-        <main className="wrap">
-          <nav className="guide" role="tablist" aria-label="Sections" onKeyDown=${onArrows}>
-            ${TABS.map(([k, t, d], i) => html`<button key=${k} id=${"tab-" + k} role="tab" aria-selected=${tab === k} aria-controls="panel"
-              tabIndex=${tab === k ? 0 : -1} onClick=${() => go(k)}><b><span className="k">${i + 1}</span>${t}</b><span>${d}</span></button>`)}
-          </nav>
+        <main className="wrap layout">
+          <aside className="side">
+            <nav role="tablist" aria-label="Views" aria-orientation="vertical" onKeyDown=${onArrows}>
+              ${TABS.map(([k, t, d], i) => html`<${React.Fragment} key=${k}>
+                <button id=${"tab-" + k} role="tab" aria-selected=${tab === k} aria-controls="panel" title=${d}
+                  tabIndex=${tab === k ? 0 : -1} onClick=${() => go(k)}><span className="k">${i + 1}</span>${t}</button>
+                ${tab === k && sections.length > 1 && html`<ul className="toc">${sections.map((x, n) => html`<li key=${x.id}>
+                  <a href=${"#" + x.id} className=${n === current ? "on" : ""} onClick=${(e) => { e.preventDefault(); const el = document.getElementById(x.id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }}>${x.label}</a></li>`)}</ul>`}
+              </${React.Fragment}>`)}
+            </nav>
+          </aside>
+          <div className="content">
           <div id="panel" key=${tab} className="view" role="tabpanel" aria-labelledby=${"tab-" + tab}>
           ${tab === "live" && html`<${Live} data=${data} agent=${agent} setAgent=${setAgent} go=${go} />`}
           ${tab === "how" && html`<${How} data=${data} go=${go} />`}
           ${tab === "evidence" && html`<${Evidence} data=${data} />`}
           ${tab === "try" && html`<${Try} data=${data} go=${go} />`}
           ${tab === "lexicon" && html`<${Lexicon} />`}
+          </div>
           </div>
         </main>
       </${React.Fragment}>`;
