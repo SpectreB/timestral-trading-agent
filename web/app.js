@@ -134,8 +134,13 @@
   /* A long paragraph shows its first sentence; the reader opens the rest if they want it. */
   function Fold({ first, children, small }) {
     const [open, setOpen] = useState(false);
-    return html`<p className=${small ? "note small" : "note"}>${first}${open ? html` ${children}` : " "}<button className="more" aria-expanded=${open}
-      onClick=${() => setOpen(!open)}>${open ? "Less" : "More"}</button></p>`;
+    const cls = small ? "note small" : "note";
+    const toggle = html`<button className="more" aria-expanded=${open} onClick=${() => setOpen(!open)}>${open ? "Less" : "More"}</button>`;
+    if (!open) return html`<p className=${cls}>${first} ${toggle}</p>`;
+    return html`<div className="fold">
+      <p className=${cls}>${first}</p>
+      <p className=${cls + " rest"}>${children}</p>
+      <p className=${cls + " toggle"}>${toggle}</p></div>`;
   }
 
   // ------------------------------------------------------------------ charts
@@ -462,10 +467,10 @@
               ${o.slippage_bps != null && html`<dt>Slippage</dt><dd className=${"num " + (o.slippage_bps <= 0 ? "up" : "down")}>${o.slippage_bps.toFixed(1)} bps</dd>`}
               ${o.submitted_at && html`<dt>Sent</dt><dd className="num">${when(o.submitted_at)}</dd>`}
             </dl>
-            <p>Slippage: fill against the reference price, in basis points; negative is better for us.</p>
           </div>`}
           ${a.orders.length > 10 && html`<button className="more" onClick=${() => setAll(!all)}>${all ? "Show the latest 10" : `Show all ${a.orders.length}`}</button>`}
-          <div className="legend"><span className="muted">hover or tap an order for its shares, prices and slippage</span></div>`}
+          <div className="legend"><span><b>Slippage</b>: fill price against the reference price, in basis points; negative is better for us</span>
+            <span className="muted">hover or tap an order for its shares and prices</span></div>`}
       </section>`;
   }
 
@@ -505,6 +510,25 @@
   }
 
   // ------------------------------------------------------------------ how it works
+  const LEXICON = [
+    ["Paper trading", "Real prices, fictitious money: orders go to an Alpaca paper account."],
+    ["Quantile (q10, q90)", "A value the outcome should stay below 10% (or 90%) of the time."],
+    ["80% interval", "From q10 to q90: where Timestral expects 8 outcomes out of 10."],
+    ["Spread", "The width of the 80% interval, q90 − q10: how uncertain the forecast is."],
+    ["Timestral rule", "The baseline portfolio: each weight inversely proportional to the spread."],
+    ["Calibration", "Whether 80% intervals really hold 80% of outcomes."],
+    ["Pinball loss", "The error score of a quantile forecast: lower is better."],
+    ["Covariates", "Extra series given to Timestral with the prices, here news and events."],
+    ["Guardrails", "Deterministic checks that correct or reject the LLM's proposal."],
+    ["Circuit breaker", "Limits that tighten as the account falls from its peak."],
+    ["Drawdown", "How far the account is below its highest value."],
+    ["No-trade band", "Changes smaller than this are not traded, to avoid paying for noise."],
+    ["Turnover", "The share of the portfolio bought or sold in one run."],
+    ["Basis point (bps)", "One hundredth of a percent."],
+    ["Slippage", "Fill price against the reference price, in basis points."],
+    ["Replay", "The agent run again on past sessions with only the data of each day."],
+  ];
+
   /* The two agents as two flows. Two different loops: only the tool agent decides to call
      Timestral again or stop; both agents get one retry when the guardrails reject the answer. */
   function Diagram() {
@@ -663,6 +687,9 @@
             <h3>${t}</h3>
             <ul>${data.next.filter((n) => n.status === k).map((n) => html`<li key=${n.id + n.title}><b><span className="mono muted">${n.id}</span> ${n.title}</b><span>${n.text}</span></li>`)}</ul></div>`)}</div>
         </section>`}
+        <section className="sec"><header><h2>Lexicon</h2><span className="aside">the words used on this page</span></header>
+          <dl className="lexicon">${LEXICON.map(([t, d]) => html`<${React.Fragment} key=${t}><dt>${t}</dt><dd>${d}</dd></${React.Fragment}>`)}</dl>
+        </section>
         <section className="sec"><header><h2>Records and documents</h2></header>
           <dl className="kv">
             <dt>Audit log</dt><dd><a href=${data.links.audit_log}>every run, prompt, reasoning trace and order, immutable</a></dd>
