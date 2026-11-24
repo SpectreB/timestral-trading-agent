@@ -242,7 +242,10 @@ def test_the_cost_of_a_decision_is_measured_in_tokens(tmp_path: Path) -> None:
     step = {"prompt_tokens": 3000, "completion_tokens": 500}
     answer = {"prompt_tokens": 7000, "completion_tokens": 1500}
     run = {"decision": {"steps": [step], "attempts": [answer]}}
-    assert _cost([run]) == {"tokens": "12k (10k in, 2k out)"}
+    assert _cost([run]) == {
+        "tokens": "12k (10k in, 2k out)",
+        "usd": "$0.011",
+    }  # 10k x 0.7 + 2k x 2.1
 
 
 def test_the_side_by_side_does_not_repeat_the_other_checks(tmp_path: Path) -> None:
