@@ -777,8 +777,7 @@
         ${data.next && data.next.length > 0 && html`<section className="sec"><header><h2><${Glyph} d=${ARROW} size=${16} />What's next</h2></header>
           <div className="next">${data.next.map((n) => html`<div key=${n.id} className="nextcard">
             <span className="kind">${n.kind}</span>
-            <b>${n.text}</b>
-            <span className="muted"><span className="mono">${n.id}</span> ${n.title}</span></div>`)}</div>
+            <b>${n.text}</b></div>`)}</div>
         </section>`}
         <section className="sec"><header><h2>Records and documents</h2></header>
           <dl className="kv">
