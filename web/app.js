@@ -956,6 +956,12 @@
     const [error, setError] = useState(null);
     const [tab, setTab] = useState(readTab);
     const [agent, setAgent] = useState(null);
+    const [compact, setCompact] = useState(false);
+    useEffect(() => {
+      const onScroll = () => setCompact((c) => (c ? window.scrollY > 20 : window.scrollY > 90));
+      window.addEventListener("scroll", onScroll, { passive: true });
+      return () => window.removeEventListener("scroll", onScroll);
+    }, []);
     useEffect(() => {
       fetch("data.json", { cache: "no-store" })
         .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -979,7 +985,7 @@
     if (!data) return html`<p className="boot">Loading the agent's records…</p>`;
     return html`
       <${React.Fragment}>
-        <div className="top"><div className="wrap">
+        <div className=${"top" + (compact ? " compact" : "")}><div className="wrap">
           <div className="brand">
             <div className="title"><h1><${Timestral} size=${22} />Timestral Trading Agent</h1><span className="badge">Paper trading</span></div>
             <div className="actions">
@@ -997,7 +1003,7 @@
             ${TABS.map(([k, t, d], i) => html`<button key=${k} id=${"tab-" + k} role="tab" aria-selected=${tab === k} aria-controls="panel"
               tabIndex=${tab === k ? 0 : -1} onClick=${() => go(k)}><b><span className="k">${i + 1}</span>${t}</b><span>${d}</span></button>`)}
           </nav>
-          <div id="panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
+          <div id="panel" key=${tab} className="view" role="tabpanel" aria-labelledby=${"tab-" + tab}>
           ${tab === "live" && html`<${Live} data=${data} agent=${agent} setAgent=${setAgent} go=${go} />`}
           ${tab === "how" && html`<${How} data=${data} go=${go} />`}
           ${tab === "evidence" && html`<${Evidence} data=${data} />`}

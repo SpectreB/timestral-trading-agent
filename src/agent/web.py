@@ -37,6 +37,7 @@ from agent.dashboard import (
     SIM_BODY,
     SIM_CHOICES,
     SIM_TITLE,
+    SLOT_HOURS,
     TOOLS_FOLDER,
     TOOLS_SUMMARY,
     AgentView,
@@ -310,6 +311,7 @@ def _tokens(run: dict[str, Any]) -> tuple[int, int]:
 # Mistral's list price for Mistral Large 4, USD per million tokens, read on 2026-11-24 at
 # https://docs.mistral.ai/inference/pricing (the page mistral.ai/pricing/api redirects to).
 PRICE_IN_PER_M, PRICE_OUT_PER_M = 0.70, 2.10
+SESSIONS_PER_MONTH = 21  # US trading sessions in a typical month
 
 
 def _cost(runs: list[dict[str, Any]]) -> dict[str, str]:
@@ -324,6 +326,7 @@ def _cost(runs: list[dict[str, Any]]) -> dict[str, str]:
     return {
         "tokens": f"{(tin + tout) / 1000:.0f}k ({tin / 1000:.0f}k in, {tout / 1000:.0f}k out)",
         "usd": f"${usd:.3f}",
+        "usd_month": f"${usd * len(SLOT_HOURS) * SESSIONS_PER_MONTH:.2f}",
     }
 
 
@@ -613,6 +616,8 @@ MEASURE_HELP: dict[str, str] = {
     "usd": "Those tokens at Mistral's list price for Mistral Large 4: $0.70 per million in, $2.10 "
     "per million out (docs.mistral.ai/inference/pricing, read 2026-11-24). Here the calls run on "
     "the sponsored plan's free tier: nothing is billed.",
+    "usd_month": "The price per decision times 2 runs a day and 21 trading sessions a month. "
+    "Decisions only: the daily news scoring by the smaller analyst model is not counted.",
     "past_cov": "Share of 5-day portfolio outcomes inside Timestral's 80% risk interval. "
     "Target: 80%.",
 }
@@ -692,6 +697,7 @@ def site_data(
                 *_MEASURE_ROWS,
                 ("Cost", "tokens", "Mistral tokens per decision"),
                 ("", "usd", "Price per decision, at list price"),
+                ("", "usd_month", "Estimated per month"),
             )
             if k not in _SHOWN_ELSEWHERE
         ],
