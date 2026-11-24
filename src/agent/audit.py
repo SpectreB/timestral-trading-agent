@@ -265,6 +265,19 @@ class FileAuditStore:
         files = sorted((self.root / "observations").glob("*.json"))
         return [json.loads(f.read_text(encoding="utf-8")) for f in files]
 
+    def has_valuation(self, name: str) -> bool:
+        return (self.root / "valuations" / f"{name}.json").exists()
+
+    def write_valuation(self, name: str, payload: dict[str, Any]) -> Path:
+        """One sample of the account's value, taken between runs; `name` is its minute."""
+        path = self.root / "valuations" / f"{name}.json"
+        _write_once(path, _dump({"schema_version": SCHEMA_VERSION, **payload}))
+        return path
+
+    def read_valuations(self) -> list[dict[str, Any]]:
+        files = sorted((self.root / "valuations").glob("*.json"))
+        return [json.loads(f.read_text(encoding="utf-8")) for f in files]
+
     def has_reconciliation(self, name: str) -> bool:
         return (self.root / "reconciliation" / f"{name}.json").exists()
 

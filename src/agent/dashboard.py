@@ -18,7 +18,7 @@ import json
 import math
 import shutil
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -277,10 +277,6 @@ def _nice_ticks(lo: float, hi: float, target: int = 4) -> list[float]:
     return [first + i * step for i in range(int((hi - first) / step) + 1)]
 
 
-def _day(run: dict[str, Any]) -> str:
-    return datetime.fromisoformat(run["started_at"]).strftime("%b %d").replace(" 0", " ")
-
-
 def _badge(text: str, kind: str, icon: str) -> str:
     return f'<span class="badge b-{kind}"><span aria-hidden="true">{icon}</span> {_e(text)}</span>'
 
@@ -329,14 +325,55 @@ def _corrections(run: dict[str, Any]) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------- sections
 
 
-def _equity_chart(runs: list[dict[str, Any]]) -> str:
+ET = ZoneInfo("America/New_York")
+
+
+def _et(iso: str) -> datetime:
+    return datetime.fromisoformat(iso).astimezone(ET)
+
+
+def _points(runs: list[dict[str, Any]], valuations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The account's value over time: the start of every run (with its detail) and the samples
+    taken between runs, oldest first. A sample taken before the first run is left out."""
+    first = _et(runs[0]["started_at"])
+    out = [
+        {
+            "at": _et(r["started_at"]),
+            "equity": r["account"]["equity"],
+            "label": r["run_id"],
+            "extra": [
+                f"drawdown from peak {_pct(r['account']['drawdown_from_peak'])}",
+                _OUTCOME_BADGE[r["decision"]["outcome"]][0],
+            ],
+        }
+        for r in runs
+    ]
+    out += [
+        {"at": _et(v["at"]), "equity": v["equity"], "label": "account sample", "extra": []}
+        for v in valuations
+        if _et(v["at"]) > first
+    ]
+    return sorted(out, key=lambda p: p["at"])
+
+
+def _current(runs: list[dict[str, Any]], valuations: list[dict[str, Any]]) -> tuple[float, str]:
+    """The latest known account value and when it was read."""
+    last = _points(runs, valuations)[-1]
+    kind = "latest run" if last["label"] != "account sample" else "latest sample"
+    return float(last["equity"]), f"{kind}, {_when(last['at'])}"
+
+
+def _equity_chart(
+    runs: list[dict[str, Any]], valuations: list[dict[str, Any]] | None = None
+) -> str:
     width, height, left, right, top, bottom = 720, 240, 64, 24, 16, 36
-    equity: list[float] = [r["account"]["equity"] for r in runs]
-    start = equity[0]
+    pts = _points(runs, valuations or [])
+    equity = [float(p["equity"]) for p in pts]
+    start = float(runs[0]["account"]["equity"])
     lo, hi = min([*equity, start]), max([*equity, start])
     pad = max((hi - lo) * 0.25, start * 0.002)
     lo, hi = lo - pad, hi + pad
-    n = len(runs)
+    n = len(pts)
 
     def x(i: int) -> float:
         return left + (width - left - right) * (0.5 if n == 1 else i / (n - 1))
@@ -369,20 +406,14 @@ def _equity_chart(runs: list[dict[str, Any]]) -> str:
         parts.append(f'<polyline class="line" points="{points}"/>')
     band = (width - left - right) / max(n - 1, 1)
     seen: set[str] = set()
-    for i, run in enumerate(runs):
-        day = _day(run)
+    for i, pt in enumerate(pts):
+        day = pt["at"].strftime("%b %d").replace(" 0", " ")
         if day not in seen:
             seen.add(day)
             parts.append(
                 f'<text x="{x(i):.1f}" y="{height - 12}" text-anchor="middle">{_e(day)}</text>'
             )
-        dd = run["account"]["drawdown_from_peak"]
-        tip = _tip(
-            _usd(equity[i]),
-            f"{run['run_id']}",
-            f"drawdown from peak {_pct(dd)}",
-            _OUTCOME_BADGE[run["decision"]["outcome"]][0],
-        )
+        tip = _tip(_usd(equity[i]), f"{pt['label']}, {_when(pt['at'])}", *pt["extra"])
         parts.append(
             f'<g class="pt" tabindex="0" {tip}><line class="xhair" x1="{x(i):.1f}" '
             f'x2="{x(i):.1f}" y1="{top}" y2="{base_y}"/>'
@@ -391,19 +422,19 @@ def _equity_chart(runs: list[dict[str, Any]]) -> str:
             f'height="{base_y - top}"/></g>'
         )
     rows = "".join(
-        f"<tr><td>{_e(r['run_id'])}</td><td class='num'>{_usd(r['account']['equity'])}</td>"
-        f"<td class='num'>{_pct(r['account']['drawdown_from_peak'])}</td></tr>"
-        for r in runs
+        f"<tr><td>{_e(p['label'])}</td><td>{_e(_when(p['at']))}</td>"
+        f"<td class='num'>{_usd(p['equity'])}</td></tr>"
+        for p in pts
     )
     return (
         '<div class="card"><h2>Portfolio value</h2>'
-        '<p class="sec-sub">Equity at the start of each run, from the account snapshot in the '
-        "audit record.</p>"
+        '<p class="sec-sub">The real account: read at the start of each run and sampled every '
+        "hour of the US session, so it also follows the market between runs.</p>"
         f'<div class="chart"><svg viewBox="0 0 {width} {height}" role="img" '
-        f'aria-label="Portfolio value over {n} runs, from {_usd(equity[0])} to '
+        f'aria-label="Portfolio value over {n} readings, from {_usd(equity[0])} to '
         f'{_usd(equity[-1])}">{"".join(parts)}</svg></div>'
-        '<details><summary>Table view</summary><div class="scroll"><table><tr><th>Run</th>'
-        '<th class="num">Equity</th><th class="num">Drawdown</th></tr>'
+        '<details><summary>Table view</summary><div class="scroll"><table><tr><th>Reading</th>'
+        '<th>Time</th><th class="num">Equity</th></tr>'
         f"{rows}</table></div></details></div>"
     )
 
@@ -1031,14 +1062,18 @@ def _exposure(run: dict[str, Any]) -> str:
 
 
 def _performance(
-    runs: list[dict[str, Any]], report: dict[str, Any] | None, replay: str = ""
+    runs: list[dict[str, Any]],
+    report: dict[str, Any] | None,
+    replay: str = "",
+    valuations: list[dict[str, Any]] | None = None,
 ) -> str:
-    equity, start = runs[-1]["account"]["equity"], runs[0]["account"]["equity"]
+    equity, read = _current(runs, valuations or [])
+    start = float(runs[0]["account"]["equity"])
     hero = (
         f'<div class="hero">{_usd(equity)}</div>'
         f'<div class="delta {"" if equity == start else "up" if equity > start else "down"}">'
         f"{_spct(equity / start - 1, 2)} "
-        f"since the first run ({_usd(start)}) · account value at the latest run</div>"
+        f"since the first run ({_usd(start)}) · account value, {read}</div>"
     )
     if report is None or report["sessions"] < 1:
         body = (
@@ -1337,6 +1372,7 @@ class AgentView:
     prefix: str = ""  # folder of its records on the audit-log branch
     replay: dict[str, Any] | None = None  # its replay report (D-015), shown under Performance
     replay_folder: str = ""  # where the replay records live in the repository
+    valuations: list[dict[str, Any]] = field(default_factory=list)  # hourly samples of the account
 
 
 def _agent_body(agent: AgentView, repo: str) -> str:
@@ -1363,7 +1399,9 @@ def _agent_body(agent: AgentView, repo: str) -> str:
         _evidence("The LLM's confidence", "is it calibrated?", _confidence(report)),
         _evidence("Guardrail activity", "corrections and rejections", _guardrails(runs)),
         _evidence("Executions and slippage", "what the broker did", _fills_table(fills)),
-        _evidence("Account value per run", "the real account", _equity_chart(runs)),
+        _evidence(
+            "Account value over time", "the real account", _equity_chart(runs, agent.valuations)
+        ),
         _evidence(
             "History of runs", "click a run for its detail", _run_history(runs, repo, agent.prefix)
         ),
@@ -1372,7 +1410,9 @@ def _agent_body(agent: AgentView, repo: str) -> str:
         [
             _status(runs, fills),
             _today(runs[-1], fills),
-            _performance(runs, report, _replay(agent.replay, repo, agent.replay_folder)),
+            _performance(
+                runs, report, _replay(agent.replay, repo, agent.replay_folder), agent.valuations
+            ),
             _trades(fills, runs),
             _allocation(runs[-1], runs[0]),
             '<div class="card"><h2>Can we trust it?</h2><p class="sec-sub">The evidence behind '
@@ -1401,7 +1441,8 @@ def _glance(agents: list[AgentView], moment: datetime | None = None) -> str:
             )
             continue
         first, last = a.runs[0], a.runs[-1]
-        start, now = first["account"]["equity"], last["account"]["equity"]
+        start = first["account"]["equity"]
+        now, read = _current(a.runs, a.valuations)
         kind = "" if now == start else "up" if now > start else "down"
         alerts = _alerts(last, a.fills)
         level = "crit" if any(k == "crit" for k, _ in alerts) else "warn" if alerts else ""
@@ -1421,9 +1462,10 @@ def _glance(agents: list[AgentView], moment: datetime | None = None) -> str:
             f'<span class="go" aria-label="to">→</span>'
             f'<span class="to {kind}">{_usd(now)}</span></div>'
             f'<div class="gdelta {kind}">{_usd(now - start).replace("$-", "-$")} '
-            f"({_spct(now / start - 1, 2)})<span>since {_e(began)} · {len(a.runs)} run(s)</span>"
+            f"({_spct(now / start - 1, 2)})"
+            f"<span>since {_e(began)} · {len(a.runs)} run(s)</span>"
             f'</div><div class="pills">{calm}</div>'
-            f'<div class="kv"><span>Last run</span><b>{_e(_when(started))}</b>'
+            f'<div class="kv"><span>Value read</span><b>{_e(read)}</b><span>Last run</span><b>{_e(_when(started))}</b>'
             f"<span>Next run</span><b>{_e(upcoming)}</b></div></div>"
         )
     return f'<div class="glance">{"".join(cards)}</div>'
@@ -1928,6 +1970,7 @@ def render(
     replay: dict[str, Any] | None = None,
     evals: dict[str, Any] | None = None,
     covariates: dict[str, Any] | None = None,
+    valuations: list[dict[str, Any]] | None = None,
 ) -> str:
     """`runs`, `fills`, `scores` and `report` are the pipeline agent's; `tool_agent` adds the
     second agent of D-018 (shown first: it is the final agent); `replay` is the D-015 report."""
@@ -1941,6 +1984,7 @@ def render(
         report,
         replay=replay,
         replay_folder="docs/replay",
+        valuations=valuations or [],
     )
     agents = [tool_agent, pipeline] if tool_agent is not None else [pipeline]
     intro = (
@@ -1990,6 +2034,7 @@ def _view(store: FileAuditStore, key: str, title: str, summary: str, prefix: str
         score_forecasts(runs, observations),
         performance_report(runs, observations),
         prefix,
+        valuations=store.read_valuations(),
     )
 
 
@@ -2062,6 +2107,7 @@ def build(
             replay=replay,
             evals=evals,
             covariates=covariates,
+            valuations=pipeline.valuations,
         ),
         encoding="utf-8",
     )
