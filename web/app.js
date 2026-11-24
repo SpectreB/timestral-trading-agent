@@ -382,23 +382,42 @@
       </section>`;
   }
 
+  /* The target portfolio: the bar, the value and the weight at first glance; the rest of the
+     story of each asset (the rule's weight, what the LLM proposed, its confidence and its reason)
+     opens on hover, on keyboard focus, or on a tap. */
   function Holdings({ a }) {
+    const [tip, setTip] = useState(null); // { i, top }
     const scale = Math.max(0.25, ...a.holdings.map((h) => Math.max(h.final, h.rule)));
     const cash = a.decision.cash;
     const equity = a.runs[0].equity;
+    const show = (i) => (e) => setTip({ i, top: e.currentTarget.offsetTop + e.currentTarget.offsetHeight });
+    const hide = () => setTip(null);
+    const h = tip && a.holdings[tip.i];
     return html`
-      <section className="sec">
+      <section className="sec holdings">
         <header><h2>Target portfolio</h2><span className="aside">after the guardrails, at the last run</span></header>
-        ${a.holdings.map((h) => html`<div key=${h.symbol} className="hold" title=${h.rationale}>
-          <span className="sym">${h.symbol}</span>
-          <span className="bar"><i style=${{ width: (100 * h.final / scale) + "%", background: h.type === "stock" ? "var(--stock)" : "var(--etf)" }}></i>
-            <u style=${{ left: `calc(${100 * h.rule / scale}% - 1px)` }}></u></span>
-          <span className="num">${usd(h.value)}</span><span className="num">${pct(h.final)}</span>
-          <span className="num cf muted">${h.confidence != null ? h.confidence.toFixed(2) : ""}</span></div>`)}
+        ${a.holdings.map((x, i) => html`<div key=${x.symbol} className=${"hold" + (tip && tip.i === i ? " on" : "")} tabIndex="0"
+            aria-describedby=${tip && tip.i === i ? "hold-tip" : undefined}
+            onMouseEnter=${show(i)} onMouseLeave=${hide} onFocus=${show(i)} onBlur=${hide}
+            onClick=${(e) => (tip && tip.i === i ? hide() : show(i)(e))}>
+          <span className="sym">${x.symbol}</span>
+          <span className="bar"><i style=${{ width: (100 * x.final / scale) + "%", background: x.type === "stock" ? "var(--stock)" : "var(--etf)" }}></i>
+            <u style=${{ left: `calc(${100 * x.rule / scale}% - 1px)` }}></u></span>
+          <span className="num">${usd(x.value)}</span><span className="num">${pct(x.final)}</span></div>`)}
         <div className="hold"><span className="sym">Cash</span><span className="bar"><i style=${{ width: (100 * cash / scale) + "%", background: "var(--cash)" }}></i></span>
-          <span className="num">${usd(cash * equity)}</span><span className="num">${pct(cash)}</span><span className="cf"></span></div>
+          <span className="num">${usd(cash * equity)}</span><span className="num">${pct(cash)}</span></div>
+        ${h && html`<div id="hold-tip" role="tooltip" className="tipbox" style=${{ top: tip.top + 4 }}>
+          <div className="tiphead"><b>${h.symbol}</b> <span className="muted">${h.name} · ${h.type === "stock" ? "stock" : "ETF"}</span></div>
+          <dl>
+            <dt>Timestral rule</dt><dd className="num">${pct(h.rule)}</dd>
+            <dt><${Chonk} size=${11} />LLM proposed</dt><dd className="num">${h.proposed != null ? pct(h.proposed) : "n/a"}${h.confidence != null ? ` · confidence ${h.confidence.toFixed(2)}` : ""}</dd>
+            <dt>Final, after guardrails</dt><dd className="num">${pct(h.final)} · ${usd(h.value)}</dd>
+            ${h.risk_share != null && html`<dt>Share of the risk</dt><dd className="num">${pct(h.risk_share, 0)}</dd>`}
+          </dl>
+          ${h.rationale && html`<p>${h.rationale}</p>`}
+        </div>`}
         <div className="legend"><span><i className="sq etf"></i>ETF</span><span><i className="sq stock"></i>Stock</span><span><i className="sq cashc"></i>Cash</span>
-          <span><i className="tick"></i>Weight from the Timestral rule</span><span>last column: the LLM's stated confidence · hover a row for its reason</span></div>
+          <span><i className="tick"></i>Timestral rule</span><span className="muted">hover or tap an asset for the LLM's reasoning</span></div>
       </section>`;
   }
 
