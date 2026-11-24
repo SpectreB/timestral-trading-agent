@@ -233,9 +233,9 @@ show(el,r.left+r.width/2,r.top);});
 el.addEventListener('blur',()=>{tip.hidden=true;});}})();
 (()=>{const go=document.getElementById('sim-go');if(!go)return;
 const sel=[...document.querySelectorAll('[data-opt]')];
-const upd=()=>{const lines=sel.map(s=>s.dataset.opt+': '+s.value).join('\n');
+const upd=()=>{const lines=sel.map(s=>s.dataset.opt+': '+s.value).join('\\n');
 go.href=go.dataset.base+'?title='+encodeURIComponent(go.dataset.title)+'&body='
-+encodeURIComponent(lines+'\n\n'+go.dataset.text);};
++encodeURIComponent(lines+'\\n\\n'+go.dataset.text);};
 for(const s of sel)s.addEventListener('change',upd);upd();})();
 """
 

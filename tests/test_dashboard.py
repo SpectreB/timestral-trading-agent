@@ -508,6 +508,8 @@ def test_the_legend_toggle_script_is_present_and_valid() -> None:
     from agent.dashboard import SCRIPT
 
     assert "data-toggle" in SCRIPT and "aria-pressed" in SCRIPT
+    # A Python "\n" would put a raw line break inside a quoted JavaScript string.
+    assert "join('\\n')" in SCRIPT
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
