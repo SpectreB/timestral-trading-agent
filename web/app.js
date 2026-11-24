@@ -1,0 +1,564 @@
+/* Timestral Trading Agent: the dashboard (D-012).
+ *
+ * React 18 with htm (JSX-like templates, no build step). All figures come from data.json, which
+ * Python writes from the audit records (src/agent/web.py): this file only lays them out.
+ * Text from the LLM is rendered as text, never as HTML. */
+(() => {
+  "use strict";
+  const { useState, useEffect, useMemo } = React;
+  const html = htm.bind(React.createElement);
+
+  // ------------------------------------------------------------------ formatting
+  const TZ = "America/New_York";
+  const usd = (x) =>
+    (x < 0 ? "-$" : "$") + Math.abs(x).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const usd2 = (x) =>
+    "$" + x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pct = (x, d = 1) => (100 * x).toFixed(d) + "%";
+  const spct = (x, d = 1) => (x > 0 ? "+" : "") + (100 * x).toFixed(d) + "%";
+  const pts = (x, d = 1) => (x > 0 ? "+" : "") + (100 * x).toFixed(d) + " pts";
+  const when = (iso) =>
+    new Date(iso).toLocaleString("en-US", {
+      timeZone: TZ, weekday: "short", day: "numeric", month: "short",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }) + " ET";
+  const day = (iso) =>
+    new Date(iso).toLocaleDateString("en-US", { timeZone: TZ, day: "numeric", month: "short" });
+  const sign = (x) => (x > 0 ? "up" : x < 0 ? "down" : "");
+
+  const OUTCOME = {
+    accepted: ["Accepted", "ok"],
+    corrected: ["Accepted with corrections", "mid"],
+    overridden: ["Circuit breaker override", "bad"],
+    fallback_hold: ["Rejected, positions held", "bad"],
+  };
+  const EXECUTION = {
+    live: "orders sent",
+    dry_run: "dry run",
+    dry_run_kill_switch: "dry run (kill switch off)",
+    hold: "no orders",
+  };
+  const SERIES = {
+    agent: ["Agent", "var(--c)", ""],
+    baseline: ["Timestral rule alone", "var(--ink2)", "4 3"],
+    equal_weight: ["Equal weight", "var(--ink3)", "1 3"],
+    spy: ["SPY (market)", "var(--etf)", "6 3"],
+  };
+  const TABS = [
+    ["live", "Live", "What the two agents hold, what they decided and why, and Timestral's raw forecast behind it."],
+    ["how", "How it works", "The design, the guardrails, and the evidence that the decisions are sound."],
+    ["try", "Try it", "Ask an agent to decide now on live data. No order is ever sent."],
+  ];
+
+  const Outcome = ({ o }) => {
+    const [label, kind] = OUTCOME[o] || [o, ""];
+    return html`<span className=${"state " + kind}>${label}</span>`;
+  };
+
+  // ------------------------------------------------------------------ charts
+  function ticks(lo, hi, n = 4) {
+    const raw = (hi - lo) / n;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) || raw;
+    const out = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(v);
+    return out;
+  }
+
+  function ValueChart({ series, start }) {
+    const [hover, setHover] = useState(null);
+    const W = 760, H = 220, L = 70, R = 16, T = 12, B = 28;
+    const ys = series.map((p) => p.equity).concat([start]);
+    let lo = Math.min(...ys), hi = Math.max(...ys);
+    const pad = Math.max((hi - lo) * 0.25, start * 0.002);
+    lo -= pad; hi += pad;
+    const n = series.length;
+    const x = (i) => L + (W - L - R) * (n === 1 ? 0.5 : i / (n - 1));
+    const y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+    const line = series.map((p, i) => `${x(i).toFixed(1)},${y(p.equity).toFixed(1)}`).join(" ");
+    const days = [];
+    series.forEach((p, i) => { const d = day(p.at); if (!days.find((e) => e[0] === d)) days.push([d, i]); });
+    const shown = hover === null ? series.length - 1 : hover;
+    const p = series[shown];
+    return html`
+      <div className="chart">
+        <svg viewBox=${`0 0 ${W} ${H}`} role="img"
+             aria-label=${`Account value from ${usd(series[0].equity)} to ${usd(series[n - 1].equity)}`}
+             onMouseLeave=${() => setHover(null)}>
+          ${ticks(lo, hi).map((t) => html`<g key=${t}>
+            <line className="grid" x1=${L} x2=${W - R} y1=${y(t)} y2=${y(t)} />
+            <text x=${L - 8} y=${y(t) + 4} textAnchor="end">${usd(t)}</text></g>`)}
+          <line className="ref" x1=${L} x2=${W - R} y1=${y(start)} y2=${y(start)} />
+          <text x=${W - R} y=${y(start) - 6} textAnchor="end">start ${usd(start)}</text>
+          ${days.map(([d, i]) => html`<text key=${d} x=${x(i)} y=${H - 8} textAnchor="middle">${d}</text>`)}
+          ${n > 1 && html`<polygon className="area" points=${`${L},${H - B} ${line} ${W - R},${H - B}`} />`}
+          ${n > 1 && html`<polyline className="line" points=${line} />`}
+          ${hover !== null && html`<line className="hover" x1=${x(hover)} x2=${x(hover)} y1=${T} y2=${H - B} />`}
+          ${series.map((q, i) => html`<circle key=${i} className="pt" cx=${x(i)} cy=${y(q.equity)} r=${i === shown ? 4.5 : 2.5} />`)}
+          ${series.map((q, i) => html`<rect key=${"h" + i} x=${x(i) - (W - L - R) / Math.max(n, 2) / 2} y=${T}
+              width=${(W - L - R) / Math.max(n, 2)} height=${H - T - B} fill="transparent"
+              onMouseEnter=${() => setHover(i)} />`)}
+        </svg>
+        <div className="readout">${usd2(p.equity)} · ${p.label === "account sample" ? "hourly sample" : "run " + p.label} · ${when(p.at)}</div>
+      </div>`;
+  }
+
+  /* One asset: Timestral's 80% interval (q10 to q90) and median for each horizon, drawn as a
+     fan from today's price (0%) to 5 days ahead. All fans share one scale, so widths compare. */
+  function Fan({ a, bound }) {
+    const W = 160, H = 96, L = 4, R = 4, T = 6, B = 6;
+    const hs = a.horizons;
+    const maxH = hs[hs.length - 1].h;
+    const x = (h) => L + (W - L - R) * (h / maxH);
+    const y = (v) => T + (H - T - B) * (0.5 - v / (2 * bound));
+    const upper = [[0, 0], ...hs.map((h) => [h.h, h.q90])];
+    const lower = [[0, 0], ...hs.map((h) => [h.h, h.q10])].reverse();
+    const band = upper.concat(lower).map(([h, v]) => `${x(h).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const med = [[0, 0], ...hs.map((h) => [h.h, h.median])].map(([h, v]) => `${x(h).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const last = hs[hs.length - 1];
+    const colour = a.type === "stock" ? "var(--stock)" : "var(--etf)";
+    return html`
+      <div className="fan">
+        <div className="h"><b>${a.symbol}</b><span className="muted">${a.name}</span></div>
+        <svg viewBox=${`0 0 ${W} ${H}`} role="img"
+             aria-label=${`${a.symbol}: 80% interval at ${maxH} days from ${spct(last.q10)} to ${spct(last.q90)}`}>
+          <line x1=${L} x2=${W - R} y1=${y(0)} y2=${y(0)} stroke="var(--rule2)" />
+          <polygon points=${band} fill=${colour} opacity="0.16" />
+          <polyline points=${med} fill="none" stroke=${colour} strokeWidth="1.5" />
+          <text x=${W - R} y=${y(last.q90) - 3} textAnchor="end" style=${{ font: "10px var(--mono)", fill: "var(--ink3)" }}>${spct(last.q90, 0)}</text>
+          <text x=${W - R} y=${y(last.q10) + 11} textAnchor="end" style=${{ font: "10px var(--mono)", fill: "var(--ink3)" }}>${spct(last.q10, 0)}</text>
+        </svg>
+        <div className="w"><span>spread ${pct(last.spread)}</span><span>rule ${pct(a.rule_weight)} → ${pct(a.final_weight)}</span></div>
+      </div>`;
+  }
+
+  function ReplayChart({ replay }) {
+    const W = 760, H = 220, L = 52, R = 16, T = 12, B = 28;
+    const keys = Object.keys(SERIES);
+    const all = keys.flatMap((k) => replay.curves[k]);
+    let lo = Math.min(0, ...all), hi = Math.max(0, ...all);
+    const pad = Math.max((hi - lo) * 0.12, 0.002);
+    lo -= pad; hi += pad;
+    const n = replay.curves.agent.length;
+    const x = (i) => L + (W - L - R) * (i / (n - 1));
+    const y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+    const sessions = ["start", ...replay.sessions_list];
+    return html`
+      <div className="chart">
+        <svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-label="Cumulative return of the agent and its references over the replayed sessions">
+          ${ticks(lo, hi).map((t) => html`<g key=${t}><line className="grid" x1=${L} x2=${W - R} y1=${y(t)} y2=${y(t)} />
+            <text x=${L - 8} y=${y(t) + 4} textAnchor="end">${spct(t, 0)}</text></g>`)}
+          <line className="axis" x1=${L} x2=${W - R} y1=${y(0)} y2=${y(0)} />
+          ${[[1, "start"], [Math.floor(n / 2), "middle"], [n - 1, "end"]].map(([i, anchor]) => html`<text key=${i} x=${x(i)} y=${H - 8} textAnchor=${anchor}>${sessions[i]}</text>`)}
+          ${keys.slice().reverse().map((k) => html`<polyline key=${k} fill="none" stroke=${SERIES[k][1]}
+              strokeWidth=${k === "agent" ? 2 : 1.3} strokeDasharray=${SERIES[k][2]}
+              points=${replay.curves[k].map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")} />`)}
+        </svg>
+        <div className="legend">${keys.map((k) => html`<span key=${k}>
+          <svg className="key" width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke=${SERIES[k][1]} strokeWidth="2" strokeDasharray=${SERIES[k][2]} /></svg>
+          ${SERIES[k][0]} <span className="num">${spct(replay.curves[k][n - 1])}</span></span>`)}</div>
+      </div>`;
+  }
+
+  // ------------------------------------------------------------------ live
+  const key = (fn) => (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
+  function AgentCard({ a, selected, onSelect }) {
+    if (!a.started) {
+      return html`<div role="button" tabIndex="0" className=${"acard c-" + a.key} aria-pressed=${selected} onClick=${onSelect} onKeyDown=${key(onSelect)}>
+        <div className="who"><b>${a.title}</b></div><p className="tag">${a.tagline}</p>
+        <p className="muted">Not started yet.</p></div>`;
+    }
+    const diff = a.now.equity - a.start.equity;
+    return html`
+      <div role="button" tabIndex="0" className=${"acard c-" + a.key} aria-pressed=${selected} onClick=${onSelect} onKeyDown=${key(onSelect)}>
+        <div className="who"><b>${a.title}</b><span>${a.n_runs} run${a.n_runs > 1 ? "s" : ""} since ${day(a.start.at)}</span></div>
+        <p className="tag">${a.tagline}</p>
+        <div className="value">${usd(a.now.equity)}</div>
+        <div className=${"delta " + sign(diff)}>${(diff >= 0 ? "+" : "") + usd(diff)} (${spct(diff / a.start.equity, 2)}) <span className="muted">from ${usd(a.start.equity)}</span></div>
+        <dl>
+          <dt>Value read</dt><dd>${when(a.now.at)}${a.now.source === "sample" ? "" : " (at a run)"}</dd>
+          <dt>Invested</dt><dd>${pct(1 - a.decision.cash, 0)}</dd>
+          <dt>Last run</dt><dd>${when(a.decision.at)} · <${Outcome} o=${a.decision.outcome} /></dd>
+          <dt>Next run</dt><dd>${when(a.next_run)}</dd>
+        </dl>
+        ${a.alerts.length > 0 && html`<div className="alert">${a.alerts.map((x, i) => html`<div key=${i} className=${x.level === "crit" ? "down" : "warn"}>▲ ${x.text}</div>`)}</div>`}
+      </div>`;
+  }
+
+  function Decision({ a }) {
+    const d = a.decision;
+    const [full, setFull] = useState(false);
+    const text = d.analysis || "No parsable analysis.";
+    const short = text.length > 520 && !full ? text.slice(0, 500).replace(/\s+\S*$/, "") + "…" : text;
+    const moves = a.holdings
+      .map((h) => ({ ...h, change: h.final - h.current }))
+      .filter((h) => Math.abs(h.change) >= 0.005)
+      .sort((p, q) => Math.abs(q.change) - Math.abs(p.change));
+    return html`
+      <section className="sec">
+        <header><h2>Last decision</h2><span className="aside">${d.run_id} · ${when(d.at)}</span></header>
+        <p className="facts">
+          <span><${Outcome} o=${d.outcome} /></span>
+          <span>${EXECUTION[d.execution] || d.execution}</span>
+          <span>model <b>${d.model}</b></span><span>prompt <b>${d.prompt}</b></span>
+          ${d.portfolio_vol && d.portfolio_vol.final != null && html`<span>forecast risk, ${d.portfolio_vol.horizon} days: <b>${pct(d.portfolio_vol.final)}</b> (rule alone ${pct(d.portfolio_vol.rule)})</span>`}
+          <a href=${d.record}>full record</a>
+        </p>
+        <div className="decision">
+          <div>
+            <h3 style=${{ marginTop: 0 }}>What the LLM wrote</h3>
+            <p className="reading">${short}</p>
+            ${text.length > 520 && html`<button className="more" onClick=${() => setFull(!full)}>${full ? "Show less" : "Read all"}</button>`}
+            ${d.corrections.length > 0 && html`<${React.Fragment}>
+              <h3>Corrected by the guardrails</h3>
+              <table><tbody>${d.corrections.map((c, i) => html`<tr key=${i}><td>${c.rule}</td><td>${c.symbol || ""}</td>
+                <td className="num">${pct(c.before)} → ${pct(c.after)}</td></tr>`)}</tbody></table></${React.Fragment}>`}
+          </div>
+          <div>
+            ${d.tool_steps.length > 0 && html`<${React.Fragment}>
+              <h3 style=${{ marginTop: 0 }}>Before deciding, it asked Timestral</h3>
+              <ol className="steps">${d.tool_steps.map((s, i) => html`<li key=${i}><span>${s.label}${s.horizon ? `, ${s.horizon} day${s.horizon > 1 ? "s" : ""}` : ""}</span><small>${s.result}</small></li>`)}</ol>
+            </${React.Fragment}>`}
+            <h3 style=${d.tool_steps.length ? {} : { marginTop: 0 }}>What changed</h3>
+            ${moves.length === 0
+              ? html`<p className="soft">Nothing: positions held.</p>`
+              : html`<table><thead><tr><th>Asset</th><th className="num">Weight</th><th className="num">Change</th></tr></thead>
+                <tbody>${moves.slice(0, 8).map((h) => html`<tr key=${h.symbol}><td><b>${h.symbol}</b></td>
+                  <td className="num">${h.current === 0 ? "cash" : pct(h.current)} → ${pct(h.final)}</td>
+                  <td className=${"num " + sign(h.change)}>${pts(h.change)}</td></tr>`)}</tbody></table>
+                ${moves.length > 8 && html`<p className="muted">+ ${moves.length - 8} smaller changes</p>`}`}
+          </div>
+        </div>
+      </section>`;
+  }
+
+  function Forecast({ a }) {
+    const f = a.forecast;
+    const [view, setView] = useState("fans");
+    const bound = useMemo(() => {
+      const m = Math.max(...f.assets.flatMap((x) => x.horizons.map((h) => Math.max(Math.abs(h.q10), Math.abs(h.q90)))));
+      return Math.ceil(m * 20) / 20;
+    }, [f]);
+    const hs = f.assets[0].horizons.map((h) => h.h);
+    const maxH = hs[hs.length - 1];
+    const tq = f.tool_quantiles;
+    const qcols = tq ? Object.keys(Object.values(tq.assets)[0]) : [];
+    return html`
+      <section className="sec">
+        <header><h2>Timestral's forecast behind it</h2>
+          <span className="views" role="group" aria-label="View">
+            ${[["fans", "Chart"], ["table", "Numbers"], ["raw", "Raw output"]].map(([k, t]) =>
+              html`<button key=${k} aria-pressed=${view === k} onClick=${() => setView(k)}>${t}</button>`)}
+          </span></header>
+        <p className="note">${f.model}, on ${f.context_days} days of closes up to ${f.last_close}. For each asset it gives
+          a distribution of the cumulative return 1 to ${maxH} days ahead. The <b>spread</b> is the width of the 80%
+          interval, <span className="formula">q90 − q10</span>: how uncertain Timestral is. The rule weights each asset by
+          <span className="formula">1 / spread</span>, so the riskiest assets get the least; the LLM then adjusts.
+          The median is shown for reference: Timestral has no measured directional skill here.</p>
+        ${view === "fans" && html`<${React.Fragment}>
+          <div className="fans">${f.assets.map((x) => html`<${Fan} key=${x.symbol} a=${x} bound=${bound} />`)}</div>
+          <div className="legend"><span><i className="sq etf"></i>ETF</span><span><i className="sq stock"></i>Stock</span>
+            <span>Band: 80% interval, today to ${maxH} days · line: median · same scale (±${pct(bound, 0)}) for every asset · riskiest first</span></div>
+        </${React.Fragment}>`}
+        ${view === "table" && html`<div className="scroll"><table>
+          <thead><tr><th>Asset</th>${hs.map((h) => html`<th key=${h} className="num">${h}d q10</th>`)}<th className="num">${maxH}d median</th><th className="num">${maxH}d q90</th><th className="num">Spread ${maxH}d</th><th className="num">Rule</th><th className="num">Final</th></tr></thead>
+          <tbody>${f.assets.map((x) => {
+            const last = x.horizons[x.horizons.length - 1];
+            return html`<tr key=${x.symbol}><td><i className=${"sq " + x.type}></i><b>${x.symbol}</b></td>
+              ${x.horizons.map((h) => html`<td key=${h.h} className="num">${spct(h.q10)}</td>`)}
+              <td className="num">${spct(last.median)}</td><td className="num">${spct(last.q90)}</td>
+              <td className="num"><b>${pct(last.spread)}</b></td><td className="num">${pct(x.rule_weight)}</td><td className="num">${pct(x.final_weight)}</td></tr>`;
+          })}</tbody></table></div>`}
+        ${view === "raw" && html`<${React.Fragment}>
+          <p className="note">Exactly as written in the audit record: per asset and horizon (days), cumulative returns as fractions.</p>
+          <pre className="raw">${JSON.stringify(f.raw, null, 1)}</pre>
+          ${tq && html`<${React.Fragment}>
+            <h3>What the tool agent saw: ${qcols.length} values per asset at ${tq.horizon} days</h3>
+            <div className="scroll"><table><thead><tr><th>Asset</th>${qcols.map((q) => html`<th key=${q} className="num">${q}</th>`)}</tr></thead>
+              <tbody>${Object.entries(tq.assets).map(([s, v]) => html`<tr key=${s}><td><b>${s}</b></td>
+                ${qcols.map((q) => html`<td key=${q} className="num">${q === "width_80" || q === "volatility" ? pct(v[q]) : spct(v[q])}</td>`)}</tr>`)}</tbody></table></div>
+          </${React.Fragment}>`}
+        </${React.Fragment}>`}
+      </section>`;
+  }
+
+  function Holdings({ a }) {
+    const scale = Math.max(0.25, ...a.holdings.map((h) => Math.max(h.final, h.rule)));
+    const cash = a.decision.cash;
+    const equity = a.runs[0].equity;
+    return html`
+      <section className="sec">
+        <header><h2>Target portfolio</h2><span className="aside">after the guardrails, at the last run</span></header>
+        ${a.holdings.map((h) => html`<div key=${h.symbol} className="hold" title=${h.rationale}>
+          <span className="sym">${h.symbol}</span>
+          <span className="bar"><i style=${{ width: (100 * h.final / scale) + "%", background: h.type === "stock" ? "var(--stock)" : "var(--etf)" }}></i>
+            <u style=${{ left: `calc(${100 * h.rule / scale}% - 1px)` }}></u></span>
+          <span className="num">${usd(h.value)}</span><span className="num">${pct(h.final)}</span>
+          <span className="num cf muted">${h.confidence != null ? h.confidence.toFixed(2) : ""}</span></div>`)}
+        <div className="hold"><span className="sym">Cash</span><span className="bar"><i style=${{ width: (100 * cash / scale) + "%", background: "var(--cash)" }}></i></span>
+          <span className="num">${usd(cash * equity)}</span><span className="num">${pct(cash)}</span><span className="cf"></span></div>
+        <div className="legend"><span><i className="sq etf"></i>ETF</span><span><i className="sq stock"></i>Stock</span><span><i className="sq cashc"></i>Cash</span>
+          <span><i className="tick"></i>Weight from the Timestral rule</span><span>last column: the LLM's stated confidence · hover a row for its reason</span></div>
+      </section>`;
+  }
+
+  function Orders({ a }) {
+    const [all, setAll] = useState(false);
+    const rows = all ? a.orders : a.orders.slice(0, 10);
+    const filled = a.orders.filter((o) => o.price != null);
+    return html`
+      <section className="sec">
+        <header><h2>Orders</h2><span className="aside">${a.orders.length} orders · ${filled.length} filled</span></header>
+        ${a.orders.length === 0 ? html`<p className="soft">No order sent yet.</p>` : html`
+          <div className="scroll"><table>
+            <thead><tr><th>Time</th><th>Asset</th><th>Side</th><th className="num">Shares</th><th className="num">Price</th><th className="num">Value</th><th className="num">Slippage</th><th>Status</th></tr></thead>
+            <tbody>${rows.map((o, i) => html`<tr key=${i}><td className="mono">${o.at ? when(o.at) : o.run_id}</td><td><b>${o.symbol}</b></td>
+              <td className=${o.side === "buy" ? "" : "warn"}>${o.side === "buy" ? "Buy" : "Sell"}</td>
+              <td className="num">${o.quantity.toFixed(2)}</td><td className="num">${o.price != null ? usd2(o.price) : ""}</td>
+              <td className="num">${o.value != null ? usd(o.value) : ""}</td>
+              <td className="num">${o.slippage_bps != null ? o.slippage_bps.toFixed(1) + " bps" : ""}</td>
+              <td className=${o.status === "filled" ? "muted" : "warn"}>${o.status === "sent" ? "sent, awaiting the broker" : o.status}</td></tr>`)}</tbody></table></div>
+          ${a.orders.length > 10 && html`<button className="more" onClick=${() => setAll(!all)}>${all ? "Show the latest 10" : `Show all ${a.orders.length}`}</button>`}
+          <p className="muted" style=${{ fontSize: 12 }}>Slippage against the reference price, in basis points: negative is better for us.</p>`}
+      </section>`;
+  }
+
+  function Runs({ a }) {
+    return html`
+      <section className="sec">
+        <header><h2>Every run</h2><a className="aside" href=${a.records}>all records</a></header>
+        <div className="scroll"><table>
+          <thead><tr><th>Run</th><th>Started</th><th>Decision</th><th>Execution</th><th className="num">Account</th><th className="num">Orders</th><th className="num">Corrections</th><th></th></tr></thead>
+          <tbody>${a.runs.map((r) => html`<tr key=${r.run_id}><td className="mono">${r.run_id}</td><td>${when(r.at)}</td>
+            <td><${Outcome} o=${r.outcome} /></td><td className="soft">${EXECUTION[r.execution] || r.execution}</td>
+            <td className="num">${usd(r.equity)}</td><td className="num">${r.orders}</td><td className="num">${r.corrections}</td>
+            <td><a href=${r.record}>record</a></td></tr>`)}</tbody></table></div>
+      </section>`;
+  }
+
+  function Live({ data, agent, setAgent }) {
+    const a = data.agents.find((x) => x.key === agent) || data.agents[0];
+    return html`
+      <${React.Fragment}>
+        <div className="agents">${data.agents.map((x) => html`<${AgentCard} key=${x.key} a=${x} selected=${x.key === a.key} onSelect=${() => setAgent(x.key)} />`)}</div>
+        <div className=${"switch c-" + a.key}>
+          <span className="label">Showing</span>
+          <span className="seg">${data.agents.map((x) => html`<button key=${x.key} className=${"c-" + x.key} aria-pressed=${x.key === a.key} onClick=${() => setAgent(x.key)}>${x.title}</button>`)}</span>
+          <span className="label">${a.summary}</span>
+        </div>
+        ${!a.started ? html`<p className="soft">This agent has not run yet.</p>` : html`<div className=${"c-" + a.key}>
+          <section className="sec"><header><h2>Account value</h2><span className="aside">read at every run and every hour of the US session</span></header>
+            <${ValueChart} series=${a.series} start=${a.start.equity} /></section>
+          <${Decision} a=${a} />
+          <${Forecast} a=${a} />
+          <${Holdings} a=${a} />
+          <${Orders} a=${a} />
+          <${Runs} a=${a} />
+        </div>`}
+      </${React.Fragment}>`;
+  }
+
+  // ------------------------------------------------------------------ how it works
+  function Diagram() {
+    const box = (x, y, title, sub, ts) => html`<g key=${title + x + y}>
+      <rect className=${ts ? "ts" : ""} x=${x} y=${y} width="128" height="52" />
+      <text x=${x + 64} y=${y + 22} textAnchor="middle" style=${{ fontWeight: 600 }}>${title}</text>
+      <text className="sm" x=${x + 64} y=${y + 39} textAnchor="middle">${sub}</text></g>`;
+    const arrow = (x, y) => html`<g key=${"a" + x + y}><line x1=${x} y1=${y} x2=${x + 30} y2=${y} />
+      <path className="head" d=${`M${x + 30} ${y - 4} L${x + 37} ${y} L${x + 30} ${y + 4} z`} /></g>`;
+    const cols = [8, 176, 344, 512, 680];
+    const row = (y, cls, label, items) => html`<g className=${cls} key=${cls}>
+      <text className="row" x="8" y=${y - 10}>${label}</text>
+      ${items.map((it, i) => box(cols[i], y, it[0], it[1], it[2]))}
+      ${[0, 1, 2, 3].map((i) => arrow(cols[i] + 130, y + 26))}</g>`;
+    return html`
+      <figure style=${{ margin: 0 }}>
+        <svg className="dg" viewBox="0 0 820 200" role="img"
+             aria-label="Tool agent: the LLM asks Timestral through tools, builds the portfolio, then guardrails and orders. Pipeline agent: Timestral forecasts every asset, a rule sets a baseline, the LLM adjusts it, then the same guardrails and orders.">
+          ${row(28, "c-tools", "Tool agent: the LLM asks Timestral, then builds", [
+            ["LLM", "asks, up to 12 calls"], ["Timestral tools", "forecast, evaluate", true],
+            ["LLM", "builds the portfolio"], ["Guardrails", "same limits"], ["Orders", "Alpaca paper"]])}
+          ${row(132, "c-pipeline", "Pipeline agent: Timestral first, the LLM adjusts", [
+            ["Timestral", "forecasts 15 assets", true], ["Rule", "weight ∝ 1 / spread"],
+            ["LLM", "adjusts, max +15 pts"], ["Guardrails", "correct or reject"], ["Orders", "Alpaca paper"]])}
+        </svg>
+        <figcaption className="muted" style=${{ fontSize: 12 }}>Shaded: Timestral. Both agents run the same assets, data, guardrails and order code on their own paper account; only the way Timestral and the LLM are chained differs.</figcaption>
+      </figure>`;
+  }
+
+  function Measures({ data }) {
+    const agents = data.agents;
+    return html`<div className="scroll"><table>
+      <thead><tr><th></th>${agents.map((a) => html`<th key=${a.key} className=${"num c-" + a.key}>${a.title}</th>`)}</tr></thead>
+      <tbody>${data.measure_rows.map((r) => html`<${React.Fragment} key=${r.key}>
+        ${r.group && html`<tr className="grp"><td colSpan=${agents.length + 1}>${r.group}</td></tr>`}
+        <tr><td>${r.label}</td>${agents.map((a) => html`<td key=${a.key} className="num">${a.measures[r.key] || "n/a"}</td>`)}</tr>
+      </${React.Fragment}>`)}</tbody></table></div>`;
+  }
+
+  function Behaviour({ b }) {
+    const cell = (c) => c == null ? html`<span className="muted">not run</span>`
+      : html`<span className=${c[0] === c[1] ? "" : "warn"}>${c[0]}/${c[1]}</span>`;
+    return html`
+      <div className="scroll"><table>
+        <thead><tr><th>Situation</th><th>What a sound decision does</th><th className="num c-tools">Tool agent</th><th className="num c-pipeline">Pipeline agent</th></tr></thead>
+        <tbody>${b.scenarios.map((s) => html`<tr key=${s.title}><td><b>${s.title}</b></td><td className="soft">${s.expectation}</td>
+          <td className="num">${cell(s.tools)}</td><td className="num">${cell(s.pipeline)}</td></tr>`)}</tbody></table></div>
+      <p className="muted" style=${{ fontSize: 12 }}>Passes out of repeats. The tool agent was repeated more on the scenarios its prompt was tuned on, so the bases differ.
+        ${Object.entries(b.stability).map(([k, s]) => ` ${k === "tools" ? "Tool" : "Pipeline"} agent: the same question ${s.calls} times, answers differ by at most ${pct(s.max_difference, 0)} of the portfolio.`).join("")}</p>`;
+  }
+
+  function Covariates({ c }) {
+    const label = { prices: "Prices only", news: "News sentiment", events: "Company events", "news+events": "News and events" };
+    const row = (v) => {
+      const st = c.summary.find((s) => s.variant === v && s.kind === "stock");
+      const et = c.summary.find((s) => s.variant === v && s.kind === "etf");
+      const ps = c.paired.find((p) => p.variant === v && p.kind === "stock");
+      const pe = c.paired.find((p) => p.variant === v && p.kind === "etf");
+      return html`<tr key=${v}><td>${label[v]}</td><td className="num">${pct(st.coverage_80)}</td><td className="num">${pct(et.coverage_80)}</td>
+        <td className="num">${ps ? `${spct(ps.relative, 2)} (${spct(ps.ci95[0] / st.pinball, 2)} to ${spct(ps.ci95[1] / st.pinball, 2)})` : "reference"}</td>
+        <td className="num">${pe ? spct(pe.relative, 2) : "reference"}</td>
+        <td>${v === "prices" ? "" : c.verdicts[v] === "no" ? "no gain" : c.verdicts[v] + " gain"}</td></tr>`;
+    };
+    return html`
+      <p className="note"><b>Tried, not adopted.</b> ${c.model} forecast ${c.stocks} stocks and ${c.etfs} ETFs on ${c.origins} past days
+        (${c.first} to ${c.last}, ${c.horizon} days ahead), with and without news covariates. The ETFs are the control: no company news.
+        The rule was written before the results: lower error on stocks, calibration kept, control unharmed.</p>
+      <div className="scroll"><table>
+        <thead><tr><th>Forecast built from</th><th className="num">80% interval hit, stocks</th><th className="num">ETFs</th><th className="num">Error vs prices only, stocks (95% range)</th><th className="num">ETFs (control)</th><th>Verdict</th></tr></thead>
+        <tbody>${["prices", "news", "events", "news+events"].map(row)}</tbody></table></div>
+      <p className="muted" style=${{ fontSize: 12 }}>Negative error figures are worse. The covariates change the forecasts, but the changes cancel out; the slightly better
+        interval hit comes from intervals 2 to 3.5% wider for stocks and ETFs alike, not from the news. Limits: one six-month period, 55 earnings
+        releases, one sentiment score per article. Not tested yet: known-in-advance calendars and market variables such as volatility.</p>`;
+  }
+
+  function How({ data }) {
+    const withReplay = data.agents.filter((a) => a.replay);
+    const live = data.agents.filter((a) => a.started && (a.calibration.length || a.risk_calibration.length));
+    return html`
+      <${React.Fragment}>
+        <section className="sec"><header><h2>The idea</h2></header>
+          <p className="note">Timestral, Mistral's time-series model, forecasts a distribution of returns for 15 assets. It turned out
+            well calibrated on risk but without a reliable sense of direction, so it is used as a <b>risk engine</b>: how wide its
+            interval is decides how much an asset can weigh. A Mistral LLM reads those forecasts with the portfolio and the market
+            context and proposes a portfolio. Deterministic guardrails then correct or reject the proposal before any order.
+            Two agents test two ways of combining Timestral and the LLM, each on its own paper account.</p>
+          <${Diagram} />
+        </section>
+        <section className="sec"><header><h2>Inputs</h2></header>
+          <dl className="inputs">${data.inputs.map((r) => html`<${React.Fragment} key=${r.label}><dt>${r.label}</dt>
+            <dd>${r.items.map((i) => html`<span key=${i}>${i}</span>`)}</dd></${React.Fragment}>`)}</dl>
+        </section>
+        <section className="sec"><header><h2>What the LLM cannot override</h2><span className="aside">deterministic code, outside the LLM</span></header>
+          <ul className="rules">${data.rules.map((r) => html`<li key=${r.title}><b>${r.title}</b><span>${r.text}</span></li>`)}</ul>
+        </section>
+        <section className="sec"><header><h2>The two agents side by side</h2><span className="aside">live runs so far, behaviour tests, 63-session replay</span></header>
+          <${Measures} data=${data} />
+        </section>
+        ${data.behaviour && html`<section className="sec"><header><h2>Behaviour tests</h2><span className="aside">situations built on purpose, each repeated</span></header>
+          <${Behaviour} b=${data.behaviour} /></section>`}
+        ${withReplay.length > 0 && html`<section className="sec"><header><h2>Tested on the past</h2><span className="aside">one decision a day, point-in-time data, renamed assets and shifted dates</span></header>
+          <p className="note">The LLM could have remembered what happened on real dates, so assets were renamed and dates shifted;
+            fills at the next open, with costs. A falling market and ${withReplay[0].replay.sessions} sessions: read it as a check of behaviour, not of skill.</p>
+          ${withReplay.map((a) => html`<div key=${a.key} className=${"c-" + a.key}>
+            <h3 style=${{ color: "var(--c)" }}>${a.title} · ${a.replay.first} to ${a.replay.last}</h3>
+            <${ReplayChart} replay=${a.replay} />
+            <div className="scroll"><table><thead><tr><th>Question</th><th className="num">Difference since the start</th><th>Can we tell?</th></tr></thead>
+              <tbody>${a.replay.comparisons.map((c) => html`<tr key=${c.label}><td>${c.label}</td><td className="num">${pts(c.difference, 2)}</td>
+                <td className="soft">${c.conclusive ? "yes: the 95% interval excludes zero" : c.measured ? "no: not distinguishable from zero" : "too early"}</td></tr>`)}</tbody></table></div>
+            <p className="muted" style=${{ fontSize: 12 }}><a href=${a.replay.readme}>Full replay report</a></p></div>`)}
+        </section>`}
+        ${(live.length > 0 || withReplay.length > 0) && html`<section className="sec"><header><h2>Is Timestral's risk right?</h2><span className="aside">target: 80% of outcomes inside the 80% interval</span></header>
+          <div className="scroll"><table><thead><tr><th>Agent</th><th>Source</th><th className="num">Horizon</th><th className="num">Forecasts</th><th className="num">Inside 80%</th><th className="num">Realised / predicted</th></tr></thead>
+            <tbody>${data.agents.flatMap((a) => [
+              ...(a.replay ? a.replay.risk_calibration.map((r) => ({ a, src: "replay, portfolio", h: r.horizon, n: r.n, inside: r.inside_80, ratio: r.rms_z })) : []),
+              ...((a.started ? a.calibration : []).map((r) => ({ a, src: "live, per asset", h: r.horizon, n: r.n, inside: r.inside_80, ratio: null }))),
+            ]).map((r, i) => html`<tr key=${i}><td className=${"c-" + r.a.key} style=${{ color: "var(--c)" }}>${r.a.title}</td><td>${r.src}</td>
+              <td className="num">${r.h}d</td><td className="num">${r.n}</td><td className="num">${pct(r.inside, 0)}</td><td className="num">${r.ratio != null ? r.ratio.toFixed(2) : ""}</td></tr>`)}</tbody></table></div>
+          <p className="muted" style=${{ fontSize: 12 }}>A ratio above 1 means the risk was underestimated. Early live figures rest on few, correlated forecasts.</p>
+        </section>`}
+        ${data.covariates && html`<section className="sec"><header><h2>Do news help the forecast?</h2></header><${Covariates} c=${data.covariates} /></section>`}
+        <section className="sec"><header><h2>Records and documents</h2></header>
+          <dl className="kv">
+            <dt>Audit log</dt><dd><a href=${data.links.audit_log}>every run, prompt, reasoning trace and order, immutable</a></dd>
+            <dt>Decisions</dt><dd><a href=${data.links.decisions}>design decisions with the options considered</a></dd>
+            <dt>Code</dt><dd><a href=${data.repo}>repository</a></dd>
+            ${data.links.tables.length > 0 && html`<dt>Tables (CSV)</dt><dd>${data.links.tables.map((t, i) => html`<${React.Fragment} key=${t}>${i ? " · " : ""}<a href=${t}>${t.replace("data/", "")}</a></${React.Fragment}>`)}</dd>`}
+            <dt>Plain page</dt><dd><a href=${data.links.classic}>the same records without JavaScript</a></dd>
+          </dl>
+        </section>
+      </${React.Fragment}>`;
+  }
+
+  // ------------------------------------------------------------------ try it
+  function Try({ data }) {
+    const s = data.simulations;
+    const [opts, setOpts] = useState(() => Object.fromEntries(s.choices.map((c) => [c.key, c.options[0].value])));
+    const body = s.choices.map((c) => `${c.key}: ${opts[c.key]}`).join("\n") + "\n\n" + s.body;
+    const url = `${s.issue_url}?title=${encodeURIComponent(s.title)}&body=${encodeURIComponent(body)}`;
+    return html`
+      <${React.Fragment}>
+        <section className="sec"><header><h2>Make an agent decide now</h2></header>
+          <p className="callout"><b>No order is ever sent.</b> The agent runs on today's live data with the options you choose, and
+            its decision, reasoning and planned orders are posted back. About 6 minutes. You need a GitHub account: the button opens a
+            pre-filled issue, which is what starts the run.</p>
+          <div className="form">
+            ${s.choices.map((c) => html`<label key=${c.key}>${c.label}
+              <select value=${opts[c.key]} onChange=${(e) => setOpts({ ...opts, [c.key]: e.target.value })}>
+                ${c.options.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select></label>`)}
+            <a className="btn" href=${url} target="_blank" rel="noopener">Request a simulation</a>
+          </div>
+          <p className="muted" style=${{ fontSize: 12 }}>Cautious keeps 30% in cash and small positions; bold allows larger positions, never leverage.
+            At most one simulation a minute and 20 a day. Only these three choices are read from the issue.</p>
+        </section>
+        <section className="sec"><header><h2>Recent simulations</h2></header>
+          ${s.recent.length === 0 ? html`<p className="soft">None yet.</p>` : s.recent.map((r) => html`<details key=${r.run_id} className="run">
+            <summary><span className="mono">${r.run_id}</span> · ${r.requested_by} · <${Outcome} o=${r.outcome} /> · ${r.orders} order(s) planned, none sent</summary>
+            <p>${r.analysis || "No parsable analysis."}</p><p><a href=${r.record}>full record</a></p></details>`)}
+        </section>
+      </${React.Fragment}>`;
+  }
+
+  // ------------------------------------------------------------------ app
+  const readTab = () => { const t = (location.hash || "").slice(1); return TABS.some((x) => x[0] === t) ? t : "live"; };
+
+  function App() {
+    const [data, setData] = useState(null);
+    const [error, setError] = useState(null);
+    const [tab, setTab] = useState(readTab);
+    const [agent, setAgent] = useState(null);
+    useEffect(() => {
+      fetch("data.json", { cache: "no-store" })
+        .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then((d) => { setData(d); const first = d.agents.find((a) => a.started) || d.agents[0]; setAgent(first && first.key); })
+        .catch((e) => setError(String(e)));
+      const onHash = () => setTab(readTab());
+      window.addEventListener("hashchange", onHash);
+      return () => window.removeEventListener("hashchange", onHash);
+    }, []);
+    const go = (t) => { history.replaceState(null, "", "#" + t); setTab(t); window.scrollTo(0, 0); };
+    if (error) return html`<p className="boot">The records could not be loaded (${error}). Try the <a href="classic.html">plain page</a>.</p>`;
+    if (!data) return html`<p className="boot">Loading the agent's records…</p>`;
+    return html`
+      <${React.Fragment}>
+        <div className="top"><div className="wrap">
+          <div className="brand"><h1>Timestral Trading Agent</h1>
+            <span className="meta"><span>paper money only</span><span>updated ${when(data.generated_at)}</span><a href=${data.links.audit_log}>audit log</a><a href=${data.repo}>code</a></span></div>
+          <p className="lede">An autonomous agent trading two paper accounts on US ETFs and stocks. Timestral forecasts the risk, a Mistral LLM
+            decides, deterministic guardrails bound every decision before it reaches the broker.</p>
+        </div></div>
+        <main className="wrap">
+          <nav className="guide" role="tablist" aria-label="Sections">
+            ${TABS.map(([k, t, d], i) => html`<button key=${k} role="tab" aria-selected=${tab === k} onClick=${() => go(k)}><b><span className="k">${i + 1}</span>${t}</b><span>${d}</span></button>`)}
+          </nav>
+          ${tab === "live" && html`<${Live} data=${data} agent=${agent} setAgent=${setAgent} />`}
+          ${tab === "how" && html`<${How} data=${data} />`}
+          ${tab === "try" && html`<${Try} data=${data} />`}
+          <footer className="foot"><span>Generated ${when(data.generated_at)} from the audit log.</span><span>Paper trading, not financial advice.</span>
+            <a href=${data.links.decisions}>design decisions</a><a href=${data.links.classic}>plain page</a></footer>
+        </main>
+      </${React.Fragment}>`;
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+})();
