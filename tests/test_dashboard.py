@@ -56,7 +56,7 @@ def test_a_single_dry_run_shows_every_section(tmp_path: Path) -> None:
         "Timestral forecasts, 5-day cumulative return",
         "History of runs",
         "Executions and slippage",
-        "Account value per run",
+        "Account value over time",
         "No orders have been reconciled yet",
         "dry run",
         "accepted",
@@ -930,3 +930,25 @@ def test_a_page_with_only_the_tool_agent_still_lists_simulations(tmp_path: Path)
     assert "0/1" in html  # the one decision was a fallback hold: 0 accepted out of 1
     empty = render([], [], STAMP, tool_agent=AgentView("tools", "Tool agent", "", [], [], [], None))
     assert "No runs yet" in empty
+
+
+def test_the_account_value_follows_the_samples_taken_between_runs(tmp_path: Path) -> None:
+    audit, site = tmp_path / "audit", tmp_path / "site"
+    store = FileAuditStore(audit)
+    cycle(audit)
+    first = chronological(store.read_runs())[0]
+    start = first["account"]["equity"]
+    day = first["started_at"][:10]
+    store.write_valuation("early", {"at": f"{day}T00:05:00+00:00", "equity": 1.0})  # before the run
+    store.write_valuation("a", {"at": f"{day}T20:10:00+00:00", "equity": start + 1234.5})
+    store.write_valuation("b", {"at": f"{day}T21:10:00+00:00", "equity": start + 2000.0})
+    html = build(audit, site, STAMP).read_text(encoding="utf-8")
+    assert f"${start + 2000:,.0f}" in html  # the hero and the card show the latest sample
+    assert "latest sample, " in html
+    assert "account sample" in html and "Account value over time" in html
+    assert "$1 " not in html and "$1.00" not in html  # the sample before the first run is left out
+    assert "sampled every hour of the US session" in html
+    # Without samples the figures come from the latest run, as before.
+    cycle(tmp_path / "audit2")
+    plain = build(tmp_path / "audit2", tmp_path / "site2", STAMP)
+    assert "account sample" not in plain.read_text(encoding="utf-8")
