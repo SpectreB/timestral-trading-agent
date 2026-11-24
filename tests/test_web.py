@@ -245,7 +245,8 @@ def test_the_cost_of_a_decision_is_measured_in_tokens(tmp_path: Path) -> None:
     assert _cost([run]) == {
         "tokens": "12k (10k in, 2k out)",
         "usd": "$0.011",
-    }  # 10k x 0.7 + 2k x 2.1
+        "usd_month": "$0.47",
+    }  # 10k x $0.7 + 2k x $2.1 per million; then x 2 runs x 21 sessions
 
 
 def test_the_side_by_side_does_not_repeat_the_other_checks(tmp_path: Path) -> None:
