@@ -49,6 +49,7 @@
     ["live", "Live", "What the two agents hold, what they decided and why, and Timestral's raw forecast behind it."],
     ["how", "How it works", "The design, the guardrails, and the evidence that the decisions are sound."],
     ["try", "Try it", "Ask an agent to decide now on live data. No order is ever sent."],
+    ["lexicon", "Lexicon", "The words used on this page, one line each."],
   ];
 
   const Outcome = ({ o }) => {
@@ -587,14 +588,28 @@
       </figure>`;
   }
 
+  /* The side-by-side measures. Each name opens what it measures and how to read it, on hover,
+     keyboard focus or a tap. */
   function Measures({ data }) {
     const agents = data.agents;
-    return html`<div className="scroll"><table>
+    const [tip, setTip] = useState(null); // { key, top }
+    const show = (k) => (e) => setTip({ key: k, top: under(e) });
+    const hide = () => setTip(null);
+    const row = tip && data.measure_rows.find((r) => r.key === tip.key);
+    return html`<${React.Fragment}><div className="scroll"><table>
       <thead><tr><th></th>${agents.map((a) => html`<th key=${a.key} className=${"num c-" + a.key}><${AgentIcon} k=${a.key} size=${14} />${a.title}</th>`)}</tr></thead>
       <tbody>${data.measure_rows.map((r) => html`<${React.Fragment} key=${r.key}>
         ${r.group && html`<tr className="grp"><td colSpan=${agents.length + 1}>${r.group}</td></tr>`}
-        <tr><td>${r.key === "calls" ? html`<${Timestral} size=${13} />` : ""}${r.label}</td>${agents.map((a) => html`<td key=${a.key} className="num">${a.measures[r.key] || "n/a"}</td>`)}</tr>
-      </${React.Fragment}>`)}</tbody></table></div>`;
+        <tr className=${"rowtip" + (tip && tip.key === r.key ? " on" : "")} tabIndex=${r.help ? 0 : undefined}
+            onMouseEnter=${r.help ? show(r.key) : undefined} onMouseLeave=${hide} onFocus=${r.help ? show(r.key) : undefined} onBlur=${hide}
+            onClick=${r.help ? (e) => (tip && tip.key === r.key ? hide() : show(r.key)(e)) : undefined}>
+          <td><span className=${r.help ? "term" : ""}>${r.key === "calls" ? html`<${Timestral} size=${13} />` : ""}${r.label}</span></td>
+          ${agents.map((a) => html`<td key=${a.key} className="num">${a.measures[r.key] || "n/a"}</td>`)}</tr>
+      </${React.Fragment}>`)}</tbody></table></div>
+      ${row && html`<div role="tooltip" className="tipbox" style=${{ top: tip.top + 4, left: 0 }}>
+        <div className="tiphead"><b>${row.label}</b></div><p className="plain">${row.help}</p></div>`}
+      <div className="legend"><span className="muted">hover or tap a measure for what it means and how to read it</span></div>
+    </${React.Fragment}>`;
   }
 
   function Behaviour({ b }) {
@@ -655,7 +670,7 @@
         <section className="sec"><header><h2><${Glyph} d=${SHIELD} size=${16} />What the LLM cannot override</h2><span className="aside">deterministic code, outside the LLM</span></header>
           <ul className="rules">${data.rules.map((r) => html`<li key=${r.title}><b>${r.title}</b><span>${r.text}</span></li>`)}</ul>
         </section>
-        <section className="sec"><header><h2>The two agents side by side</h2><span className="aside">live runs so far, behaviour tests, 63-session replay</span></header>
+        <section className="sec tipped"><header><h2>The two agents side by side</h2><span className="aside">live runs so far, behaviour tests, 63-session replay</span></header>
           <${Measures} data=${data} />
         </section>
         ${data.behaviour && html`<section className="sec"><header><h2><${Glyph} d=${FLASK} size=${16} />Behaviour tests</h2><span className="aside">situations built on purpose, each repeated</span></header>
@@ -687,9 +702,6 @@
             <h3>${t}</h3>
             <ul>${data.next.filter((n) => n.status === k).map((n) => html`<li key=${n.id + n.title}><b><span className="mono muted">${n.id}</span> ${n.title}</b><span>${n.text}</span></li>`)}</ul></div>`)}</div>
         </section>`}
-        <section className="sec"><header><h2>Lexicon</h2><span className="aside">the words used on this page</span></header>
-          <dl className="lexicon">${LEXICON.map(([t, d]) => html`<${React.Fragment} key=${t}><dt>${t}</dt><dd>${d}</dd></${React.Fragment}>`)}</dl>
-        </section>
         <section className="sec"><header><h2>Records and documents</h2></header>
           <dl className="kv">
             <dt>Audit log</dt><dd><a href=${data.links.audit_log}>every run, prompt, reasoning trace and order, immutable</a></dd>
@@ -700,6 +712,12 @@
           </dl>
         </section>
       </${React.Fragment}>`;
+  }
+
+  function Lexicon() {
+    return html`<section className="sec"><header><h2>Lexicon</h2><span className="aside">the words used on this page</span></header>
+      <dl className="lexicon">${LEXICON.map(([t, d]) => html`<${React.Fragment} key=${t}><dt>${t}</dt><dd>${d}</dd></${React.Fragment}>`)}</dl>
+    </section>`;
   }
 
   // ------------------------------------------------------------------ try it
@@ -790,6 +808,7 @@
           ${tab === "live" && html`<${Live} data=${data} agent=${agent} setAgent=${setAgent} />`}
           ${tab === "how" && html`<${How} data=${data} />`}
           ${tab === "try" && html`<${Try} data=${data} />`}
+          ${tab === "lexicon" && html`<${Lexicon} />`}
           </div>
           <footer className="foot"><span>Generated ${when(data.generated_at)} from the audit log.</span><span>Paper trading, not financial advice.</span>
             <a href=${data.links.decisions}>design decisions</a><a href=${data.links.classic}>plain page</a></footer>

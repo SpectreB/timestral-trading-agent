@@ -521,6 +521,31 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
     }
 
 
+# What each measure of the side-by-side table means and how to read it, keyed as in
+# agent.dashboard._measures. Shown on demand next to the measure's name.
+MEASURE_HELP: dict[str, str] = {
+    "calls": "How often the LLM queried Timestral before deciding. The pipeline agent runs "
+    "Timestral once, always.",
+    "accepted": "Runs whose decision the guardrails accepted without any correction.",
+    "corrections": "Guardrail corrections per run, on average. 0: the LLM stayed within every "
+    "limit.",
+    "traded": "Points of the portfolio changed per run (sum of the weight changes), median. "
+    "Lower is calmer.",
+    "away": "Distance from the final portfolio to the Timestral rule, in points (sum of the "
+    "differences), median. 0 is the rule itself.",
+    "risk": "Forecast volatility of the final portfolio divided by the rule's. 1.00x: as much risk "
+    "as the rule; below: less.",
+    "invested": "Share of the account in assets rather than cash, on average.",
+    "filled": "Orders the broker executed, out of the orders sent.",
+    "slippage": "Fill price against the reference price, in basis points. Negative is better.",
+    "tests": "Behaviour scenarios passed, out of their repeats (see Behaviour tests).",
+    "past_return": "Return of the simulated account over the replayed sessions, costs included.",
+    "past_vol": "Volatility of the daily returns in the replay, annualised.",
+    "past_dd": "Largest fall from a peak in the replay.",
+    "past_cov": "Share of 5-day portfolio outcomes inside Timestral's 80% risk interval. "
+    "Target: 80%.",
+}
+
 # What is running, what comes next and what was deliberately left for later. Written by hand:
 # keep it in step with docs/roadmap.md, every item with its identifier and title.
 WHATS_NEXT: tuple[dict[str, str], ...] = (
@@ -590,7 +615,10 @@ def site_data(
             "classic": "classic.html",
         },
         "agents": [agent_data(a, evals, now, repo) for a in agents],
-        "measure_rows": [{"group": g, "key": k, "label": lbl} for g, k, lbl in _MEASURE_ROWS],
+        "measure_rows": [
+            {"group": g, "key": k, "label": lbl, "help": MEASURE_HELP.get(k, "")}
+            for g, k, lbl in _MEASURE_ROWS
+        ],
         "min_sessions_for_ci": MIN_SESSIONS_FOR_CI,
         "rules": _rules(),
         "drawdown_levels": [
