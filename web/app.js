@@ -47,10 +47,11 @@
   };
   const TABS = [
     ["live", "Live", "What the two agents hold, what they decided and why, and Timestral's raw forecast behind it."],
-    ["how", "How it works", "The design, the guardrails, and the evidence that the decisions are sound."],
-    ["try", "Try it", "Ask an agent to decide now on live data. No order is ever sent."],
-    ["lexicon", "Lexicon", "The words used on this page, one line each."],
+    ["how", "How it works", "Timestral, the LLM and the guardrails: who does what."],
+    ["evidence", "Evidence", "How we know the decisions are sound: tests, replay, calibration."],
+    ["try", "Try it", "Make an agent decide now, on live data. No order is sent."],
   ];
+  const ROUTES = [...TABS.map((t) => t[0]), "lexicon"];
 
   const Outcome = ({ o }) => {
     const [label, kind] = OUTCOME[o] || [o, ""];
@@ -130,6 +131,8 @@
   const CHART = "M3 20h18M5 16l4-5 4 3 6-8";
   const GRID = "M3 5h18v14H3zM3 10h18M3 15h18M9 5v14";
   const BRACES = "M8 4c-2 0-2 1.5-2 3v2c0 1.5-1 2-2 2 1 0 2 .5 2 2v3c0 1.5 0 3 2 3M16 4c2 0 2 1.5 2 3v2c0 1.5 1 2 2 2-1 0-2 .5-2 2v3c0 1.5 0 3-2 3";
+  const BOOK = "M4 5h6a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H4zM20 5h-6a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h7z";
+  const PLAY = "M7 4l13 8-13 8z";
   const SHIELD = "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4";
   const FLASK = "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3M7.5 15h9";
   const REWIND = "M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5M12 7v5l3 2";
@@ -377,6 +380,18 @@
     const f = a.forecast;
     const tip = useTip();
     const [view, setView] = useState("fans");
+    const [shown, setShown] = useState(false);
+    const hi = f.assets[0], lo = f.assets[f.assets.length - 1];
+    const spreadAt = (x) => x.horizons[x.horizons.length - 1].spread;
+    if (!shown) return html`
+      <section className="sec">
+        <header><h2><${Timestral} />Timestral's forecast behind it</h2><span className="aside">${f.model.split("/").pop()} · closes to ${f.last_close}</span></header>
+        <p className="facts"><span>${f.assets.length} assets</span>
+          <span>widest spread <b>${hi.symbol} ${pct(spreadAt(hi))}</b>, rule weight ${pct(hi.rule_weight)}</span>
+          <span>narrowest <b>${lo.symbol} ${pct(spreadAt(lo))}</b>, rule weight ${pct(lo.rule_weight)}</span></p>
+        <button className="reveal" aria-expanded="false" onClick=${() => setShown(true)}>
+          <span><b>Show Timestral's forecast</b> · per asset: chart, numbers and raw output</span></button>
+      </section>`;
     const bound = useMemo(() => {
       const m = Math.max(...f.assets.flatMap((x) => x.horizons.map((h) => Math.max(Math.abs(h.q10), Math.abs(h.q90)))));
       return Math.ceil(m * 20) / 20;
@@ -388,6 +403,7 @@
     return html`
       <section className="sec tipped">
         <header><h2><${Timestral} />Timestral's forecast behind it</h2>
+          <button className="more" aria-expanded="true" onClick=${() => setShown(false)}>Hide</button>
           <span className="views" role="group" aria-label="View">
             ${[["fans", "Chart", CHART], ["table", "Numbers", GRID], ["raw", "Raw output", BRACES]].map(([k, t, d]) =>
               html`<button key=${k} aria-pressed=${view === k} onClick=${() => setView(k)}><${Glyph} d=${d} size=${13} />${t}</button>`)}
@@ -474,6 +490,17 @@
      on hover, keyboard focus or a tap. */
   function Orders({ a }) {
     const [all, setAll] = useState(false);
+    const [shown, setShown] = useState(false);
+    const done = a.orders.filter((x) => x.slippage_bps != null);
+    const slip = done.length ? done.reduce((t, x) => t + x.slippage_bps, 0) / done.length : null;
+    if (!shown) return html`
+      <section className="sec">
+        <header><h2>Orders</h2></header>
+        <p className="facts"><span><b>${a.orders.length}</b> orders</span><span><b>${a.orders.filter((x) => x.price != null).length}</b> filled</span>
+          ${slip != null && html`<span>average slippage <b>${slip.toFixed(1)} bps</b></span>`}</p>
+        ${a.orders.length > 0 && html`<button className="reveal" aria-expanded="false" onClick=${() => setShown(true)}>
+          <span><b>Show the orders</b> · time, asset, value, status; prices on hover</span></button>`}
+      </section>`;
     const [tip, setTip] = useState(null); // { i, top }
     const rows = all ? a.orders : a.orders.slice(0, 10);
     const filled = a.orders.filter((o) => o.price != null);
@@ -483,7 +510,7 @@
     const amount = (x) => (x.value != null ? usd(x.value) : x.reference_price != null ? "≈ " + usd(x.quantity * x.reference_price) : "");
     return html`
       <section className="sec tipped">
-        <header><h2>Orders</h2><span className="aside">${a.orders.length} orders · ${filled.length} filled</span></header>
+        <header><h2>Orders</h2><button className="more" aria-expanded="true" onClick=${() => setShown(false)}>Hide</button></header>
         ${a.orders.length === 0 ? html`<p className="soft">No order sent yet.</p>` : html`
           <div className="scroll"><table>
             <thead><tr><th>Time</th><th>Asset</th><th>Side</th><th className="num">Value</th><th>Status</th></tr></thead>
@@ -524,12 +551,20 @@
       </section>`;
   }
 
-  function Live({ data, agent, setAgent }) {
+  function TryCta({ go }) {
+    return html`<a className="cta" href="#try" onClick=${(e) => { e.preventDefault(); go("try"); }}>
+      <span className="cta-mark"><${Glyph} d=${PLAY} size=${14} /></span>
+      <span><b>Try it: make an agent decide now</b><span className="soft"> · live data, your choice of agent, stance and start · no order is sent</span></span>
+      <span className="cta-go">Choose →</span></a>`;
+  }
+
+  function Live({ data, agent, setAgent, go }) {
     const a = data.agents.find((x) => x.key === agent) || data.agents[0];
     return html`
       <${React.Fragment}>
         <p className="question">Two agents, one question: <b>should the LLM drive Timestral, or adjust what Timestral proposes?</b></p>
         <div className="agents">${data.agents.map((x) => html`<${AgentCard} key=${x.key} a=${x} selected=${x.key === a.key} onSelect=${() => setAgent(x.key)} />`)}</div>
+        <${TryCta} go=${go} />
         <p className="same">Same for both: <span>data</span><span>15 assets</span><span>guardrails</span><span>order code</span><span>own paper account</span></p>
         <${BothValues} agents=${data.agents} />
         <div className=${"switch c-" + a.key}>
@@ -579,14 +614,16 @@
 
   /* The two agents as two flows. Two different loops: only the tool agent decides to call
      Timestral again or stop; both agents get one retry when the guardrails reject the answer. */
-  function Diagram() {
+  function Diagram({ repo }) {
     const tip = useTip();
+    const openCode = (title) => () => window.open(`${repo}/blob/main/${STEP_HELP[title][1].split(" · ")[0]}`, "_blank", "noopener");
     const W = 136, H = 52;
     const cols = [8, 186, 364, 542, 720];
     const mid = (i) => cols[i] + W / 2;
     const box = (i, y, title, sub, opts = {}) => html`<g key=${title + i + y} className=${"step" + (tip.active === title + y ? " on" : "")}
       ...${tip.on(title + y, html`<div className="tiphead"><b>${title}</b></div><p className="plain">${STEP_HELP[title][0]}</p>
-        <p className="mono muted">${STEP_HELP[title][1]}</p>`)}>
+        <p className="mono muted">${STEP_HELP[title][1]}</p><p className="plain hint">Click to open the code on GitHub.</p>`)}
+      onClick=${openCode(title)} onKeyDown=${key(openCode(title))}>
       <rect className=${opts.ts ? "bx ts" : "bx"} x=${cols[i]} y=${y} width=${W} height=${opts.h || H} />
       ${opts.ts && html`<${Timestral} size=${12} x=${cols[i] + 6} y=${y + 6} />`}
       ${opts.llm && html`<${Chonk} size=${12} x=${cols[i] + 6} y=${y + 6} />`}
@@ -636,7 +673,7 @@
           </g>
         </svg>
         ${tip.box}
-        <div className="legend"><span className="muted">hover or tap a step for what it does and where its code is</span></div>
+        <div className="legend"><span className="muted">hover a step for what it does; click it to open its code on GitHub</span></div>
       </figure>`;
   }
 
@@ -701,10 +738,8 @@
         sentiment score per article. Not tested yet: known-in-advance calendars, market variables such as volatility.</${Fold}>`;
   }
 
-  function How({ data }) {
+  function How({ data, go }) {
     const inTip = useTip();
-    const withReplay = data.agents.filter((a) => a.replay);
-    const live = data.agents.filter((a) => a.started && (a.calibration.length || a.risk_calibration.length));
     return html`
       <${React.Fragment}>
         <section className="sec tipped"><header><h2>The idea</h2></header>
@@ -713,46 +748,19 @@
             it is used as a risk engine: how wide its interval is decides how much an asset can weigh. The LLM reads those forecasts
             with the portfolio and the market context and proposes a portfolio; the guardrails correct or reject it before any order.
             Two agents test two ways of combining Timestral and the LLM, each on its own paper account.</${Fold}>
-          <${Diagram} />
+          <${Diagram} repo=${data.repo} />
         </section>
         <section className="sec tipped"><header><h2>Inputs</h2></header>
           <dl className="inputs">${data.inputs.map((r) => html`<${React.Fragment} key=${r.label}><dt>${r.label === "Forecast" ? html`<${Timestral} size=${13} />` : r.label === "Decision" ? html`<${Chonk} size=${13} />` : ""}${r.label}</dt>
             <dd>${r.items.map((i) => html`<span key=${i.text} className=${"kw" + (inTip.active === i.text ? " on" : "")}
               ...${inTip.on(i.text, html`<div className="tiphead"><b>${i.text}</b></div><p className="plain">${i.help}</p>`)}>${i.text}</span>`)}</dd></${React.Fragment}>`)}</dl>
           ${inTip.box}
-          <div className="legend"><span className="muted">hover or tap a keyword for what it means</span></div>
+          <div className="legend"><span className="muted">hover or tap a keyword for what it means</span>
+            ${data.covariates && html`<span>The news covariate trial: <a href="#evidence" onClick=${(e) => { e.preventDefault(); go("evidence"); }}>Evidence</a></span>`}</div>
         </section>
-        ${data.covariates && html`<section className="sec"><header><h2><${Glyph} d=${NEWS} size=${16} />News as covariates: do they help Timestral?</h2><span className="aside">the brief's bonus, measured</span></header><${Covariates} c=${data.covariates} /></section>`}
         <section className="sec"><header><h2><${Glyph} d=${SHIELD} size=${16} />What the LLM cannot override</h2><span className="aside">deterministic code, outside the LLM</span></header>
           <ul className="rules">${data.rules.map((r) => html`<li key=${r.title}><b>${r.title}</b><span>${r.text}</span></li>`)}</ul>
         </section>
-        <section className="sec tipped"><header><h2>The two agents side by side</h2><span className="aside">live runs so far, behaviour tests, 63-session replay</span></header>
-          <${Measures} data=${data} />
-        </section>
-        ${data.behaviour && html`<section className="sec"><header><h2><${Glyph} d=${FLASK} size=${16} />Behaviour tests</h2><span className="aside">situations built on purpose, each repeated</span></header>
-          <${Behaviour} b=${data.behaviour} /></section>`}
-        ${withReplay.length > 0 && html`<section className="sec"><header><h2><${Glyph} d=${REWIND} size=${16} />Tested on the past</h2><span className="aside">one decision a day, point-in-time data, renamed assets and shifted dates</span></header>
-          <${Fold} first=${html`A check of behaviour on ${withReplay[0].replay.sessions} past sessions, not a measure of skill.`}>
-            The LLM could have remembered what happened on real dates, so assets were renamed and dates shifted; fills at the next
-            open, with costs. The period is a falling market.</${Fold}>
-          ${withReplay.map((a) => html`<div key=${a.key} className=${"c-" + a.key}>
-            <h3 style=${{ color: "var(--c)" }}><${AgentIcon} k=${a.key} />${a.title} · ${a.replay.first} to ${a.replay.last}</h3>
-            <${ReplayChart} replay=${a.replay} />
-            <${Fold} small first=${a.replay.comparisons.some((c) => c.conclusive)
-                ? "Some differences between the layers are significant: see below."
-                : `No layer made a difference that ${a.replay.sessions} sessions can distinguish from chance.`}>
-              ${a.replay.comparisons.map((c) => `${c.label}: ${pts(c.difference, 2)}${c.conclusive ? " (significant)" : ""}.`).join(" ")}
-              <a href=${a.replay.readme}>Full replay report</a>.</${Fold}></div>`)}
-        </section>`}
-        ${(live.length > 0 || withReplay.length > 0) && html`<section className="sec"><header><h2><${Timestral} />Is Timestral's risk right?</h2><span className="aside">target: 80% of outcomes inside the 80% interval</span></header>
-          <div className="scroll"><table><thead><tr><th>Agent</th><th>Source</th><th className="num">Horizon</th><th className="num">Forecasts</th><th className="num">Inside 80%</th><th className="num">Realised / predicted</th></tr></thead>
-            <tbody>${data.agents.flatMap((a) => [
-              ...(a.replay ? a.replay.risk_calibration.map((r) => ({ a, src: "replay, portfolio", h: r.horizon, n: r.n, inside: r.inside_80, ratio: r.rms_z })) : []),
-              ...((a.started ? a.calibration : []).map((r) => ({ a, src: "live, per asset", h: r.horizon, n: r.n, inside: r.inside_80, ratio: null }))),
-            ]).map((r, i) => html`<tr key=${i}><td className=${"c-" + r.a.key} style=${{ color: "var(--c)" }}>${r.a.title}</td><td>${r.src}</td>
-              <td className="num">${r.h}d</td><td className="num">${r.n}</td><td className="num">${pct(r.inside, 0)}</td><td className="num">${r.ratio != null ? r.ratio.toFixed(2) : ""}</td></tr>`)}</tbody></table></div>
-          <p className="note small">Ratio above 1: risk underestimated. Live figures are early and correlated.</p>
-        </section>`}
         ${data.next && data.next.length > 0 && html`<section className="sec"><header><h2>What's next</h2><span className="aside">kept in step with docs/roadmap.md</span></header>
           <div className="next">${[["running", "Running"], ["next", "Next"], ["later", "Later, deliberately"]].map(([k, t]) => html`<div key=${k}>
             <h3>${t}</h3>
@@ -770,6 +778,67 @@
       </${React.Fragment}>`;
   }
 
+  /* Evidence: how we know the decisions are sound. Four checks, from the most controlled to the
+     most real, each read with its limits. Not a race between the agents. */
+  function Evidence({ data }) {
+    const withReplay = data.agents.filter((a) => a.replay);
+    const live = data.agents.filter((a) => a.started && (a.calibration.length || a.risk_calibration.length));
+    const jump = (id) => () => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
+    const five = (a) => (a.replay ? a.replay.risk_calibration.find((r) => r.horizon === 5) : null);
+    const spy = withReplay.length ? withReplay[0].replay.stats.spy : null;
+    const cards = [
+      data.behaviour && { id: "ev-tests", glyph: FLASK, title: "Behaviour tests", unit: "passed", values: data.agents.map((a) => [a, a.measures.tests || "n/a"]) },
+      withReplay.length && { id: "ev-replay", glyph: REWIND, title: `Replay, ${withReplay[0].replay.sessions} sessions`, unit: `return; the market (SPY) ${spct(spy.return)}`,
+        values: withReplay.map((a) => [a, spct(a.replay.stats.agent.return)]) },
+      withReplay.length && { id: "ev-risk", mark: true, title: "Risk interval hit, 5 days", unit: "target 80%",
+        values: withReplay.map((a) => [a, five(a) ? pct(five(a).inside_80, 0) : "n/a"]) },
+      data.covariates && { id: "ev-news", glyph: NEWS, title: "News as covariates", unit: "no lower error, not adopted", values: [[null, "No gain"]] },
+    ].filter(Boolean);
+    return html`
+      <${React.Fragment}>
+        <section className="sec"><header><h2>How we know the decisions are sound</h2></header>
+          <p className="frame">Four checks, from the most controlled to the most real. They test behaviour, not luck: over so few
+            sessions, <b>no difference between the two agents is distinguishable from chance</b>, and none is claimed.</p>
+          <div className="bench">${cards.map((c) => html`<button key=${c.id} className="benchcard" onClick=${jump(c.id)}>
+            <span className="bt">${c.mark ? html`<${Timestral} size=${13} />` : html`<${Glyph} d=${c.glyph} />`}${c.title}</span>
+            <span className="bv">${c.values.map(([a, v]) => html`<span key=${a ? a.key : "all"} className=${a ? "c-" + a.key : ""}>
+              ${a && html`<${AgentIcon} k=${a.key} size=${13} />`}<b>${v}</b></span>`)}</span>
+            <span className="bu">${c.unit}</span></button>`)}</div>
+        </section>
+        <section className="sec tipped" id="ev-side"><header><h2>The two agents side by side</h2><span className="aside">live runs, behaviour tests, replay</span></header>
+          <p className="note">Same data, same guardrails, two ways of using Timestral. Read each row as behaviour, not as a score.</p>
+          <${Measures} data=${data} />
+        </section>
+        ${data.behaviour && html`<section className="sec" id="ev-tests"><header><h2><${Glyph} d=${FLASK} size=${16} />Behaviour tests</h2><span className="aside">situations built on purpose, each repeated</span></header>
+          <p className="note">Seven situations where the sound decision is known in advance. Each is repeated: an LLM can answer the same question differently.</p>
+          <${Behaviour} b=${data.behaviour} /></section>`}
+        ${withReplay.length > 0 && html`<section className="sec" id="ev-replay"><header><h2><${Glyph} d=${REWIND} size=${16} />Tested on the past</h2><span className="aside">one decision a day, point-in-time data, renamed assets and shifted dates</span></header>
+          <${Fold} first=${html`A check of behaviour on ${withReplay[0].replay.sessions} past sessions, not a measure of skill.`}>
+            The LLM could have remembered what happened on real dates, so assets were renamed and dates shifted; fills at the next
+            open, with costs. The period is a falling market.</${Fold}>
+          ${withReplay.map((a) => html`<div key=${a.key} className=${"c-" + a.key}>
+            <h3 style=${{ color: "var(--c)" }}><${AgentIcon} k=${a.key} />${a.title} · ${a.replay.first} to ${a.replay.last}</h3>
+            <${ReplayChart} replay=${a.replay} />
+            <${Fold} small first=${a.replay.comparisons.some((c) => c.conclusive)
+                ? "Some differences between the layers are significant: see below."
+                : `No layer made a difference that ${a.replay.sessions} sessions can distinguish from chance.`}>
+              ${a.replay.comparisons.map((c) => `${c.label}: ${pts(c.difference, 2)}${c.conclusive ? " (significant)" : ""}.`).join(" ")}
+              <a href=${a.replay.readme}>Full replay report</a>.</${Fold}></div>`)}
+        </section>`}
+        ${(live.length > 0 || withReplay.length > 0) && html`<section className="sec" id="ev-risk"><header><h2><${Timestral} />Is Timestral's risk right?</h2><span className="aside">target: 80%</span></header>
+          <p className="note">An 80% interval should hold 8 outcomes out of 10. Too few inside means the risk was underestimated.</p>
+          <div className="scroll"><table><thead><tr><th>Agent</th><th>Source</th><th className="num">Horizon</th><th className="num">Forecasts</th><th className="num">Inside 80%</th><th className="num">Realised / predicted</th></tr></thead>
+            <tbody>${data.agents.flatMap((a) => [
+              ...(a.replay ? a.replay.risk_calibration.map((r) => ({ a, src: "replay, portfolio", h: r.horizon, n: r.n, inside: r.inside_80, ratio: r.rms_z })) : []),
+              ...((a.started ? a.calibration : []).map((r) => ({ a, src: "live, per asset", h: r.horizon, n: r.n, inside: r.inside_80, ratio: null }))),
+            ]).map((r, i) => html`<tr key=${i}><td className=${"c-" + r.a.key} style=${{ color: "var(--c)" }}>${r.a.title}</td><td>${r.src}</td>
+              <td className="num">${r.h}d</td><td className="num">${r.n}</td><td className="num">${pct(r.inside, 0)}</td><td className="num">${r.ratio != null ? r.ratio.toFixed(2) : ""}</td></tr>`)}</tbody></table></div>
+          <p className="note small">Ratio above 1: risk underestimated. Live figures are early and correlated.</p>
+        </section>`}
+        ${data.covariates && html`<section className="sec" id="ev-news"><header><h2><${Glyph} d=${NEWS} size=${16} />News as covariates: do they help Timestral?</h2><span className="aside">the brief's bonus, measured</span></header><${Covariates} c=${data.covariates} /></section>`}
+      </${React.Fragment}>`;
+  }
+
   function Lexicon() {
     return html`<section className="sec"><header><h2>Lexicon</h2><span className="aside">the words used on this page</span></header>
       <dl className="lexicon">${LEXICON.map(([t, d]) => html`<${React.Fragment} key=${t}><dt>${t}</dt><dd>${d}</dd></${React.Fragment}>`)}</dl>
@@ -777,26 +846,49 @@
   }
 
   // ------------------------------------------------------------------ try it
+  /* Try it: the evaluator picks an agent, a stance and a starting point; the request opens as a
+     pre-filled GitHub issue, which starts the run. Only these three choices are read. */
+  const OPTION_NOTE = {
+    tools: "The final agent: the LLM questions Timestral, then builds.",
+    pipeline: "The reference: Timestral's rule first, the LLM adjusts.",
+    news: "The tool agent, with the news covariates it was tested with.",
+    balanced: "The live limits.",
+    cautious: "30% cash at least, small positions.",
+    bold: "Larger positions, never leverage.",
+    current: "The portfolio it holds today.",
+    cash: "As if it started today, all in cash.",
+    equal: "6% in every asset.",
+  };
   function Try({ data }) {
     const s = data.simulations;
     const [opts, setOpts] = useState(() => Object.fromEntries(s.choices.map((c) => [c.key, c.options[0].value])));
     const body = s.choices.map((c) => `${c.key}: ${opts[c.key]}`).join("\n") + "\n\n" + s.body;
     const url = `${s.issue_url}?title=${encodeURIComponent(s.title)}&body=${encodeURIComponent(body)}`;
+    const name = (c) => c.options.find((o) => o.value === opts[c.key]).label.split(":")[0].replace(/ \(.*\)/, "").toLowerCase();
     return html`
       <${React.Fragment}>
-        <section className="sec"><header><h2>Make an agent decide now</h2></header>
-          <p className="callout"><b>No order is ever sent.</b> The button opens a pre-filled GitHub issue; the agent's decision is posted back in about 6 minutes.</p>
-          <div className="form">
-            ${s.choices.map((c) => html`<label key=${c.key}>${c.label}
-              <select value=${opts[c.key]} onChange=${(e) => setOpts({ ...opts, [c.key]: e.target.value })}>
-                ${c.options.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select></label>`)}
-            <a className="btn" href=${url} target="_blank" rel="noopener">Request a simulation</a>
+        <section className="sec tryhero">
+          <h2 className="big">Make an agent decide, now</h2>
+          <p className="frame">It runs on today's live data, through Timestral, the LLM and the same guardrails as the live agents. <b>No order is sent.</b>
+            Its decision, reasoning and planned orders come back in about 6 minutes.</p>
+          <div className="choices">${s.choices.map((c, k) => html`<fieldset key=${c.key} className="choice">
+            <legend><span className="k">${k + 1}</span>${c.label}</legend>
+            ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")}>
+              <input type="radio" name=${c.key} value=${o.value} checked=${opts[c.key] === o.value} onChange=${() => setOpts({ ...opts, [c.key]: o.value })} />
+              <span><b>${o.label.split(":")[0]}</b><small>${OPTION_NOTE[o.value] || ""}</small></span></label>`)}
+          </fieldset>`)}</div>
+          <div className="launch">
+            <p>You ask the <b>${name(s.choices[0])}</b>, <b>${name(s.choices[1])}</b>, starting from <b>${name(s.choices[2])}</b>.</p>
+            <a className="btn big" href=${url} target="_blank" rel="noopener">Request this run on GitHub ↗</a>
           </div>
-          <p className="muted" style=${{ fontSize: 12 }}>Cautious keeps 30% in cash and small positions; bold allows larger positions, never leverage.
-            At most one simulation a minute and 20 a day. Only these three choices are read from the issue.</p>
+          <ol className="howto">
+            <li><b>Submit the pre-filled issue.</b> A GitHub account is needed; only the three choices are read.</li>
+            <li><b>The agent decides</b> on live data, without sending any order.</li>
+            <li><b>The answer is posted in the issue</b>, and listed below. One run a minute, 20 a day.</li>
+          </ol>
         </section>
         <section className="sec"><header><h2>Recent simulations</h2></header>
-          ${s.recent.length === 0 ? html`<p className="soft">None yet.</p>` : s.recent.map((r) => html`<details key=${r.run_id} className="run">
+          ${s.recent.length === 0 ? html`<p className="soft">None yet: be the first.</p>` : s.recent.map((r) => html`<details key=${r.run_id} className="run">
             <summary><span className="mono">${r.run_id}</span> · ${r.requested_by} · <${Outcome} o=${r.outcome} /> · ${r.orders} order(s) planned, none sent</summary>
             <p>${r.analysis || "No parsable analysis."}</p><p><a href=${r.record}>full record</a></p></details>`)}
         </section>
@@ -813,7 +905,7 @@
       <span className=${"dot " + (minutes <= 120 ? "live" : "stale")}></span>Updated ${when(at)} <span className="muted">· ${ago}</span></p>`;
   }
 
-  const readTab = () => { const t = (location.hash || "").slice(1); return TABS.some((x) => x[0] === t) ? t : "live"; };
+  const readTab = () => { const t = (location.hash || "").slice(1); return ROUTES.includes(t) ? t : "live"; };
 
   function App() {
     const [data, setData] = useState(null);
@@ -829,7 +921,7 @@
       window.addEventListener("hashchange", onHash);
       return () => window.removeEventListener("hashchange", onHash);
     }, []);
-    const go = (t) => { history.replaceState(null, "", "#" + t); setTab(t); };
+    const go = (t) => { history.replaceState(null, "", "#" + t); setTab(t); window.scrollTo(0, 0); };
     const onArrows = (e) => {
       const i = TABS.findIndex((x) => x[0] === tab);
       const j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : null;
@@ -848,6 +940,7 @@
             <div className="title"><h1><${Timestral} size=${22} />Timestral Trading Agent</h1><span className="badge">Paper trading</span></div>
             <div className="actions">
               <a className="act" href=${data.links.audit_log}><${Glyph} d=${DOC} />Audit log</a>
+              <a className="act" href="#lexicon" onClick=${(e) => { e.preventDefault(); go("lexicon"); }}><${Glyph} d=${BOOK} />Lexicon</a>
               <a className="act" href=${data.repo}><${Glyph} d=${CODE} />Code</a>
             </div>
           </div>
@@ -861,9 +954,10 @@
               tabIndex=${tab === k ? 0 : -1} onClick=${() => go(k)}><b><span className="k">${i + 1}</span>${t}</b><span>${d}</span></button>`)}
           </nav>
           <div id="panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
-          ${tab === "live" && html`<${Live} data=${data} agent=${agent} setAgent=${setAgent} />`}
-          ${tab === "how" && html`<${How} data=${data} />`}
-          ${tab === "try" && html`<${Try} data=${data} />`}
+          ${tab === "live" && html`<${Live} data=${data} agent=${agent} setAgent=${setAgent} go=${go} />`}
+          ${tab === "how" && html`<${How} data=${data} go=${go} />`}
+          ${tab === "evidence" && html`<${Evidence} data=${data} />`}
+          ${tab === "try" && html`<${Try} data=${data} go=${go} />`}
           ${tab === "lexicon" && html`<${Lexicon} />`}
           </div>
           <footer className="foot"><span>Generated ${when(data.generated_at)} from the audit log.</span><span>Paper trading, not financial advice.</span>
