@@ -898,9 +898,10 @@
     const top = r.portfolio.slice(0, 10);
     const rest = r.portfolio.slice(10).reduce((t, p) => t + p.weight, 0);
     const scale = Math.max(0.2, ...top.map((p) => p.weight), r.cash, rest);
+    const o = r.outlook;
     const bar = (name, w, colour, key) => html`<div key=${key || name} className="simbar">
       <span className="sym">${name}</span><span className="bar"><i style=${{ width: Math.min(100, (100 * w) / scale) + "%", background: colour }}></i></span>
-      <span className="num">${pct(w)}</span></div>`;
+      <span className="num">${usd(w * o.equity)}</span><span className="num muted">${pct(w)}</span></div>`;
     return html`<div className=${"simres" + (open ? " open" : "")}>
       <button className="simhead" aria-expanded=${open} onClick=${() => setOpen(!open)}>
         <span className="chips">${["agent", "stance", "start", "universe"].map((k) => html`<span key=${k} className="chip">${label(k)}</span>`)}</span>
@@ -908,6 +909,11 @@
         <${Outcome} o=${r.outcome} />
       </button>
       ${open && html`<div className="simbody">
+        <div className="simfacts">
+          <span><span className="muted">Account</span> <b className="num">${usd(o.equity)}</b></span>
+          ${o.range80 && html`<span><${Timestral} size=${12} /><span className="muted">In ${o.horizon} days, 80% range</span> <b className="num">${usd(o.range80[0])} to ${usd(o.range80[1])}</b></span>`}
+          <span><span className="muted">Changed</span> <b className="num">${pts(o.moved, 0).replace("+", "")}</b>${o.added.length ? html` <span className="up">+${o.added.join(", +")}</span>` : ""}${o.removed.length ? html` <span className="down">−${o.removed.join(", −")}</span>` : ""}</span>
+        </div>
         <div className="simbars">
           ${top.map((p) => bar(p.symbol, p.weight, p.type === "stock" ? "var(--stock)" : "var(--etf)"))}
           ${rest > 0 && bar(`+${r.portfolio.length - 10} more`, rest, "var(--rule2)", "rest")}
@@ -935,10 +941,7 @@
     const name = (c) => c.options.find((o) => o.value === opts[c.key]).label.split(/[:,]/)[0].replace(/ \(.*\)/, "").toLowerCase();
     return html`
       <${React.Fragment}>
-        <section className="sec"><header><h2>Latest results</h2><span className="aside">about 6 minutes after a request</span></header>
-          <${SimStatus} repo=${data.repo} builtAt=${data.generated_at} />
-          ${s.recent.length === 0 ? html`<p className="soft">None yet.</p>` : s.recent.map((r, k) => html`<${SimResult} key=${r.run_id} r=${r} s=${s} open=${k === 0} />`)}
-        </section>
+
         <section className="sec tryhero">
           <h2 className="big">Make an agent decide, now</h2>
           <p className="frame">Runs once on today's data, with the live guardrails. <b>No orders are sent.</b> The answer comes back in about 6 minutes.</p>
@@ -954,6 +957,10 @@
           </div>
         </section>
 
+        <section className="sec"><header><h2>Latest results</h2><span className="aside">about 6 minutes after a request</span></header>
+          <${SimStatus} repo=${data.repo} builtAt=${data.generated_at} />
+          ${s.recent.length === 0 ? html`<p className="soft">None yet.</p>` : s.recent.map((r, k) => html`<${SimResult} key=${r.run_id} r=${r} s=${s} open=${k === 0} />`)}
+        </section>
       </${React.Fragment}>`;
   }
 

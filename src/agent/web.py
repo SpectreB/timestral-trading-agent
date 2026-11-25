@@ -57,6 +57,7 @@ from agent.dashboard import (
 )
 from agent.dashboard import build as build_classic
 from agent.metrics import MIN_SESSIONS_FOR_CI, SERIES
+from agent.risk import Z80
 from agent.scoring import calibration
 from agent.simulate import DEFAULT_OPTIONS, OPTIONS
 
@@ -584,6 +585,25 @@ def _sim_portfolio(run: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _sim_outlook(run: dict[str, Any]) -> dict[str, Any]:
+    """The account value, what changed from the start, and the range Timestral expects for the
+    value at its longest horizon (80% interval, from the forecast portfolio volatility). No
+    expected profit: Timestral's direction has no measured skill, its risk does."""
+    p, equity = run["portfolios"], run["account"]["equity"]
+    cur, fin = p["current"], p["final"]
+    vols = (run.get("risk") or {}).get("portfolio_vol") or {}
+    horizon = max(vols, key=int) if vols else None
+    sigma = vols[horizon].get("final") if horizon else None
+    return {
+        "equity": equity,
+        "moved": sum(abs(fin[s] - cur[s]) for s in fin),
+        "added": sorted(s for s in fin if fin[s] >= 0.0005 and cur[s] < 0.0005),
+        "removed": sorted(s for s in fin if cur[s] >= 0.0005 and fin[s] < 0.0005),
+        "horizon": int(horizon) if horizon else None,
+        "range80": [equity * (1 - Z80 * sigma), equity * (1 + Z80 * sigma)] if sigma else None,
+    }
+
+
 def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
     return {
         "issue_url": f"{repo}/issues/new",
@@ -605,6 +625,7 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
                 "assets": len(r["config"]["universe"]),
                 "cash": r["portfolios"]["final_cash"],
                 "portfolio": _sim_portfolio(r),
+                "outlook": _sim_outlook(r),
                 "record": f"{repo}/blob/{AUDIT_BRANCH}/simulations/runs/{r['run_id']}.json",
             }
             for r in list(reversed(sims))[:10]

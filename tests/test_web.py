@@ -281,3 +281,21 @@ def test_each_simulation_comes_with_its_options_and_portfolio(tmp_path: Path) ->
         "agent": "tools", "stance": "cautious", "start": "cash", "universe": "wide",
     }  # fmt: skip
     assert _sim_options("sim-134842")["agent"] == "pipeline"  # defaults when nothing is said
+
+
+def test_a_simulation_says_its_value_what_changed_and_its_risk_range() -> None:
+    from agent.web import _sim_outlook
+
+    run = {
+        "account": {"equity": 100_000.0},
+        "portfolios": {"current": {"A": 0.5, "B": 0.4, "C": 0.0},
+                       "final": {"A": 0.6, "B": 0.0, "C": 0.3}},
+        "risk": {"portfolio_vol": {"1": {"final": 0.005}, "5": {"final": 0.01}}},
+    }  # fmt: skip
+    o = _sim_outlook(run)
+    assert o["equity"] == 100_000.0 and o["horizon"] == 5
+    assert o["moved"] == pytest.approx(0.8)  # 0.1 + 0.4 + 0.3
+    assert o["added"] == ["C"] and o["removed"] == ["B"]
+    low, high = o["range80"]  # +/- 1.28 standard deviations of the 5-day return
+    assert low == pytest.approx(98_718.4, abs=0.1) and high == pytest.approx(101_281.6, abs=0.1)
+    assert _sim_outlook({**run, "risk": None})["range80"] is None
