@@ -273,11 +273,59 @@ def test_each_simulation_comes_with_its_options_and_portfolio(tmp_path: Path) ->
     cycle(tmp_path / "audit")
     cycle(tmp_path / "audit" / "simulations")
     sim = _site(tmp_path)["simulations"]["recent"][0]
-    weights = [p["weight"] for p in sim["portfolio"]]
-    assert weights == sorted(weights, reverse=True) and all(w > 0 for w in weights)
+    held = [p for p in sim["portfolio"] if p["weight"] > 0]
+    weights = [p["weight"] for p in held]
+    assert weights == sorted(weights, reverse=True)
     assert sum(weights) + sim["cash"] == pytest.approx(1.0, abs=1e-3)
+    assert all("before" in p for p in sim["portfolio"])
     assert sim["assets"] == 15 and sim["options"]["universe"] == "standard"
     assert _sim_options("sim-154723-tools-cautious-cash-wide") == {
         "agent": "tools", "stance": "cautious", "start": "cash", "universe": "wide",
     }  # fmt: skip
     assert _sim_options("sim-134842")["agent"] == "pipeline"  # defaults when nothing is said
+
+
+def test_a_simulation_says_its_value_what_changed_and_its_risk_range() -> None:
+    from agent.web import _sim_outlook
+
+    run = {
+        "account": {"equity": 100_000.0},
+        "portfolios": {"current": {"A": 0.5, "B": 0.4, "C": 0.0},
+                       "final": {"A": 0.6, "B": 0.0, "C": 0.3}},
+        "risk": {"portfolio_vol": {"1": {"final": 0.005}, "5": {"final": 0.01}}},
+    }  # fmt: skip
+    o = _sim_outlook(run)
+    assert o["equity"] == 100_000.0 and o["horizon"] == 5
+    assert o["moved"] == pytest.approx(0.8)  # 0.1 + 0.4 + 0.3
+    assert o["added"] == ["C"] and o["removed"] == ["B"]
+    low, high = o["range80"]  # +/- 1.28 standard deviations of the 5-day return
+    assert low == pytest.approx(98_718.4, abs=0.1) and high == pytest.approx(101_281.6, abs=0.1)
+    assert _sim_outlook({**run, "risk": None})["range80"] is None
+
+
+def test_a_simulation_keeps_the_positions_it_would_sell_entirely() -> None:
+    from agent.web import _sim_portfolio
+
+    run = {
+        "portfolios": {"current": {"A": 0.3, "B": 0.2, "C": 0.0},
+                       "final": {"A": 0.4, "B": 0.0, "C": 0.1}},
+        "config": {"universe": [{"symbol": s, "type": "etf"} for s in "ABC"]},
+    }  # fmt: skip
+    rows = _sim_portfolio(run)
+    assert [(r["symbol"], r["weight"], r["before"]) for r in rows] == [
+        ("A", 0.4, 0.3), ("C", 0.1, 0.0), ("B", 0.0, 0.2),
+    ]  # fmt: skip
+
+
+def test_the_live_cards_carry_timestrals_range_for_the_account() -> None:
+    from agent.web import _range80
+
+    r = _range80(100_000.0, {"horizon": 5, "final": 0.01, "rule": 0.012})
+    assert r is not None and r["horizon"] == 5
+    assert r["low"] == pytest.approx(98_718.4, abs=0.1) and r["high"] == pytest.approx(
+        101_281.6, abs=0.1
+    )
+    assert (
+        _range80(100_000.0, None) is None
+        and _range80(100_000.0, {"horizon": 5, "final": None}) is None
+    )
