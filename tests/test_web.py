@@ -265,3 +265,19 @@ def test_no_line_break_swallows_a_space_in_the_page_text() -> None:
     glued = re.findall(r"</(?:b|a|i|small|code)>\n[ \t]+[A-Za-z]", app)
     glued += re.findall(r"[A-Za-z,.;:)]\n[ \t]+<(?:b|a|i|small|code)[ >]", app)
     assert glued == []
+
+
+def test_each_simulation_comes_with_its_options_and_portfolio(tmp_path: Path) -> None:
+    from agent.web import _sim_options
+
+    cycle(tmp_path / "audit")
+    cycle(tmp_path / "audit" / "simulations")
+    sim = _site(tmp_path)["simulations"]["recent"][0]
+    weights = [p["weight"] for p in sim["portfolio"]]
+    assert weights == sorted(weights, reverse=True) and all(w > 0 for w in weights)
+    assert sum(weights) + sim["cash"] == pytest.approx(1.0, abs=1e-3)
+    assert sim["assets"] == 15 and sim["options"]["universe"] == "standard"
+    assert _sim_options("sim-154723-tools-cautious-cash-wide") == {
+        "agent": "tools", "stance": "cautious", "start": "cash", "universe": "wide",
+    }  # fmt: skip
+    assert _sim_options("sim-134842")["agent"] == "pipeline"  # defaults when nothing is said

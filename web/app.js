@@ -218,8 +218,8 @@
               ${pts[k].length > 1 && html`<polyline className="line" points=${pts[k].map((p) => `${x(p.t).toFixed(1)},${y(p.equity).toFixed(1)}`).join(" ")} />`}
               ${pts[k].map((p, i) => html`<circle key=${i} className="pt" cx=${x(p.t)} cy=${y(p.equity)} r=${p === nearest(pts[k], t) ? 4.5 : 2.5} />`)}</g>`)}
           </svg>
-          <div className="readout">${live.map((a, k) => { const p = nearest(pts[k], t); return html`<span key=${a.key} className=${"c-" + a.key}>
-            <${AgentIcon} k=${a.key} size=${14} />${a.title} ${usd2(p.equity)} <span className="muted">${when(p.at)}</span></span>`; })}</div>
+          ${at !== null && html`<div className="readout">${live.map((a, k) => { const p = nearest(pts[k], t); return html`<span key=${a.key} className=${"c-" + a.key}>
+            <${AgentIcon} k=${a.key} size=${14} />${a.title} ${usd2(p.equity)} <span className="muted">${when(p.at)}</span></span>`; })}</div>`}
         </div>
       </section>`;
   }
@@ -842,9 +842,6 @@
   /* Try it: the evaluator picks an agent, a stance and a starting point; the request opens as a
      pre-filled GitHub issue, which starts the run. Only these three choices are read. */
   const OPTION_NOTE = {
-    tools: "The final agent: the LLM questions Timestral, then builds.",
-    pipeline: "The reference: Timestral's rule first, the LLM adjusts.",
-    news: "The tool agent, with the news covariates it was tested with.",
     balanced: "The live limits.",
     cautious: "30% cash at least, small positions.",
     bold: "Larger positions, never leverage.",
@@ -854,34 +851,73 @@
     standard: "The 10 ETFs and 5 stocks traded live.",
     wide: "25 more large US stocks: more choice, the same guardrails.",
   };
+  /* One simulation: its options as chips, its verdict, and the portfolio it would have built.
+     The latest is open; older ones are one line until clicked. */
+  function SimResult({ r, s, open: first }) {
+    const [open, setOpen] = useState(first);
+    const label = (key) => {
+      const c = s.choices.find((x) => x.key === key);
+      const o = c && c.options.find((x) => x.value === r.options[key]);
+      return o ? o.label.split(":")[0].replace(/ \(.*\)/, "") : r.options[key];
+    };
+    const top = r.portfolio.slice(0, 10);
+    const rest = r.portfolio.slice(10).reduce((t, p) => t + p.weight, 0);
+    const scale = Math.max(0.2, ...top.map((p) => p.weight), r.cash, rest);
+    const bar = (name, w, colour, key) => html`<div key=${key || name} className="simbar">
+      <span className="sym">${name}</span><span className="bar"><i style=${{ width: Math.min(100, (100 * w) / scale) + "%", background: colour }}></i></span>
+      <span className="num">${pct(w)}</span></div>`;
+    return html`<div className=${"simres" + (open ? " open" : "")}>
+      <button className="simhead" aria-expanded=${open} onClick=${() => setOpen(!open)}>
+        <span className="chips">${["agent", "stance", "start", "universe"].map((k) => html`<span key=${k} className="chip">${label(k)}</span>`)}</span>
+        <span className="muted">${when(r.at)}</span>
+        <${Outcome} o=${r.outcome} />
+      </button>
+      ${open && html`<div className="simbody">
+        <div className="simbars">
+          ${top.map((p) => bar(p.symbol, p.weight, p.type === "stock" ? "var(--stock)" : "var(--etf)"))}
+          ${rest > 0 && bar(`+${r.portfolio.length - 10} more`, rest, "var(--rule2)", "rest")}
+          ${bar("Cash", r.cash, "var(--cash)", "cash")}
+        </div>
+        <${Fold} small first=${`${r.portfolio.length} of ${r.assets} assets held, ${pct(1 - r.cash, 0)} invested · no order sent`}>
+          ${r.analysis || "No analysis recorded."} <a href=${r.record}>Full record</a></${Fold}>
+      </div>`}
+    </div>`;
+  }
+
+  /* One pictogram per choice, each in a colour of Mistral's palette (red to amber). */
+  const CHOICE_ICON = {
+    agent: ["M8 8h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3zM12 4v4M9.5 13h.01M14.5 13h.01", "#e10500"],
+    stance: ["M4 17a8 8 0 0 1 16 0M12 17l4-5M7 17h.01M17 17h.01", "#fa500f"],
+    start: ["M6 21V4M6 4h11l-2.5 4L17 12H6", "#ff8205"],
+    universe: ["M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12h18M12 3c3.5 3.5 3.5 14.5 0 18M12 3c-3.5 3.5-3.5 14.5 0 18", "#e69500"],
+  };
+
   function Try({ data }) {
     const s = data.simulations;
     const [opts, setOpts] = useState(() => Object.fromEntries(s.choices.map((c) => [c.key, c.options[0].value])));
     const body = s.choices.map((c) => `${c.key}: ${opts[c.key]}`).join("\n") + "\n\n" + s.body;
     const url = `${s.issue_url}?title=${encodeURIComponent(s.title)}&body=${encodeURIComponent(body)}`;
-    const name = (c) => c.options.find((o) => o.value === opts[c.key]).label.split(":")[0].replace(/ \(.*\)/, "").toLowerCase();
+    const name = (c) => c.options.find((o) => o.value === opts[c.key]).label.split(/[:,]/)[0].replace(/ \(.*\)/, "").toLowerCase();
     return html`
       <${React.Fragment}>
+        <section className="sec"><header><h2>Latest results</h2><span className="aside">about 6 minutes after a request</span></header>
+          ${s.recent.length === 0 ? html`<p className="soft">None yet.</p>` : s.recent.map((r, k) => html`<${SimResult} key=${r.run_id} r=${r} s=${s} open=${k === 0} />`)}
+        </section>
         <section className="sec tryhero">
           <h2 className="big">Make an agent decide, now</h2>
           <p className="frame">Runs once on today's data, with the live guardrails. <b>No orders are sent.</b> The answer comes back in about 6 minutes.</p>
           <div className="choices">${s.choices.map((c, k) => html`<fieldset key=${c.key} className="choice">
-            <legend><span className="k">${k + 1}</span>${c.label}</legend>
+            <legend><span className="choiceicon" style=${{ color: CHOICE_ICON[c.key][1] }}><${Glyph} d=${CHOICE_ICON[c.key][0]} size=${16} /></span>${c.label}</legend>
             ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")}>
               <input type="radio" name=${c.key} value=${o.value} checked=${opts[c.key] === o.value} onChange=${() => setOpts({ ...opts, [c.key]: o.value })} />
-              <span><b>${o.label.split(":")[0]}</b><small>${OPTION_NOTE[o.value] || ""}</small></span></label>`)}
+              <span><b>${o.label.split(":")[0]}</b>${OPTION_NOTE[o.value] && html`<small>${OPTION_NOTE[o.value]}</small>`}</span></label>`)}
           </fieldset>`)}</div>
           <div className="launch">
             <p>You ask the <b>${name(s.choices[0])}</b>, <b>${name(s.choices[1])}</b>, starting from <b>${name(s.choices[2])}</b>, on <b>${name(s.choices[3])}</b>.</p>
             <a className="btn big" href=${url} target="_blank" rel="noopener"><${GitHubMark} />Request this run on GitHub ↗</a>
           </div>
-          <p className="note small">A GitHub account is needed. The answer is posted in the issue and listed below.</p>
         </section>
-        <section className="sec"><header><h2>Recent simulations</h2></header>
-          ${s.recent.length === 0 ? html`<p className="soft">None yet: be the first.</p>` : s.recent.map((r) => html`<details key=${r.run_id} className="run">
-            <summary><span className="mono">${r.run_id}</span> · ${r.requested_by} · <${Outcome} o=${r.outcome} /> · ${r.orders} order(s) planned, none sent</summary>
-            <p>${r.analysis || "No parsable analysis."}</p><p><a href=${r.record}>full record</a></p></details>`)}
-        </section>
+
       </${React.Fragment}>`;
   }
 
