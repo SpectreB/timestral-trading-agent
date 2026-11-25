@@ -854,6 +854,39 @@
     standard: "The 10 ETFs and 5 stocks traded live.",
     wide: "25 more large US stocks: more choice, the same guardrails.",
   };
+  /* One simulation: its options as chips, its verdict, and the portfolio it would have built.
+     The latest is open; older ones are one line until clicked. */
+  function SimResult({ r, s, open: first }) {
+    const [open, setOpen] = useState(first);
+    const label = (key) => {
+      const c = s.choices.find((x) => x.key === key);
+      const o = c && c.options.find((x) => x.value === r.options[key]);
+      return o ? o.label.split(":")[0].replace(/ \(.*\)/, "") : r.options[key];
+    };
+    const top = r.portfolio.slice(0, 10);
+    const rest = r.portfolio.slice(10).reduce((t, p) => t + p.weight, 0);
+    const scale = Math.max(0.2, ...top.map((p) => p.weight), r.cash, rest);
+    const bar = (name, w, colour, key) => html`<div key=${key || name} className="simbar">
+      <span className="sym">${name}</span><span className="bar"><i style=${{ width: Math.min(100, (100 * w) / scale) + "%", background: colour }}></i></span>
+      <span className="num">${pct(w)}</span></div>`;
+    return html`<div className=${"simres" + (open ? " open" : "")}>
+      <button className="simhead" aria-expanded=${open} onClick=${() => setOpen(!open)}>
+        <span className="chips">${["agent", "stance", "start", "universe"].map((k) => html`<span key=${k} className="chip">${label(k)}</span>`)}</span>
+        <span className="muted">${when(r.at)}</span>
+        <${Outcome} o=${r.outcome} />
+      </button>
+      ${open && html`<div className="simbody">
+        <div className="simbars">
+          ${top.map((p) => bar(p.symbol, p.weight, p.type === "stock" ? "var(--stock)" : "var(--etf)"))}
+          ${rest > 0 && bar(`+${r.portfolio.length - 10} more`, rest, "var(--rule2)", "rest")}
+          ${bar("Cash", r.cash, "var(--cash)", "cash")}
+        </div>
+        <${Fold} small first=${`${r.portfolio.length} of ${r.assets} assets held, ${pct(1 - r.cash, 0)} invested · no order sent`}>
+          ${r.analysis || "No analysis recorded."} <a href=${r.record}>Full record</a></${Fold}>
+      </div>`}
+    </div>`;
+  }
+
   function Try({ data }) {
     const s = data.simulations;
     const [opts, setOpts] = useState(() => Object.fromEntries(s.choices.map((c) => [c.key, c.options[0].value])));
@@ -862,6 +895,9 @@
     const name = (c) => c.options.find((o) => o.value === opts[c.key]).label.split(":")[0].replace(/ \(.*\)/, "").toLowerCase();
     return html`
       <${React.Fragment}>
+        <section className="sec"><header><h2>Latest results</h2><span className="aside">about 6 minutes after a request</span></header>
+          ${s.recent.length === 0 ? html`<p className="soft">None yet.</p>` : s.recent.map((r, k) => html`<${SimResult} key=${r.run_id} r=${r} s=${s} open=${k === 0} />`)}
+        </section>
         <section className="sec tryhero">
           <h2 className="big">Make an agent decide, now</h2>
           <p className="frame">Runs once on today's data, with the live guardrails. <b>No orders are sent.</b> The answer comes back in about 6 minutes.</p>
@@ -875,13 +911,9 @@
             <p>You ask the <b>${name(s.choices[0])}</b>, <b>${name(s.choices[1])}</b>, starting from <b>${name(s.choices[2])}</b>, on <b>${name(s.choices[3])}</b>.</p>
             <a className="btn big" href=${url} target="_blank" rel="noopener"><${GitHubMark} />Request this run on GitHub ↗</a>
           </div>
-          <p className="note small">A GitHub account is needed. The answer is posted in the issue and listed below.</p>
+          <p className="note small">Needs a GitHub account.</p>
         </section>
-        <section className="sec"><header><h2>Recent simulations</h2></header>
-          ${s.recent.length === 0 ? html`<p className="soft">None yet: be the first.</p>` : s.recent.map((r) => html`<details key=${r.run_id} className="run">
-            <summary><span className="mono">${r.run_id}</span> · ${r.requested_by} · <${Outcome} o=${r.outcome} /> · ${r.orders} order(s) planned, none sent</summary>
-            <p>${r.analysis || "No parsable analysis."}</p><p><a href=${r.record}>full record</a></p></details>`)}
-        </section>
+
       </${React.Fragment}>`;
   }
 
