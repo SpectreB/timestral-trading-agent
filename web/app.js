@@ -842,9 +842,6 @@
   /* Try it: the evaluator picks an agent, a stance and a starting point; the request opens as a
      pre-filled GitHub issue, which starts the run. Only these three choices are read. */
   const OPTION_NOTE = {
-    tools: "The final agent: the LLM questions Timestral, then builds.",
-    pipeline: "The reference: Timestral's rule first, the LLM adjusts.",
-    news: "The tool agent, with the news covariates it was tested with.",
     balanced: "The live limits.",
     cautious: "30% cash at least, small positions.",
     bold: "Larger positions, never leverage.",
@@ -913,7 +910,7 @@
             <legend><span className="choiceicon" style=${{ color: CHOICE_ICON[c.key][1] }}><${Glyph} d=${CHOICE_ICON[c.key][0]} size=${16} /></span>${c.label}</legend>
             ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")}>
               <input type="radio" name=${c.key} value=${o.value} checked=${opts[c.key] === o.value} onChange=${() => setOpts({ ...opts, [c.key]: o.value })} />
-              <span><b>${o.label.split(":")[0]}</b><small>${OPTION_NOTE[o.value] || ""}</small></span></label>`)}
+              <span><b>${o.label.split(":")[0]}</b>${OPTION_NOTE[o.value] && html`<small>${OPTION_NOTE[o.value]}</small>`}</span></label>`)}
           </fieldset>`)}</div>
           <div className="launch">
             <p>You ask the <b>${name(s.choices[0])}</b>, <b>${name(s.choices[1])}</b>, starting from <b>${name(s.choices[2])}</b>, on <b>${name(s.choices[3])}</b>.</p>
