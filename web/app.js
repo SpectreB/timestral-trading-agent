@@ -988,8 +988,8 @@
   function Fresh({ at }) {
     const minutes = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 60000));
     const ago = minutes < 60 ? `${minutes} min ago` : minutes < 2880 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`;
-    return html`<p className="fresh" title="Rebuilt from the audit log after every run and every hourly account sample">
-      <span className=${"dot " + (minutes <= 120 ? "live" : "stale")}></span>Updated ${when(at)} <span className="muted">· ${ago}</span></p>`;
+    return html`<span className="freshchip" title=${`Updated ${when(at)}, from the audit log, after every run and every hourly account reading`}>
+      <span className=${"dot " + (minutes <= 120 ? "live" : "stale")}></span>${ago}</span>`;
   }
 
   const readTab = () => { const t = (location.hash || "").slice(1); return ROUTES.includes(t) ? t : "live"; };
@@ -1066,6 +1066,7 @@
           <div className="brand">
             <div className="title"><h1><${Timestral} size=${22} />Timestral Trading Agent</h1><span className="badge">Paper trading</span></div>
             <div className="actions">
+              <${Fresh} at=${data.generated_at} />
               <a className="act" href=${data.links.audit_log}><${Glyph} d=${DOC} />Audit log</a>
               <a className="act" href="#lexicon" onClick=${(e) => { e.preventDefault(); go("lexicon"); }}><${Glyph} d=${BOOK} />Lexicon</a>
               <a className="act" href=${data.repo}><${Glyph} d=${CODE} />Code</a>
@@ -1073,7 +1074,6 @@
           </div>
           <p className="lede">Two autonomous agents trade US ETFs and stocks on paper accounts. Timestral estimates the risk, a Mistral LLM chooses
             the portfolio, and fixed rules check every decision before it reaches the broker.</p>
-          <${Fresh} at=${data.generated_at} />
         </div></div>
         <main className="wrap layout">
           <aside className="side">
