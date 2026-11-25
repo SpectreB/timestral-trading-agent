@@ -851,6 +851,41 @@
     standard: "The 10 ETFs and 5 stocks traded live.",
     wide: "25 more large US stocks: more choice, the same guardrails.",
   };
+  /* Is a simulation running? The page is rebuilt only once a run has finished, so it asks
+     GitHub's public API itself (no token, read only): every 45 s while a run is in progress, at
+     most 20 minutes, which keeps a visitor well under the 60 requests an hour allowed. */
+  function SimStatus({ repo, builtAt }) {
+    const [runs, setRuns] = useState([]);
+    useEffect(() => {
+      const api = repo.replace("https://github.com/", "https://api.github.com/repos/") + "/actions/workflows/simulate.yml/runs?per_page=5";
+      let stopped = false, timer = null, polls = 0;
+      const load = () => fetch(api, { headers: { Accept: "application/vnd.github+json" } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (stopped || !d) return;
+          const fresh = d.workflow_runs.filter((r) => r.status !== "completed" || Date.parse(r.updated_at) > Date.parse(builtAt));
+          setRuns(fresh);
+          if (fresh.some((r) => r.status !== "completed") && ++polls < 27) timer = setTimeout(load, 45000);
+        })
+        .catch(() => {});
+      load();
+      return () => { stopped = true; clearTimeout(timer); };
+    }, [repo, builtAt]);
+    if (!runs.length) return null;
+    const ago = (iso) => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 1 ? "just now" : `${m} min ago`; };
+    return html`<div className="simstatus">${runs.map((r) => {
+      const state = r.status !== "completed" ? "running" : r.conclusion === "success" ? "done" : "failed";
+      return html`<div key=${r.id} className=${"simline " + state}>
+        <span className="dot"></span>
+        <b>${state === "running" ? "Simulation running" : state === "done" ? "Simulation finished" : "Simulation failed"}</b>
+        <span className="muted">${state === "running" ? `started ${ago(r.created_at)}` : state === "done" ? "the result appears here within a minute" : "nothing was traded"}</span>
+        ${state === "done"
+          ? html`<button className="more" onClick=${() => location.reload()}>Reload</button>`
+          : html`<a href=${r.html_url} target="_blank" rel="noopener">${state === "running" ? "Follow on GitHub ↗" : "See why ↗"}</a>`}
+      </div>`;
+    })}</div>`;
+  }
+
   /* One simulation: its options as chips, its verdict, and the portfolio it would have built.
      The latest is open; older ones are one line until clicked. */
   function SimResult({ r, s, open: first }) {
@@ -901,6 +936,7 @@
     return html`
       <${React.Fragment}>
         <section className="sec"><header><h2>Latest results</h2><span className="aside">about 6 minutes after a request</span></header>
+          <${SimStatus} repo=${data.repo} builtAt=${data.generated_at} />
           ${s.recent.length === 0 ? html`<p className="soft">None yet.</p>` : s.recent.map((r, k) => html`<${SimResult} key=${r.run_id} r=${r} s=${s} open=${k === 0} />`)}
         </section>
         <section className="sec tryhero">
