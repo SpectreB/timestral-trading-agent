@@ -58,6 +58,7 @@ from agent.dashboard import (
 from agent.dashboard import build as build_classic
 from agent.metrics import MIN_SESSIONS_FOR_CI, SERIES
 from agent.scoring import calibration
+from agent.simulate import DEFAULT_OPTIONS, OPTIONS
 
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"  # index.html, app.js, style.css
 
@@ -561,6 +562,28 @@ def _covariates(cov: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+def _sim_options(run_id: str) -> dict[str, str]:
+    """The options of a simulation, read back from its id: an option that differs from the
+    default is part of it (`agent.simulate.label_for`); every option value is unique."""
+    chosen = dict(DEFAULT_OPTIONS)
+    by_value = {v: k for k, values in OPTIONS.items() for v in values}
+    for token in run_id.split("-")[1:]:
+        if token in by_value:
+            chosen[by_value[token]] = token
+    return chosen
+
+
+def _sim_portfolio(run: dict[str, Any]) -> list[dict[str, Any]]:
+    """What the simulated agent would hold, largest first, assets with a weight only."""
+    final = run["portfolios"]["final"]
+    kinds = {a["symbol"]: a["type"] for a in run["config"]["universe"]}
+    held = [s for s in final if final[s] >= 0.0005]
+    return [
+        {"symbol": s, "type": kinds[s], "weight": final[s]}
+        for s in sorted(held, key=lambda s: -final[s])
+    ]
+
+
 def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
     return {
         "issue_url": f"{repo}/issues/new",
@@ -578,6 +601,10 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
                 "outcome": r["decision"]["outcome"],
                 "orders": len(r["orders"]),
                 "analysis": _analysis(r),
+                "options": _sim_options(r["run_id"]),
+                "assets": len(r["config"]["universe"]),
+                "cash": r["portfolios"]["final_cash"],
+                "portfolio": _sim_portfolio(r),
                 "record": f"{repo}/blob/{AUDIT_BRANCH}/simulations/runs/{r['run_id']}.json",
             }
             for r in list(reversed(sims))[:10]
