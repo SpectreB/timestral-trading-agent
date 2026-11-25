@@ -281,3 +281,17 @@ def test_the_equal_weight_start_invests_90_percent_whatever_the_universe() -> No
         prices = dict.fromkeys(cfg.symbols, 100.0)
         held = StartingPoint(FakeBroker(prices=prices), "equal", cfg.symbols).positions()
         assert sum(p.market_value for p in held.values()) == pytest.approx(0.9 * 100_000)
+
+
+def test_the_whole_run_sees_one_universe_news_included() -> None:
+    """2026-11-25: news + wide universe failed: the news covariates were built for the 15 live
+    assets while the forecasts covered 40. One configuration now serves both."""
+    from agent.config import news_agent_config
+    from agent.simulate import simulation_config
+
+    options = {"agent": "news", "stance": "cautious", "start": "equal", "universe": "wide"}
+    cfg = simulation_config(news_agent_config(), options)
+    assert len(cfg.symbols) == 40 and cfg.risk.min_cash == 0.30
+    assert (
+        simulation_config(cfg, options).symbols == cfg.symbols
+    )  # applying it again changes nothing
