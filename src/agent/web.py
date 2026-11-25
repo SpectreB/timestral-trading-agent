@@ -384,6 +384,7 @@ def agent_data(
             "at": _iso(series[-1]["at"]),
             "source": "run" if series[-1]["label"] != "account sample" else "sample",
         },
+        "range80": _range80(series[-1]["equity"], _portfolio_vol(last)),
         "n_runs": len(a.runs),
         "next_run": _iso(_next_slot(now)),
         "alerts": [{"level": k, "text": t} for k, t in _alerts(last, a.fills)],
@@ -575,14 +576,29 @@ def _sim_options(run_id: str) -> dict[str, str]:
 
 
 def _sim_portfolio(run: dict[str, Any]) -> list[dict[str, Any]]:
-    """What the simulated agent would hold, largest first, assets with a weight only."""
-    final = run["portfolios"]["final"]
+    """What the simulated agent would hold, largest first, with its weight at the start; then
+    the positions it would sell entirely (weight 0), so a change is never hidden."""
+    current, final = run["portfolios"]["current"], run["portfolios"]["final"]
     kinds = {a["symbol"]: a["type"] for a in run["config"]["universe"]}
-    held = [s for s in final if final[s] >= 0.0005]
+    held = sorted((s for s in final if final[s] >= 0.0005), key=lambda s: -final[s])
+    exited = sorted(s for s in final if final[s] < 0.0005 <= current[s])
     return [
-        {"symbol": s, "type": kinds[s], "weight": final[s]}
-        for s in sorted(held, key=lambda s: -final[s])
+        {"symbol": s, "type": kinds[s], "weight": final[s], "before": current[s]}
+        for s in (*held, *exited)
     ]
+
+
+def _range80(equity: float, vol: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The 80% range Timestral expects for the account value at its longest horizon, from the
+    forecast volatility of the portfolio held. None when the run recorded no risk figure."""
+    if not vol or not vol.get("final"):
+        return None
+    sigma = vol["final"]
+    return {
+        "horizon": vol["horizon"],
+        "low": equity * (1 - Z80 * sigma),
+        "high": equity * (1 + Z80 * sigma),
+    }
 
 
 def _sim_outlook(run: dict[str, Any]) -> dict[str, Any]:

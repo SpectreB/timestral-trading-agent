@@ -166,6 +166,15 @@
     return { on, box, active: tip && tip.id };
   }
 
+  /* What changed for one position: a label and a direction, or null below half a point. */
+  const change = (before, after) => {
+    const d = after - before;
+    if (Math.abs(d) < 0.005) return null;
+    if (before < 0.0005) return ["new", "up"];
+    if (after < 0.0005) return ["exited", "out"];
+    return [`${d > 0 ? "▲" : "▼"} ${(100 * Math.abs(d)).toFixed(1)}`, d > 0 ? "up" : "down"];
+  };
+
   // ------------------------------------------------------------------ charts
   function ticks(lo, hi, n = 4) {
     const raw = (hi - lo) / n;
@@ -275,6 +284,7 @@
         <div className=${"delta " + sign(diff)}>${(diff >= 0 ? "+" : "") + usd(diff)} (${spct(diff / a.start.equity, 2)}) <span className="muted">from ${usd(a.start.equity)}</span></div>
         <dl>
           <dt>Invested</dt><dd>${pct(1 - a.decision.cash, 0)}</dd>
+          ${a.range80 && html`<dt><${Timestral} size=${11} />In ${a.range80.horizon} days</dt><dd>${usd(a.range80.low)} to ${usd(a.range80.high)} <span className="muted">(80%)</span></dd>`}
           <dt>Last run</dt><dd>${when(a.decision.at)} · <${Outcome} o=${a.decision.outcome} /></dd>
         </dl>
         ${a.alerts.length > 0 && html`<div className="alert">${a.alerts.map((x, i) => html`<div key=${i} className=${x.level === "crit" ? "down" : "warn"}>▲ ${x.text}</div>`)}</div>`}
@@ -417,11 +427,12 @@
             onMouseEnter=${show(i)} onMouseLeave=${hide} onFocus=${show(i)} onBlur=${hide}
             onClick=${(e) => (tip && tip.i === i ? hide() : show(i)(e))}>
           <span className="sym">${x.symbol}</span>
-          <span className="bar"><i style=${{ width: (100 * x.final / scale) + "%", background: x.type === "stock" ? "var(--stock)" : "var(--etf)" }}></i>
+          <span className=${"bar" + (change(x.current, x.final) ? " " + change(x.current, x.final)[1] : "")}><i style=${{ width: (100 * x.final / scale) + "%", background: x.type === "stock" ? "var(--stock)" : "var(--etf)" }}></i>
             <u style=${{ left: `calc(${100 * x.rule / scale}% - 1px)` }}></u></span>
+          <span className=${"dlt " + (change(x.current, x.final) || ["", ""])[1]}>${(change(x.current, x.final) || [""])[0]}</span>
           <span className="num">${usd(x.value)}</span><span className="num">${pct(x.final)}</span></div>`)}
         <div className="hold"><span className="sym">Cash</span><span className="bar"><i style=${{ width: (100 * cash / scale) + "%", background: "var(--cash)" }}></i></span>
-          <span className="num">${usd(cash * equity)}</span><span className="num">${pct(cash)}</span></div>
+          <span className="dlt"></span><span className="num">${usd(cash * equity)}</span><span className="num">${pct(cash)}</span></div>
         ${h && html`<div id="hold-tip" role="tooltip" className="tipbox" style=${{ top: tip.top + 4 }}>
           <div className="tiphead"><b>${h.symbol}</b> <span className="muted">${h.name} · ${h.type === "stock" ? "stock" : "ETF"}</span></div>
           <dl>
@@ -895,13 +906,19 @@
       const o = c && c.options.find((x) => x.value === r.options[key]);
       return o ? o.label.split(":")[0].replace(/ \(.*\)/, "") : r.options[key];
     };
-    const top = r.portfolio.slice(0, 10);
-    const rest = r.portfolio.slice(10).reduce((t, p) => t + p.weight, 0);
+    const held = r.portfolio.filter((p) => p.weight >= 0.0005);
+    const exited = r.portfolio.filter((p) => p.weight < 0.0005);
+    const top = held.slice(0, 10);
+    const rest = held.slice(10).reduce((t, p) => t + p.weight, 0);
     const scale = Math.max(0.2, ...top.map((p) => p.weight), r.cash, rest);
     const o = r.outlook;
-    const bar = (name, w, colour, key) => html`<div key=${key || name} className="simbar">
-      <span className="sym">${name}</span><span className="bar"><i style=${{ width: Math.min(100, (100 * w) / scale) + "%", background: colour }}></i></span>
+    const bar = (name, w, colour, key, before) => {
+      const c = before === undefined ? null : change(before, w);
+      return html`<div key=${key || name} className="simbar">
+      <span className="sym">${name}</span><span className=${"bar" + (c ? " " + c[1] : "")}><i style=${{ width: Math.min(100, (100 * w) / scale) + "%", background: colour }}></i></span>
+      <span className=${"dlt " + (c ? c[1] : "")}>${c ? c[0] : ""}</span>
       <span className="num">${usd(w * o.equity)}</span><span className="num muted">${pct(w)}</span></div>`;
+    };
     return html`<div className=${"simres" + (open ? " open" : "")}>
       <button className="simhead" aria-expanded=${open} onClick=${() => setOpen(!open)}>
         <span className="chips">${["agent", "stance", "start", "universe"].map((k) => html`<span key=${k} className="chip">${label(k)}</span>`)}</span>
@@ -915,11 +932,12 @@
           <span><span className="muted">Changed</span> <b className="num">${pts(o.moved, 0).replace("+", "")}</b>${o.added.length ? html` <span className="up">+${o.added.join(", +")}</span>` : ""}${o.removed.length ? html` <span className="down">−${o.removed.join(", −")}</span>` : ""}</span>
         </div>
         <div className="simbars">
-          ${top.map((p) => bar(p.symbol, p.weight, p.type === "stock" ? "var(--stock)" : "var(--etf)"))}
-          ${rest > 0 && bar(`+${r.portfolio.length - 10} more`, rest, "var(--rule2)", "rest")}
+          ${top.map((p) => bar(p.symbol, p.weight, p.type === "stock" ? "var(--stock)" : "var(--etf)", null, p.before))}
+          ${rest > 0 && bar(`+${held.length - 10} more`, rest, "var(--rule2)", "rest")}
+          ${exited.map((p) => bar(p.symbol, 0, "var(--rule2)", "x-" + p.symbol, p.before))}
           ${bar("Cash", r.cash, "var(--cash)", "cash")}
         </div>
-        <${Fold} small first=${`${r.portfolio.length} of ${r.assets} assets held, ${pct(1 - r.cash, 0)} invested · no order sent`}>
+        <${Fold} small first=${`${held.length} of ${r.assets} assets held, ${pct(1 - r.cash, 0)} invested · no order sent`}>
           ${r.analysis || "No analysis recorded."} <a href=${r.record}>Full record</a></${Fold}>
       </div>`}
     </div>`;
