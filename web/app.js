@@ -947,9 +947,9 @@
           <p className="frame">Runs once on today's data, with the live guardrails. <b>No orders are sent.</b> The answer comes back in about 6 minutes.</p>
           <div className="choices">${s.choices.map((c, k) => html`<fieldset key=${c.key} className="choice">
             <legend><span className="choiceicon" style=${{ color: CHOICE_ICON[c.key][1] }}><${Glyph} d=${CHOICE_ICON[c.key][0]} size=${16} /></span>${c.label}</legend>
-            ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")}>
+            ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")} data-note=${OPTION_NOTE[o.value] || undefined}>
               <input type="radio" name=${c.key} value=${o.value} checked=${opts[c.key] === o.value} onChange=${() => setOpts({ ...opts, [c.key]: o.value })} />
-              <span><b>${o.label.split(":")[0]}</b>${OPTION_NOTE[o.value] && html`<small>${OPTION_NOTE[o.value]}</small>`}</span></label>`)}
+              <span><b>${o.label.split(":")[0]}</b></span></label>`)}
           </fieldset>`)}</div>
           <div className="launch">
             <p>You ask the <b>${name(s.choices[0])}</b>, <b>${name(s.choices[1])}</b>, starting from <b>${name(s.choices[2])}</b>, on <b>${name(s.choices[3])}</b>.</p>
