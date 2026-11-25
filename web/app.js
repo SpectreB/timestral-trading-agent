@@ -897,7 +897,7 @@
     const [opts, setOpts] = useState(() => Object.fromEntries(s.choices.map((c) => [c.key, c.options[0].value])));
     const body = s.choices.map((c) => `${c.key}: ${opts[c.key]}`).join("\n") + "\n\n" + s.body;
     const url = `${s.issue_url}?title=${encodeURIComponent(s.title)}&body=${encodeURIComponent(body)}`;
-    const name = (c) => c.options.find((o) => o.value === opts[c.key]).label.split(":")[0].replace(/ \(.*\)/, "").toLowerCase();
+    const name = (c) => c.options.find((o) => o.value === opts[c.key]).label.split(/[:,]/)[0].replace(/ \(.*\)/, "").toLowerCase();
     return html`
       <${React.Fragment}>
         <section className="sec"><header><h2>Latest results</h2><span className="aside">about 6 minutes after a request</span></header>
