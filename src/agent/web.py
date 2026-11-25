@@ -706,8 +706,8 @@ WHATS_NEXT: tuple[dict[str, str], ...] = (
         "kind": "Conversation",
         "id": "D-018",
         "title": "A second agent that uses Timestral as a tool, on its own paper account",
-        "text": "Ask the agent about its choices: Mistral Small answers from the audit records "
-        "of each decision.",
+        "text": "Talk with Mistral Large 4 about its choices, and leave a view it weighs at its "
+        "next decision: same guardrails, on the record.",
     },
 )
 
