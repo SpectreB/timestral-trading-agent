@@ -166,6 +166,15 @@
     return { on, box, active: tip && tip.id };
   }
 
+  /* What changed for one position: a label and a direction, or null below half a point. */
+  const change = (before, after) => {
+    const d = after - before;
+    if (Math.abs(d) < 0.005) return null;
+    if (before < 0.0005) return ["new", "up"];
+    if (after < 0.0005) return ["exited", "out"];
+    return [`${d > 0 ? "▲" : "▼"} ${(100 * Math.abs(d)).toFixed(1)}`, d > 0 ? "up" : "down"];
+  };
+
   // ------------------------------------------------------------------ charts
   function ticks(lo, hi, n = 4) {
     const raw = (hi - lo) / n;
@@ -275,6 +284,7 @@
         <div className=${"delta " + sign(diff)}>${(diff >= 0 ? "+" : "") + usd(diff)} (${spct(diff / a.start.equity, 2)}) <span className="muted">from ${usd(a.start.equity)}</span></div>
         <dl>
           <dt>Invested</dt><dd>${pct(1 - a.decision.cash, 0)}</dd>
+          ${a.range80 && html`<dt><${Timestral} size=${11} />In ${a.range80.horizon} days</dt><dd>${usd(a.range80.low)} to ${usd(a.range80.high)} <span className="muted">(80%)</span></dd>`}
           <dt>Last run</dt><dd>${when(a.decision.at)} · <${Outcome} o=${a.decision.outcome} /></dd>
         </dl>
         ${a.alerts.length > 0 && html`<div className="alert">${a.alerts.map((x, i) => html`<div key=${i} className=${x.level === "crit" ? "down" : "warn"}>▲ ${x.text}</div>`)}</div>`}
@@ -417,11 +427,12 @@
             onMouseEnter=${show(i)} onMouseLeave=${hide} onFocus=${show(i)} onBlur=${hide}
             onClick=${(e) => (tip && tip.i === i ? hide() : show(i)(e))}>
           <span className="sym">${x.symbol}</span>
-          <span className="bar"><i style=${{ width: (100 * x.final / scale) + "%", background: x.type === "stock" ? "var(--stock)" : "var(--etf)" }}></i>
+          <span className=${"bar" + (change(x.current, x.final) ? " " + change(x.current, x.final)[1] : "")}><i style=${{ width: (100 * x.final / scale) + "%", background: x.type === "stock" ? "var(--stock)" : "var(--etf)" }}></i>
             <u style=${{ left: `calc(${100 * x.rule / scale}% - 1px)` }}></u></span>
+          <span className=${"dlt " + (change(x.current, x.final) || ["", ""])[1]}>${(change(x.current, x.final) || [""])[0]}</span>
           <span className="num">${usd(x.value)}</span><span className="num">${pct(x.final)}</span></div>`)}
         <div className="hold"><span className="sym">Cash</span><span className="bar"><i style=${{ width: (100 * cash / scale) + "%", background: "var(--cash)" }}></i></span>
-          <span className="num">${usd(cash * equity)}</span><span className="num">${pct(cash)}</span></div>
+          <span className="dlt"></span><span className="num">${usd(cash * equity)}</span><span className="num">${pct(cash)}</span></div>
         ${h && html`<div id="hold-tip" role="tooltip" className="tipbox" style=${{ top: tip.top + 4 }}>
           <div className="tiphead"><b>${h.symbol}</b> <span className="muted">${h.name} · ${h.type === "stock" ? "stock" : "ETF"}</span></div>
           <dl>
@@ -895,12 +906,19 @@
       const o = c && c.options.find((x) => x.value === r.options[key]);
       return o ? o.label.split(":")[0].replace(/ \(.*\)/, "") : r.options[key];
     };
-    const top = r.portfolio.slice(0, 10);
-    const rest = r.portfolio.slice(10).reduce((t, p) => t + p.weight, 0);
+    const held = r.portfolio.filter((p) => p.weight >= 0.0005);
+    const exited = r.portfolio.filter((p) => p.weight < 0.0005);
+    const top = held.slice(0, 10);
+    const rest = held.slice(10).reduce((t, p) => t + p.weight, 0);
     const scale = Math.max(0.2, ...top.map((p) => p.weight), r.cash, rest);
-    const bar = (name, w, colour, key) => html`<div key=${key || name} className="simbar">
-      <span className="sym">${name}</span><span className="bar"><i style=${{ width: Math.min(100, (100 * w) / scale) + "%", background: colour }}></i></span>
-      <span className="num">${pct(w)}</span></div>`;
+    const o = r.outlook;
+    const bar = (name, w, colour, key, before) => {
+      const c = before === undefined ? null : change(before, w);
+      return html`<div key=${key || name} className="simbar">
+      <span className="sym">${name}</span><span className=${"bar" + (c ? " " + c[1] : "")}><i style=${{ width: Math.min(100, (100 * w) / scale) + "%", background: colour }}></i></span>
+      <span className=${"dlt " + (c ? c[1] : "")}>${c ? c[0] : ""}</span>
+      <span className="num">${usd(w * o.equity)}</span><span className="num muted">${pct(w)}</span></div>`;
+    };
     return html`<div className=${"simres" + (open ? " open" : "")}>
       <button className="simhead" aria-expanded=${open} onClick=${() => setOpen(!open)}>
         <span className="chips">${["agent", "stance", "start", "universe"].map((k) => html`<span key=${k} className="chip">${label(k)}</span>`)}</span>
@@ -908,12 +926,18 @@
         <${Outcome} o=${r.outcome} />
       </button>
       ${open && html`<div className="simbody">
+        <div className="simfacts">
+          <span><span className="muted">Account</span> <b className="num">${usd(o.equity)}</b></span>
+          ${o.range80 && html`<span><${Timestral} size=${12} /><span className="muted">In ${o.horizon} days, 80% range</span> <b className="num">${usd(o.range80[0])} to ${usd(o.range80[1])}</b></span>`}
+          <span><span className="muted">Changed</span> <b className="num">${pts(o.moved, 0).replace("+", "")}</b>${o.added.length ? html` <span className="up">+${o.added.join(", +")}</span>` : ""}${o.removed.length ? html` <span className="down">−${o.removed.join(", −")}</span>` : ""}</span>
+        </div>
         <div className="simbars">
-          ${top.map((p) => bar(p.symbol, p.weight, p.type === "stock" ? "var(--stock)" : "var(--etf)"))}
-          ${rest > 0 && bar(`+${r.portfolio.length - 10} more`, rest, "var(--rule2)", "rest")}
+          ${top.map((p) => bar(p.symbol, p.weight, p.type === "stock" ? "var(--stock)" : "var(--etf)", null, p.before))}
+          ${rest > 0 && bar(`+${held.length - 10} more`, rest, "var(--rule2)", "rest")}
+          ${exited.map((p) => bar(p.symbol, 0, "var(--rule2)", "x-" + p.symbol, p.before))}
           ${bar("Cash", r.cash, "var(--cash)", "cash")}
         </div>
-        <${Fold} small first=${`${r.portfolio.length} of ${r.assets} assets held, ${pct(1 - r.cash, 0)} invested · no order sent`}>
+        <${Fold} small first=${`${held.length} of ${r.assets} assets held, ${pct(1 - r.cash, 0)} invested · no order sent`}>
           ${r.analysis || "No analysis recorded."} <a href=${r.record}>Full record</a></${Fold}>
       </div>`}
     </div>`;
@@ -935,18 +959,15 @@
     const name = (c) => c.options.find((o) => o.value === opts[c.key]).label.split(/[:,]/)[0].replace(/ \(.*\)/, "").toLowerCase();
     return html`
       <${React.Fragment}>
-        <section className="sec"><header><h2>Latest results</h2><span className="aside">about 6 minutes after a request</span></header>
-          <${SimStatus} repo=${data.repo} builtAt=${data.generated_at} />
-          ${s.recent.length === 0 ? html`<p className="soft">None yet.</p>` : s.recent.map((r, k) => html`<${SimResult} key=${r.run_id} r=${r} s=${s} open=${k === 0} />`)}
-        </section>
+
         <section className="sec tryhero">
           <h2 className="big">Make an agent decide, now</h2>
           <p className="frame">Runs once on today's data, with the live guardrails. <b>No orders are sent.</b> The answer comes back in about 6 minutes.</p>
           <div className="choices">${s.choices.map((c, k) => html`<fieldset key=${c.key} className="choice">
             <legend><span className="choiceicon" style=${{ color: CHOICE_ICON[c.key][1] }}><${Glyph} d=${CHOICE_ICON[c.key][0]} size=${16} /></span>${c.label}</legend>
-            ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")}>
+            ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")} data-note=${OPTION_NOTE[o.value] || undefined}>
               <input type="radio" name=${c.key} value=${o.value} checked=${opts[c.key] === o.value} onChange=${() => setOpts({ ...opts, [c.key]: o.value })} />
-              <span><b>${o.label.split(":")[0]}</b>${OPTION_NOTE[o.value] && html`<small>${OPTION_NOTE[o.value]}</small>`}</span></label>`)}
+              <span><b>${o.label.split(":")[0]}</b></span></label>`)}
           </fieldset>`)}</div>
           <div className="launch">
             <p>You ask the <b>${name(s.choices[0])}</b>, <b>${name(s.choices[1])}</b>, starting from <b>${name(s.choices[2])}</b>, on <b>${name(s.choices[3])}</b>.</p>
@@ -954,6 +975,10 @@
           </div>
         </section>
 
+        <section className="sec"><header><h2>Latest results</h2><span className="aside">about 6 minutes after a request</span></header>
+          <${SimStatus} repo=${data.repo} builtAt=${data.generated_at} />
+          ${s.recent.length === 0 ? html`<p className="soft">None yet.</p>` : s.recent.map((r, k) => html`<${SimResult} key=${r.run_id} r=${r} s=${s} open=${k === 0} />`)}
+        </section>
       </${React.Fragment}>`;
   }
 

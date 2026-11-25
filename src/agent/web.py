@@ -57,6 +57,7 @@ from agent.dashboard import (
 )
 from agent.dashboard import build as build_classic
 from agent.metrics import MIN_SESSIONS_FOR_CI, SERIES
+from agent.risk import Z80
 from agent.scoring import calibration
 from agent.simulate import DEFAULT_OPTIONS, OPTIONS
 
@@ -383,6 +384,7 @@ def agent_data(
             "at": _iso(series[-1]["at"]),
             "source": "run" if series[-1]["label"] != "account sample" else "sample",
         },
+        "range80": _range80(series[-1]["equity"], _portfolio_vol(last)),
         "n_runs": len(a.runs),
         "next_run": _iso(_next_slot(now)),
         "alerts": [{"level": k, "text": t} for k, t in _alerts(last, a.fills)],
@@ -574,14 +576,48 @@ def _sim_options(run_id: str) -> dict[str, str]:
 
 
 def _sim_portfolio(run: dict[str, Any]) -> list[dict[str, Any]]:
-    """What the simulated agent would hold, largest first, assets with a weight only."""
-    final = run["portfolios"]["final"]
+    """What the simulated agent would hold, largest first, with its weight at the start; then
+    the positions it would sell entirely (weight 0), so a change is never hidden."""
+    current, final = run["portfolios"]["current"], run["portfolios"]["final"]
     kinds = {a["symbol"]: a["type"] for a in run["config"]["universe"]}
-    held = [s for s in final if final[s] >= 0.0005]
+    held = sorted((s for s in final if final[s] >= 0.0005), key=lambda s: -final[s])
+    exited = sorted(s for s in final if final[s] < 0.0005 <= current[s])
     return [
-        {"symbol": s, "type": kinds[s], "weight": final[s]}
-        for s in sorted(held, key=lambda s: -final[s])
+        {"symbol": s, "type": kinds[s], "weight": final[s], "before": current[s]}
+        for s in (*held, *exited)
     ]
+
+
+def _range80(equity: float, vol: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The 80% range Timestral expects for the account value at its longest horizon, from the
+    forecast volatility of the portfolio held. None when the run recorded no risk figure."""
+    if not vol or not vol.get("final"):
+        return None
+    sigma = vol["final"]
+    return {
+        "horizon": vol["horizon"],
+        "low": equity * (1 - Z80 * sigma),
+        "high": equity * (1 + Z80 * sigma),
+    }
+
+
+def _sim_outlook(run: dict[str, Any]) -> dict[str, Any]:
+    """The account value, what changed from the start, and the range Timestral expects for the
+    value at its longest horizon (80% interval, from the forecast portfolio volatility). No
+    expected profit: Timestral's direction has no measured skill, its risk does."""
+    p, equity = run["portfolios"], run["account"]["equity"]
+    cur, fin = p["current"], p["final"]
+    vols = (run.get("risk") or {}).get("portfolio_vol") or {}
+    horizon = max(vols, key=int) if vols else None
+    sigma = vols[horizon].get("final") if horizon else None
+    return {
+        "equity": equity,
+        "moved": sum(abs(fin[s] - cur[s]) for s in fin),
+        "added": sorted(s for s in fin if fin[s] >= 0.0005 and cur[s] < 0.0005),
+        "removed": sorted(s for s in fin if cur[s] >= 0.0005 and fin[s] < 0.0005),
+        "horizon": int(horizon) if horizon else None,
+        "range80": [equity * (1 - Z80 * sigma), equity * (1 + Z80 * sigma)] if sigma else None,
+    }
 
 
 def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
@@ -605,6 +641,7 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
                 "assets": len(r["config"]["universe"]),
                 "cash": r["portfolios"]["final_cash"],
                 "portfolio": _sim_portfolio(r),
+                "outlook": _sim_outlook(r),
                 "record": f"{repo}/blob/{AUDIT_BRANCH}/simulations/runs/{r['run_id']}.json",
             }
             for r in list(reversed(sims))[:10]
