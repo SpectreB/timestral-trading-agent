@@ -218,8 +218,8 @@
               ${pts[k].length > 1 && html`<polyline className="line" points=${pts[k].map((p) => `${x(p.t).toFixed(1)},${y(p.equity).toFixed(1)}`).join(" ")} />`}
               ${pts[k].map((p, i) => html`<circle key=${i} className="pt" cx=${x(p.t)} cy=${y(p.equity)} r=${p === nearest(pts[k], t) ? 4.5 : 2.5} />`)}</g>`)}
           </svg>
-          <div className="readout">${live.map((a, k) => { const p = nearest(pts[k], t); return html`<span key=${a.key} className=${"c-" + a.key}>
-            <${AgentIcon} k=${a.key} size=${14} />${a.title} ${usd2(p.equity)} <span className="muted">${when(p.at)}</span></span>`; })}</div>
+          ${at !== null && html`<div className="readout">${live.map((a, k) => { const p = nearest(pts[k], t); return html`<span key=${a.key} className=${"c-" + a.key}>
+            <${AgentIcon} k=${a.key} size=${14} />${a.title} ${usd2(p.equity)} <span className="muted">${when(p.at)}</span></span>`; })}</div>`}
         </div>
       </section>`;
   }
@@ -887,6 +887,14 @@
     </div>`;
   }
 
+  /* One pictogram per choice, each in a colour of Mistral's palette (red to amber). */
+  const CHOICE_ICON = {
+    agent: ["M8 8h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3zM12 4v4M9.5 13h.01M14.5 13h.01", "#e10500"],
+    stance: ["M4 17a8 8 0 0 1 16 0M12 17l4-5M7 17h.01M17 17h.01", "#fa500f"],
+    start: ["M6 21V4M6 4h11l-2.5 4L17 12H6", "#ff8205"],
+    universe: ["M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12h18M12 3c3.5 3.5 3.5 14.5 0 18M12 3c-3.5 3.5-3.5 14.5 0 18", "#e69500"],
+  };
+
   function Try({ data }) {
     const s = data.simulations;
     const [opts, setOpts] = useState(() => Object.fromEntries(s.choices.map((c) => [c.key, c.options[0].value])));
@@ -902,7 +910,7 @@
           <h2 className="big">Make an agent decide, now</h2>
           <p className="frame">Runs once on today's data, with the live guardrails. <b>No orders are sent.</b> The answer comes back in about 6 minutes.</p>
           <div className="choices">${s.choices.map((c, k) => html`<fieldset key=${c.key} className="choice">
-            <legend><span className="k">${k + 1}</span>${c.label}</legend>
+            <legend><span className="choiceicon" style=${{ color: CHOICE_ICON[c.key][1] }}><${Glyph} d=${CHOICE_ICON[c.key][0]} size=${16} /></span>${c.label}</legend>
             ${c.options.map((o) => html`<label key=${o.value} className=${"opt" + (opts[c.key] === o.value ? " on" : "")}>
               <input type="radio" name=${c.key} value=${o.value} checked=${opts[c.key] === o.value} onChange=${() => setOpts({ ...opts, [c.key]: o.value })} />
               <span><b>${o.label.split(":")[0]}</b><small>${OPTION_NOTE[o.value] || ""}</small></span></label>`)}
@@ -911,7 +919,6 @@
             <p>You ask the <b>${name(s.choices[0])}</b>, <b>${name(s.choices[1])}</b>, starting from <b>${name(s.choices[2])}</b>, on <b>${name(s.choices[3])}</b>.</p>
             <a className="btn big" href=${url} target="_blank" rel="noopener"><${GitHubMark} />Request this run on GitHub ↗</a>
           </div>
-          <p className="note small">Needs a GitHub account.</p>
         </section>
 
       </${React.Fragment}>`;
