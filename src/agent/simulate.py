@@ -113,6 +113,13 @@ def apply_universe(cfg: AgentConfig, universe: str) -> AgentConfig:
     return replace(cfg, universe=(*cfg.universe, *extra))
 
 
+def simulation_config(base: AgentConfig, options: Mapping[str, str]) -> AgentConfig:
+    """The chosen agent's configuration with the requested universe, then stance. Built once,
+    so everything in the run (forecasts, news covariates, guardrails) sees the same assets."""
+    chosen = {**DEFAULT_OPTIONS, **options}
+    return apply_stance(apply_universe(base, chosen["universe"]), chosen["stance"])
+
+
 def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
     """A stance moves the guardrail limits, never past what is safe: no leverage in any case
     (invested at most 90%), long only, and the independent final check still applies."""
@@ -315,7 +322,7 @@ def simulate(
     `cfg` is the chosen agent's configuration; the stance and the starting portfolio come from
     `options`. `history_dir` holds the records that give the agent's peak equity."""
     chosen = {**DEFAULT_OPTIONS, **(options or {})}
-    cfg = apply_stance(apply_universe(cfg, chosen["universe"]), chosen["stance"])
+    cfg = simulation_config(cfg, chosen)
     store = FileAuditStore(root / SIMULATIONS)
     reason = throttle(store, now)
     if reason:
@@ -362,7 +369,8 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the Simulate workf
 
     options, refused = parse_options(os.environ.get(args.options_env, ""))
     agent = options["agent"]
-    cfg = apply_stance(config_for(agent), options["stance"])
+    # The news covariates must cover the same assets as the forecasts (the wide universe too).
+    cfg = simulation_config(config_for(agent), options)
     key, secret = alpaca_keys(agent, os.environ)  # each agent's own paper account
     reply, _ = simulate(
         now=datetime.now(UTC),
