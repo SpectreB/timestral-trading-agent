@@ -1,6 +1,3 @@
-"""Reconciliation (D-011): what actually happened to the orders that were sent. Slippage is signed
-so that positive always means worse for us."""
-
 from __future__ import annotations
 
 import argparse
@@ -30,7 +27,7 @@ class OrderLookup(Protocol):
 @dataclass
 class ReconcileResult:
     written: list[str] = field(default_factory=list)
-    pending: list[str] = field(default_factory=list)  # orders not in a final state yet
+    pending: list[str] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)
 
 
@@ -92,7 +89,6 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def _reconcile_one(
     run: dict[str, Any], submissions: dict[str, Any], lookup: OrderLookup, now: datetime
 ) -> dict[str, Any] | None:
-    """The reconciliation payload, or None if some order is not in a final state yet."""
     reference = {o["client_order_id"]: o.get("reference_price") for o in run["orders"]}
     rows: list[dict[str, Any]] = []
     for sub in submissions["submissions"]:
@@ -122,7 +118,7 @@ def reconcile_runs(store: FileAuditStore, lookup: OrderLookup, now: datetime) ->
         rid = run["run_id"]
         submissions = store.read_reconciliation(rid)
         if submissions is None or store.has_reconciliation(f"{rid}_fills"):
-            continue  # dry run, nothing sent, or already reconciled
+            continue
         try:
             payload = _reconcile_one(run, submissions, lookup, now)
         except Exception as error:  # one bad lookup must not block the other runs

@@ -17,8 +17,7 @@ MIN_NOTIONAL = 1.0  # Alpaca minimum for fractional orders, in USD
 QTY_DECIMALS = 4
 
 
-class ExecutionError(RuntimeError):
-    """Execution cannot proceed safely: the run must not trade."""
+class ExecutionError(RuntimeError): ...
 
 
 @dataclass(frozen=True)
@@ -51,12 +50,10 @@ class Broker(Protocol):
 
 
 def trading_enabled(env: Mapping[str, str]) -> bool:
-    """Kill switch: live orders require TRADING_ENABLED=true (a repository variable in CI)."""
     return env.get("TRADING_ENABLED", "").strip().lower() == "true"
 
 
 def preflight(broker: Broker) -> AccountSnapshot:
-    """Refuse to run against anything but an active, unblocked paper account."""
     account = broker.account()
     problems = []
     if not account.is_paper:
@@ -85,10 +82,10 @@ class PlannedOrder:
 @dataclass(frozen=True)
 class Plan:
     orders: list[PlannedOrder]
-    post_weights: dict[str, float]  # portfolio expected after the orders fill
+    post_weights: dict[str, float]
     post_cash: float
-    turnover: float  # fraction of equity that would move with the full target
-    scale: float  # < 1 when the turnover cap throttled the plan
+    turnover: float
+    scale: float
 
 
 def plan_orders(
@@ -103,7 +100,6 @@ def plan_orders(
     symbols = cfg.symbols
     current_value = {s: positions[s].market_value if s in positions else 0.0 for s in symbols}
     deltas = {s: target[s] * equity - current_value[s] for s in symbols}
-    # Starting from (almost) all cash, the turnover cap would only delay the first investment.
     initial_deployment = sum(current_value.values()) / equity <= ex.initial_deployment_max_invested
 
     last_error = ""
@@ -162,7 +158,6 @@ def _build_orders(
         orders.append(
             PlannedOrder(symbol, side, quantity, round(limit, 2), f"{rid}-{symbol}-{side}", ref)
         )
-    # Sells first: they free the cash the buys need, so the account never leverages.
     return sorted(orders, key=lambda o: (o.side == "buy", o.symbol))
 
 
@@ -182,7 +177,6 @@ def order_records(plan: Plan, status: str) -> list[OrderRecord]:
 
 
 def submit_orders(plan: Plan, broker: Broker) -> list[OrderRecord]:
-    """Send the orders, sells first: a failed sell aborts the buys, which would need margin."""
     records: list[OrderRecord] = []
     sell_failed = False
     for o in plan.orders:
@@ -211,8 +205,6 @@ def submit_orders(plan: Plan, broker: Broker) -> list[OrderRecord]:
 
 
 class AlpacaBroker:  # pragma: no cover - network adapter, exercised by the smoke test
-    """Alpaca paper trading."""
-
     def __init__(self, api_key: str, secret_key: str) -> None:
         from alpaca.data.historical import StockHistoricalDataClient
         from alpaca.trading.client import TradingClient

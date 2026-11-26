@@ -36,7 +36,6 @@ from agent.inputs.news import NewsCovariates, news_record
 
 Status = Literal["done", "already_done", "market_closed"]
 
-# D-018: one Alpaca paper account per agent; "news" (D-019) would take over the tool agent's.
 AGENTS = ("pipeline", "tools", "news")
 ALPACA_KEY_NAMES = {
     "pipeline": ("ALPACA_API_KEY", "ALPACA_SECRET_KEY"),
@@ -56,8 +55,6 @@ def config_for(agent: str) -> AgentConfig:
 def news_provider(
     cfg: AgentConfig, audit_dir: Path, env: Mapping[str, str]
 ) -> Callable[[pd.DataFrame], NewsCovariates] | None:  # pragma: no cover - network wiring
-    """The production news pipeline of D-019: Alpaca News, the Mistral analyst, the score cache kept
-    with the audit log, and the FRED calendar for the extraction check."""
     if not cfg.news.enabled:
         return None
     from dataclasses import replace
@@ -87,7 +84,6 @@ def news_provider(
 
 
 def alpaca_keys(agent: str, env: Mapping[str, str]) -> tuple[str, str]:
-    """The keys of the agent's own paper account: the two agents never share an account."""
     key_name, secret_name = ALPACA_KEY_NAMES[agent]
     key, secret = env.get(key_name, ""), env.get(secret_name, "")
     if not key or not secret:
@@ -121,7 +117,6 @@ def run_cycle(
     history: FileAuditStore | None = None,
     news: Callable[[pd.DataFrame], NewsCovariates] | None = None,
 ) -> CycleResult:
-    """One cycle."""
     now_ny = now.astimezone(NEW_YORK)
     rid = run_id(now_ny, label or mode)
     if store.has_run(rid):  # idempotent: a retried job must not trade twice

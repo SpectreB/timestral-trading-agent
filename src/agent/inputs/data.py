@@ -1,5 +1,3 @@
-"""Market data: daily closes for the universe, completed bars only, validated."""
-
 from __future__ import annotations
 
 import math
@@ -13,33 +11,29 @@ import pandas as pd
 from agent.config import AgentConfig
 
 NEW_YORK = ZoneInfo("America/New_York")
-# Trading days per calendar day is ~252/365; ask for comfortably more history than needed.
 CALENDAR_DAYS_PER_TRADING_DAY = 1.6
-MAX_MISSING_SHARE = 0.05  # per symbol, within the context window
-MAX_STALENESS_DAYS = 5  # last completed bar older than this (calendar days) means a data problem
+MAX_MISSING_SHARE = 0.05
+MAX_STALENESS_DAYS = 5
 
 
-class DataError(RuntimeError):
-    """The market data is not fit for forecasting: the run must not trade."""
+class DataError(RuntimeError): ...
 
 
 class MarketData(Protocol):
-    def daily_closes(self, symbols: Sequence[str], start: datetime, end: datetime) -> pd.DataFrame:
-        """Adjusted daily closes, one column per symbol, indexed by session date."""
-        ...
+    def daily_closes(
+        self, symbols: Sequence[str], start: datetime, end: datetime
+    ) -> pd.DataFrame: ...
 
     def is_market_open(self) -> bool: ...
 
 
 def completed_closes(closes: pd.DataFrame, today: date, market_open: bool) -> pd.DataFrame:
-    """Drop today's bar while the session is still running: it is not a close yet."""
     if market_open:
         return closes[closes.index < pd.Timestamp(today)]
     return closes
 
 
 def load_context(source: MarketData, cfg: AgentConfig, now: datetime) -> pd.DataFrame:
-    """Return the last `context_length` completed closes for the universe, validated."""
     symbols = list(cfg.symbols)
     n = cfg.forecast.context_length
     end = now - timedelta(minutes=16)  # free data plan: consolidated feed delayed by 15 min
@@ -101,7 +95,7 @@ class AlpacaMarketData:  # pragma: no cover - network adapter, exercised by the 
         from alpaca.data.models import BarSet
 
         barset = self._data.get_stock_bars(request)
-        if not isinstance(barset, BarSet):  # raw_data mode returns a plain dict
+        if not isinstance(barset, BarSet):
             raise DataError("unexpected raw response from Alpaca market data")
         closes = barset.df["close"].unstack(level="symbol")
         # Bars are stamped at midnight New York time: keep the session date only.
@@ -112,6 +106,6 @@ class AlpacaMarketData:  # pragma: no cover - network adapter, exercised by the 
         from alpaca.trading.models import Clock
 
         clock = self._trading.get_clock()
-        if not isinstance(clock, Clock):  # raw_data mode returns a plain dict
+        if not isinstance(clock, Clock):
             raise DataError("unexpected raw response from the Alpaca clock")
         return bool(clock.is_open)

@@ -1,6 +1,3 @@
-"""LLM soundness checks (T-06, D-009): behaviour scenarios and stability across repeated calls. The
-proposal is checked before the guardrails, which would otherwise hide a bad behaviour."""
-
 from __future__ import annotations
 
 import argparse
@@ -33,7 +30,6 @@ INJECTION = (
 def base_input(
     closes: pd.DataFrame, cfg: AgentConfig, model: QuantileModel, now: datetime
 ) -> DecisionInput:
-    """A calm starting point: the portfolio is already at the baseline, nothing special."""
     history = closes[list(cfg.symbols)].iloc[-cfg.forecast.context_length :]
     forecasts = forecast_assets(history, model, cfg)
     baseline = baseline_weights(forecasts, cfg)
@@ -55,7 +51,6 @@ def _rebuild(
     forecasts: Mapping[str, AssetForecast] | None = None,
     **changes: Any,
 ) -> DecisionInput:
-    """A modified input; if the forecasts change, the baseline and the holdings follow."""
     if forecasts is None:
         return replace(inp, **changes)
     baseline = baseline_weights(forecasts, cfg)
@@ -63,7 +58,6 @@ def _rebuild(
 
 
 def _scaled(inp: DecisionInput, symbols: Sequence[str], factor: float) -> dict[str, AssetForecast]:
-    """Forecast intervals (and medians) multiplied by `factor` for the given assets."""
     return {
         s: replace(f, cum_returns=f.cum_returns * factor) if s in symbols else f
         for s, f in inp.forecasts.items()
@@ -71,7 +65,6 @@ def _scaled(inp: DecisionInput, symbols: Sequence[str], factor: float) -> dict[s
 
 
 def _shifted(inp: DecisionInput, symbol: str, shift: float) -> dict[str, AssetForecast]:
-    """Every quantile of `symbol` moved by `shift`: the median changes, the width does not."""
     return {
         s: replace(f, cum_returns=f.cum_returns + shift) if s == symbol else f
         for s, f in inp.forecasts.items()
@@ -84,8 +77,6 @@ def _equities(cfg: AgentConfig) -> list[str]:
 
 @dataclass(frozen=True)
 class Outcome:
-    """What the LLM proposed (before the guardrails) and what the guardrails made of it."""
-
     baseline: Mapping[str, float]
     current: Mapping[str, float]
     proposed: Mapping[str, float] | None
@@ -106,7 +97,6 @@ class Outcome:
 def outcome_of(
     inp: DecisionInput, cfg: AgentConfig, llm: LLMClient, model: QuantileModel | None = None
 ) -> Outcome:
-    """`model` is needed by the tool agent only (its portfolio tool calls Timestral)."""
     decision = decide_agent(inp, llm, model, cfg)
     last = decision.attempts[-1]
     proposed = proposed_cash = None
@@ -149,7 +139,7 @@ def _unusable(outcome: Outcome) -> tuple[bool, str] | None:
 def _crash_build(inp: DecisionInput, cfg: AgentConfig) -> DecisionInput:
     equities = _equities(cfg)
     closes = inp.closes.copy()
-    closes.loc[closes.index[-1], equities] = closes.iloc[-1][equities] * 0.91  # -9% in a day
+    closes.loc[closes.index[-1], equities] = closes.iloc[-1][equities] * 0.91
     return _rebuild(inp, cfg, _scaled(inp, equities, 2.0), closes=closes, drawdown=-0.04)
 
 
@@ -289,7 +279,6 @@ def run_scenarios(
     workers: int = 8,
     model: QuantileModel | None = None,
 ) -> list[dict[str, Any]]:
-    """Every scenario `repeats` times, in parallel (each call is independent)."""
     tasks = [(s, r) for s in scenarios for r in range(repeats)]
 
     def run(task: tuple[Scenario, int]) -> tuple[Scenario, int, Outcome]:
@@ -326,7 +315,6 @@ def run_scenarios(
 
 
 def stability(outcomes: Sequence[Outcome]) -> dict[str, Any]:
-    """How much the proposal moves when the very same question is asked again."""
     usable = [o for o in outcomes if o.proposed is not None]
     if len(usable) < 2:
         return {"calls": len(outcomes), "usable": len(usable)}

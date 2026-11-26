@@ -1,6 +1,3 @@
-"""Measuring what the news covariates add to Timestral (D-019, measurement plan). The ETFs get no
-company news: they are the control group."""
-
 from __future__ import annotations
 
 import math
@@ -16,8 +13,6 @@ from agent.config import AgentConfig, Asset, AssetType, news_agent_config
 BASE = "prices"
 VARIANTS = (BASE, "news", "events", "news+events")
 
-# Large US stocks across sectors, plus the five stocks the agents trade. The groups are only
-# labels here: no guardrail is applied to a measurement.
 PANEL_STOCKS: tuple[tuple[str, str, str], ...] = (
     ("NVDA", "NVIDIA", "tech"), ("AMZN", "Amazon", "consumer"), ("JPM", "JPMorgan Chase", "fin"),
     ("XOM", "Exxon Mobil", "energy"), ("LLY", "Eli Lilly", "health"),
@@ -34,14 +29,12 @@ PANEL_STOCKS: tuple[tuple[str, str, str], ...] = (
     ("GE", "GE Aerospace", "industrial"),
 )  # fmt: skip
 
-# The adoption rule (D-019), fixed before the measurement.
-MIN_IMPROVEMENT = 0.0  # stocks: the pinball loss must be lower than with prices alone
-MAX_COVERAGE_LOSS = 0.03  # stocks: the 80% interval may not drift 3 points further from 80%
-MAX_ETF_DEGRADATION = 0.01  # ETF control: at most 1% more pinball loss
+MIN_IMPROVEMENT = 0.0
+MAX_COVERAGE_LOSS = 0.03
+MAX_ETF_DEGRADATION = 0.01
 
 
 def panel_config(base: AgentConfig | None = None) -> AgentConfig:
-    """The measurement universe: the panel stocks and the ETFs of the trading universe."""
     base = base or news_agent_config()
     etfs = tuple(a for a in base.universe if a.type is AssetType.ETF)
     stocks = tuple(Asset(s, name, AssetType.STOCK, group) for s, name, group in PANEL_STOCKS)
@@ -51,8 +44,6 @@ def panel_config(base: AgentConfig | None = None) -> AgentConfig:
 def score(
     levels: tuple[float, ...], quantiles: np.ndarray, realised: float
 ) -> dict[str, float | bool]:
-    """One forecast against its outcome: pinball loss averaged over the quantile levels, whether the
-    realised return fell inside the 80% interval, the interval width, the sign."""
     lv = np.asarray(levels, dtype=float)
     q = np.asarray(quantiles, dtype=float)
     err = realised - q
@@ -69,7 +60,6 @@ def score(
 
 
 def summarise(frame: pd.DataFrame) -> list[dict[str, Any]]:
-    """Per variant and kind: how many forecasts, calibration, pinball loss, RMS ratio, hit rate."""
     out = []
     for (variant, kind), g in frame.groupby(["variant", "kind"], sort=False):
         sigma = g["width"] / (2 * Z80)
@@ -97,8 +87,6 @@ def paired(
     draws: int = 2000,
     seed: int = 0,
 ) -> dict[str, Any]:
-    """Pinball loss of `base` minus that of `variant`, on the same forecasts (positive = the
-    covariates help)."""
     sub = frame[frame["kind"] == kind]
     a = sub[sub["variant"] == base].set_index(["origin", "symbol"])["pinball"]
     b = sub[sub["variant"] == variant].set_index(["origin", "symbol"])["pinball"]
@@ -131,9 +119,6 @@ def paired(
 def verdict(
     summary: list[dict[str, Any]], pairs: list[dict[str, Any]], variant: str
 ) -> dict[str, Any]:
-    """The adoption rule applied to one variant. 'clear' needs the 95% interval of the stocks'
-    improvement to exclude zero; 'weak' is a positive mean whose interval includes zero (the
-    owner decides); anything else is 'no'."""
 
     def row(kind: str) -> dict[str, Any]:
         return next(s for s in summary if s["variant"] == variant and s["kind"] == kind)
