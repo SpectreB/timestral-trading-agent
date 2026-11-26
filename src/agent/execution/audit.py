@@ -8,7 +8,6 @@ import json
 import os
 import tempfile
 from collections.abc import Sequence
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -123,7 +122,7 @@ def build_record(
         mode=mode,
         started_at=now.isoformat(timespec="seconds"),
         git_sha=code_version(),
-        config=json.loads(json.dumps(asdict(cfg))),
+        config=cfg.model_dump(mode="json"),
         data={
             "last_session": inp.closes.index[-1].date().isoformat(),
             "n_sessions": len(inp.closes),

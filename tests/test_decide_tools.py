@@ -160,9 +160,9 @@ def test_exploration_stops_after_max_rounds() -> None:
 
 
 def test_exploration_stops_when_the_call_budget_is_spent() -> None:
-    from dataclasses import replace
+    from agent.config import evolve
 
-    cfg = replace(CFG, tools=ToolConfig(max_rounds=6, max_calls=3))
+    cfg = evolve(CFG, tools=ToolConfig(max_rounds=6, max_calls=3))
     burst = step(*[("get_baseline", "{}")] * 4)
     llm = FakeToolLLM([burst, burst], [GOOD])
     decision = run(llm, cfg)
@@ -213,11 +213,11 @@ def test_decide_agent_dispatches_on_the_agent_kind() -> None:
 
 
 def test_decide_agent_refuses_an_impossible_setup() -> None:
-    from dataclasses import replace
+    from agent.config import evolve
 
     with pytest.raises(TypeError, match="tool calls"):
         decide_agent(make_input(), FakeLLM([GOOD]), FakeTimestral([0.02]), CFG)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="Timestral model"):
         decide_agent(make_input(), FakeToolLLM([], [GOOD]), None, CFG)
-    with pytest.raises(ValueError, match="unknown agent"):
-        decide_agent(make_input(), FakeLLM([GOOD]), None, replace(CFG, agent="oracle"))
+    with pytest.raises(ValueError, match="'pipeline' or 'tools'"):
+        evolve(CFG, agent="oracle")

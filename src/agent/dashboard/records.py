@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
+from pydantic import Field
+
+from agent.config import Frozen
 from agent.evaluation.metrics import performance_report
 from agent.evaluation.scoring import score_forecasts
 from agent.execution.audit import FileAuditStore
@@ -193,9 +195,11 @@ def _tool_calls(run: dict[str, Any]) -> list[dict[str, Any]]:
     return list(run["decision"].get("tool_calls") or [])
 
 
-@dataclass(frozen=True)
-class AgentView:
-    key: str
+AgentKey = Literal["pipeline", "tools"]
+
+
+class AgentView(Frozen):
+    key: AgentKey
     title: str
     summary: str
     runs: list[dict[str, Any]]
@@ -205,7 +209,7 @@ class AgentView:
     prefix: str = ""
     replay: dict[str, Any] | None = None
     replay_folder: str = ""
-    valuations: list[dict[str, Any]] = field(default_factory=list)
+    valuations: list[dict[str, Any]] = Field(default_factory=list)
 
 
 _TAGLINE = {
@@ -322,18 +326,18 @@ TOOLS_SUMMARY = (
 )
 
 
-def _view(store: FileAuditStore, key: str, title: str, summary: str, prefix: str) -> AgentView:
+def _view(store: FileAuditStore, key: AgentKey, title: str, summary: str, prefix: str) -> AgentView:
     runs = chronological(store.read_runs())
     observations = store.read_observations()
     return AgentView(
-        key,
-        title,
-        summary,
-        runs,
-        store.read_fills(),
-        score_forecasts(runs, observations),
-        performance_report(runs, observations),
-        prefix,
+        key=key,
+        title=title,
+        summary=summary,
+        runs=runs,
+        fills=store.read_fills(),
+        scores=score_forecasts(runs, observations),
+        report=performance_report(runs, observations),
+        prefix=prefix,
         valuations=store.read_valuations(),
     )
 

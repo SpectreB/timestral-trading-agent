@@ -8,8 +8,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, cast
 
+from pydantic import Field, ValidationError
+
 from agent.checks.safety import UnsafePortfolioError, final_check
-from agent.config import AgentConfig
+from agent.config import AgentConfig, Frozen
 from agent.execution.audit import OrderRecord
 from agent.execution.reconcile import OrderState
 
@@ -20,16 +22,14 @@ QTY_DECIMALS = 4
 class ExecutionError(RuntimeError): ...
 
 
-@dataclass(frozen=True)
-class AccountSnapshot:
+class AccountSnapshot(Frozen):
     equity: float
     is_paper: bool
     status: str
     trading_blocked: bool
 
 
-@dataclass(frozen=True)
-class Position:
+class Position(Frozen):
     quantity: float
     market_value: float
 
@@ -54,7 +54,10 @@ def trading_enabled(env: Mapping[str, str]) -> bool:
 
 
 def preflight(broker: Broker) -> AccountSnapshot:
-    account = broker.account()
+    try:
+        account = broker.account()
+    except ValidationError as error:
+        raise ExecutionError(f"invalid account data from the broker: {error}") from error
     problems = []
     if not account.is_paper:
         problems.append("not a paper account")
@@ -69,14 +72,13 @@ def preflight(broker: Broker) -> AccountSnapshot:
     return account
 
 
-@dataclass(frozen=True)
-class PlannedOrder:
-    symbol: str
+class PlannedOrder(Frozen):
+    symbol: str = Field(min_length=1)
     side: Literal["buy", "sell"]
-    quantity: float
-    limit_price: float
-    client_order_id: str
-    reference_price: float
+    quantity: float = Field(gt=0)
+    limit_price: float = Field(gt=0)
+    client_order_id: str = Field(min_length=1, max_length=128)
+    reference_price: float = Field(gt=0)
 
 
 @dataclass(frozen=True)
@@ -156,7 +158,14 @@ def _build_orders(
             continue
         limit = ref * (1 + tolerance) if side == "buy" else ref * (1 - tolerance)
         orders.append(
-            PlannedOrder(symbol, side, quantity, round(limit, 2), f"{rid}-{symbol}-{side}", ref)
+            PlannedOrder(
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                limit_price=round(limit, 2),
+                client_order_id=f"{rid}-{symbol}-{side}",
+                reference_price=ref,
+            )
         )
     return sorted(orders, key=lambda o: (o.side == "buy", o.symbol))
 
@@ -227,7 +236,10 @@ class AlpacaBroker:  # pragma: no cover - network adapter, exercised by the smok
         from alpaca.trading.models import Position as AlpacaPosition
 
         raw = cast(list[AlpacaPosition], self._trading.get_all_positions())
-        return {p.symbol: Position(float(p.qty), float(p.market_value or 0)) for p in raw}
+        return {
+            p.symbol: Position(quantity=float(p.qty), market_value=float(p.market_value or 0))
+            for p in raw
+        }
 
     def latest_prices(self, symbols: Sequence[str]) -> dict[str, float]:
         from alpaca.data.enums import DataFeed

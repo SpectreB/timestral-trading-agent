@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import math
-from dataclasses import replace
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from agent.checks.risk import Z80
-from agent.config import AgentConfig, Asset, AssetType, news_agent_config
+from agent.config import AgentConfig, Asset, AssetType, evolve, news_agent_config
 
 BASE = "prices"
 VARIANTS = (BASE, "news", "events", "news+events")
@@ -37,8 +36,11 @@ MAX_ETF_DEGRADATION = 0.01
 def panel_config(base: AgentConfig | None = None) -> AgentConfig:
     base = base or news_agent_config()
     etfs = tuple(a for a in base.universe if a.type is AssetType.ETF)
-    stocks = tuple(Asset(s, name, AssetType.STOCK, group) for s, name, group in PANEL_STOCKS)
-    return replace(base, universe=(*etfs, *stocks))
+    stocks = tuple(
+        Asset(symbol=s, name=name, type=AssetType.STOCK, group=group)
+        for s, name, group in PANEL_STOCKS
+    )
+    return evolve(base, universe=(*etfs, *stocks))
 
 
 def score(
