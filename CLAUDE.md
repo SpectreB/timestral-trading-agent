@@ -46,7 +46,7 @@ All parameters live in [src/agent/config.py](src/agent/config.py), each traced t
 
 ## Decisions
 
-Recorded in [docs/decisions.md](docs/decisions.md): D-001 to D-010 accepted or provisional. The file ends with the open decisions and a **Future work** section (options deliberately deferred).
+Recorded in [docs/decisions.md](docs/decisions.md): D-001 to D-022. The file ends with the open decisions and a **Future work** section (options deliberately deferred).
 
 ## How we work
 
@@ -72,7 +72,7 @@ Recorded in [docs/decisions.md](docs/decisions.md): D-001 to D-010 accepted or p
 | Data, forecast, baseline, decide, audit, execute, reconcile, run, smoke | Done, 215 offline tests |
 | Workflows: CI, trade (10:00 and 15:00 ET), smoke test (08:30 ET) | Done, dry run verified on GitHub 2026-11-20 |
 | README | Done |
-| Dashboard (static page on GitHub Pages, D-012) | Done |
+| Dashboard (React page on GitHub Pages, typed FastAPI API with a static fallback, D-012, D-022) | Done; hosting the live API: waiting for the owner |
 | Multi-asset backtest (D-006: 28M, prices, 512 days confirmed), live forecast scoring (D-013) | Done |
 | LLM behaviour scenarios, confidence calibration | To do |
 | News covariates (bonus) | Later |

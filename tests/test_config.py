@@ -43,3 +43,26 @@ def test_drawdown_levels_are_increasingly_severe() -> None:
 
 def test_llm_model_is_pinned() -> None:
     assert "latest" not in CFG.llm.model
+
+
+def test_the_config_refuses_settings_that_break_a_safety_rule() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from agent.config import AgentConfig, DrawdownLevel, evolve
+
+    cfg = AgentConfig()
+    with pytest.raises(ValidationError, match="pin a model version"):
+        evolve(cfg, llm=evolve(cfg.llm, model="mistral-large-latest"))
+    with pytest.raises(ValidationError, match="leverage"):
+        evolve(cfg.risk, max_invested=0.95)
+    with pytest.raises(ValidationError, match="twice"):
+        evolve(cfg, universe=(*cfg.universe, cfg.universe[0]))
+    with pytest.raises(ValidationError, match="mildest to the deepest"):
+        evolve(cfg, drawdown_levels=tuple(reversed(cfg.drawdown_levels)))
+    with pytest.raises(ValidationError):
+        DrawdownLevel(threshold=0.05, action="alert")  # a drawdown is negative
+    with pytest.raises(ValidationError):
+        evolve(cfg.risk, max_weight_etf=float("nan"))
+    with pytest.raises(ValidationError):
+        evolve(cfg, unknown_setting=1)

@@ -17,7 +17,10 @@ class Reading:
         )
 
     def positions(self) -> dict[str, Position]:
-        return {"SPY": Position(10, 6_000.25), "AAPL": Position(5, 1_000.0)}
+        return {
+            "SPY": Position(quantity=10, market_value=6_000.25),
+            "AAPL": Position(quantity=5, market_value=1_000.0),
+        }
 
 
 def test_a_sample_gives_equity_invested_cash_and_each_position() -> None:

@@ -1,15 +1,15 @@
-"""Audit records read into per-agent views for the site (D-012)."""
-
 from __future__ import annotations
 
 import json
 from collections import Counter
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
+from pydantic import Field
+
+from agent.config import Frozen
 from agent.evaluation.metrics import performance_report
 from agent.evaluation.scoring import score_forecasts
 from agent.execution.audit import FileAuditStore
@@ -18,9 +18,9 @@ DEFAULT_REPO = "https://github.com/SpectreB/timestral-trading-agent"
 
 AUDIT_BRANCH = "audit-log"
 
-TOOLS_FOLDER = "agents/tools"  # the tool agent's records on the audit-log branch (D-018)
+TOOLS_FOLDER = "agents/tools"
 
-SIM_TITLE = "Simulation request"  # the Simulate workflow reacts to issues titled so (D-017)
+SIM_TITLE = "Simulation request"
 
 SIM_BODY = (
     "Submitting this issue asks the agent to run one simulation now: live market data, "
@@ -72,8 +72,6 @@ def _et(iso: str) -> datetime:
 
 
 def _points(runs: list[dict[str, Any]], valuations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The account's value over time: the start of every run (with its detail) and the samples taken
-    between runs, oldest first."""
     first = _et(runs[0]["started_at"])
     out = [
         {
@@ -102,7 +100,7 @@ _LEVEL_LABEL = {
     "baseline_half_exposure_and_pause": "baseline at half exposure, LLM paused",
 }
 
-SLOT_HOURS = (10, 15)  # the two scheduled runs of the day, US Eastern time
+SLOT_HOURS = (10, 15)
 
 
 def _next_slot(now: datetime) -> datetime:
@@ -118,7 +116,6 @@ def _next_slot(now: datetime) -> datetime:
 
 
 def _alerts(run: dict[str, Any], fills: list[dict[str, Any]]) -> list[tuple[str, str]]:
-    """What deserves attention at the last run: shown at the top, never folded away."""
     out: list[tuple[str, str]] = []
     attempt = _last_attempt(run)
     outcome = run["decision"]["outcome"]
@@ -198,21 +195,21 @@ def _tool_calls(run: dict[str, Any]) -> list[dict[str, Any]]:
     return list(run["decision"].get("tool_calls") or [])
 
 
-@dataclass(frozen=True)
-class AgentView:
-    """One agent on the page (D-018): its records and where they live in the audit log."""
+AgentKey = Literal["pipeline", "tools"]
 
-    key: str
+
+class AgentView(Frozen):
+    key: AgentKey
     title: str
     summary: str
     runs: list[dict[str, Any]]
     fills: list[dict[str, Any]]
     scores: list[dict[str, Any]]
     report: dict[str, Any] | None
-    prefix: str = ""  # folder of its records on the audit-log branch
-    replay: dict[str, Any] | None = None  # its replay report (D-015), shown under Performance
-    replay_folder: str = ""  # where the replay records live in the repository
-    valuations: list[dict[str, Any]] = field(default_factory=list)  # hourly samples of the account
+    prefix: str = ""
+    replay: dict[str, Any] | None = None
+    replay_folder: str = ""
+    valuations: list[dict[str, Any]] = Field(default_factory=list)
 
 
 _TAGLINE = {
@@ -233,8 +230,6 @@ def _median(values: list[float]) -> float:
 
 
 def _measures(a: AgentView, evals: dict[str, Any] | None) -> dict[str, str]:
-    """Concrete measures of one agent, as text: how it decides, what risk it takes, how it executes,
-    how it behaved in tests, how it did on the past. 'n/a' when not measurable yet."""
     out: dict[str, str] = {}
     runs = a.runs
     if runs:
@@ -309,7 +304,6 @@ _MEASURE_ROWS: tuple[tuple[str, str, str], ...] = (
 def _scenario_counts(
     results: dict[str, Any], focus: dict[str, Any] | None = None
 ) -> dict[str, tuple[int, int]]:
-    """Passes out of repeats per scenario; a dedicated longer series replaces the short one."""
     counts = {
         s["key"]: (sum(r["passed"] for r in s["runs"]), len(s["runs"]))
         for s in results["scenarios"]
@@ -332,24 +326,23 @@ TOOLS_SUMMARY = (
 )
 
 
-def _view(store: FileAuditStore, key: str, title: str, summary: str, prefix: str) -> AgentView:
+def _view(store: FileAuditStore, key: AgentKey, title: str, summary: str, prefix: str) -> AgentView:
     runs = chronological(store.read_runs())
     observations = store.read_observations()
     return AgentView(
-        key,
-        title,
-        summary,
-        runs,
-        store.read_fills(),
-        score_forecasts(runs, observations),
-        performance_report(runs, observations),
-        prefix,
+        key=key,
+        title=title,
+        summary=summary,
+        runs=runs,
+        fills=store.read_fills(),
+        scores=score_forecasts(runs, observations),
+        report=performance_report(runs, observations),
+        prefix=prefix,
         valuations=store.read_valuations(),
     )
 
 
 def chronological(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Oldest first; for runs at the same instant the morning run comes before the afternoon."""
     return sorted(runs, key=lambda r: (r["started_at"], r["mode"] != "morning"))
 
 
@@ -358,7 +351,6 @@ def _load_json(path: Path) -> Any:
 
 
 def _load_evals(folder: Path) -> dict[str, Any] | None:
-    """The behaviour tests of D-016: the pipeline agent, and the tool agent's final prompt."""
     found = {
         "pipeline": _load_json(folder / "results.json"),
         "tools": _load_json(folder / "tools_v2" / "results.json"),

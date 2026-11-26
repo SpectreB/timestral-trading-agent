@@ -8,7 +8,6 @@ import json
 import os
 import tempfile
 from collections.abc import Sequence
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,18 +24,17 @@ from agent.evaluation.scoring import score_forecasts
 SCHEMA_VERSION = 1
 
 
-class AuditError(RuntimeError):
-    """The audit log cannot be written safely: the run must not trade."""
+class AuditError(RuntimeError): ...
 
 
 class OrderRecord(BaseModel):
     symbol: str
-    side: str  # "buy" or "sell"
+    side: str
     quantity: float
     limit_price: float | None
     client_order_id: str
-    status: str  # "dry_run", "planned", then the broker's status in the reconciliation
-    reference_price: float | None = None  # live price the limit was derived from (slippage base)
+    status: str
+    reference_price: float | None = None
 
 
 class RunRecord(BaseModel):
@@ -55,11 +53,8 @@ class RunRecord(BaseModel):
     orders: list[OrderRecord]
     execution_status: str
     reasoning_file: str
-    # Forecast risk of every portfolio (D-014); absent in records written before it existed.
     risk: dict[str, Any] | None = None
-    # GitHub login of whoever asked for a simulation (D-017); None for scheduled runs.
     requested_by: str | None = None
-    # News covariates of the run (D-019): coverage, scores used, analyst check; None if unused.
     news: dict[str, Any] | None = None
 
 
@@ -68,7 +63,6 @@ def run_id(now: datetime, mode: str) -> str:
 
 
 def code_version() -> str:
-    """Commit the code was built from: set by GitHub Actions, 'local' otherwise."""
     return os.environ.get("GITHUB_SHA", "local")
 
 
@@ -96,7 +90,6 @@ def build_record(
     label: str | None = None,
     requested_by: str | None = None,
 ) -> tuple[RunRecord, str]:
-    """Assemble the run record and the reasoning text from the pipeline objects."""
     rid = run_id(now, label or mode)
     horizons = tuple(range(1, cfg.forecast.horizon + 1))
     last = decision.attempts[-1]
@@ -129,7 +122,7 @@ def build_record(
         mode=mode,
         started_at=now.isoformat(timespec="seconds"),
         git_sha=code_version(),
-        config=json.loads(json.dumps(asdict(cfg))),
+        config=cfg.model_dump(mode="json"),
         data={
             "last_session": inp.closes.index[-1].date().isoformat(),
             "n_sessions": len(inp.closes),
@@ -192,7 +185,6 @@ def _dump(payload: Any) -> str:
 
 
 def _write_once(path: Path, content: str) -> None:
-    """Write `content` to `path` atomically, refusing to overwrite an existing file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
     tmp = Path(tmp_name)
@@ -229,7 +221,6 @@ class FileAuditStore:
         return self._run_path(record.run_id)
 
     def write_reconciliation(self, name: str, payload: dict[str, Any]) -> Path:
-        """`name` is a day (fills, outcomes) or a run id (order submission results)."""
         path = self.root / "reconciliation" / f"{name}.json"
         _write_once(path, _dump({"schema_version": SCHEMA_VERSION, "name": name, **payload}))
         return path
@@ -254,7 +245,6 @@ class FileAuditStore:
         return (self.root / "valuations" / f"{name}.json").exists()
 
     def write_valuation(self, name: str, payload: dict[str, Any]) -> Path:
-        """One sample of the account's value, taken between runs; `name` is its minute."""
         path = self.root / "valuations" / f"{name}.json"
         _write_once(path, _dump({"schema_version": SCHEMA_VERSION, **payload}))
         return path
@@ -279,7 +269,6 @@ class FileAuditStore:
         return [json.loads(f.read_text(encoding="utf-8")) for f in files]
 
     def build_tables(self) -> list[Path]:
-        """Regenerate the flat CSV tables from the run records (deterministic)."""
         runs = self.read_runs()
         out = self.root / "tables"
         out.mkdir(parents=True, exist_ok=True)
@@ -404,6 +393,5 @@ def _score_rows(scores: list[dict[str, Any]]) -> Rows:
 
 
 def _shadow_rows(rows: list[dict[str, Any]]) -> Rows:
-    """Daily return of each shadow portfolio (D-014)."""
     header = ["session", "run_id", *SERIES]
     return header, [[row[column] for column in header] for row in rows]

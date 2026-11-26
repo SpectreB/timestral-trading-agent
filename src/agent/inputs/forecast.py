@@ -1,6 +1,3 @@
-"""Timestral forecasts for the whole universe, in one batched call (D-006). Price quantiles map
-exactly to return quantiles: q_return = q_price / last_price - 1."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -14,12 +11,11 @@ import pandas as pd
 
 from agent.config import AgentConfig
 
-MAX_INTERVAL_WIDTH = 0.5  # an 80% interval wider than 50 pts over the horizon is absurd
+MAX_INTERVAL_WIDTH = 0.5
 MONOTONE_TOLERANCE = 1e-9
 
 
-class ForecastError(RuntimeError):
-    """A forecast failed its sanity checks: the run must not trade on it."""
+class ForecastError(RuntimeError): ...
 
 
 class QuantileModel(Protocol):
@@ -31,11 +27,10 @@ class AssetForecast:
     symbol: str
     last_date: date
     last_price: float
-    levels: tuple[float, ...]  # quantile levels, e.g. 0.01 ... 0.99
+    levels: tuple[float, ...]
     cum_returns: npt.NDArray[np.float64]  # shape (horizon, n_levels): return from last close
 
     def quantile(self, h: int, level: float) -> float:
-        """Cumulative-return quantile at horizon h (1-based) for the closest level."""
         i = int(np.argmin(np.abs(np.asarray(self.levels) - level)))
         return float(self.cum_returns[h - 1, i])
 
@@ -43,11 +38,9 @@ class AssetForecast:
         return self.quantile(h, 0.5)
 
     def width(self, h: int) -> float:
-        """Width of the 80% interval (q90 - q10): Timestral's measure of uncertainty."""
         return self.quantile(h, 0.9) - self.quantile(h, 0.1)
 
     def summary(self, horizons: tuple[int, ...]) -> dict[str, Any]:
-        """Compact, JSON-friendly view for the prompt and the audit log."""
         return {
             "symbol": self.symbol,
             "last_date": self.last_date.isoformat(),
@@ -65,7 +58,7 @@ class AssetForecast:
 
 
 def _to_numpy(x: Any) -> npt.NDArray[np.float64]:
-    if hasattr(x, "detach"):  # torch tensor
+    if hasattr(x, "detach"):
         x = x.detach().cpu().numpy()
     return np.asarray(x, dtype=np.float64)
 
@@ -83,11 +76,10 @@ def forecast_assets(
     cfg: AgentConfig,
     covariates: Mapping[str, Any] | None = None,
 ) -> dict[str, AssetForecast]:
-    """Forecast every column of `closes` in one batch and sanity-check the result."""
     if cfg.forecast.input_type != "price":
         raise NotImplementedError("only price input is supported in production (D-006)")
     horizon = cfg.forecast.horizon
-    context = closes.to_numpy(dtype=np.float64).T  # (B, T)
+    context = closes.to_numpy(dtype=np.float64).T
     out = model.forecast(context, prediction_length=horizon, **(covariates or {}))
 
     levels = tuple(float(v) for v in _to_numpy(out.quantile_levels))

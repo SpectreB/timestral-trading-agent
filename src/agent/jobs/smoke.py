@@ -1,6 +1,3 @@
-"""Daily smoke test on the real services (D-009): detect external breakage before trading. Places no
-order; checks that Mistral answers with the pinned model id."""
-
 from __future__ import annotations
 
 import json
@@ -23,8 +20,7 @@ PING_SCHEMA: dict[str, Any] = {
 }
 
 
-class SmokeError(RuntimeError):
-    """An external dependency is broken: trading must not be trusted today."""
+class SmokeError(RuntimeError): ...
 
 
 def smoke_check(

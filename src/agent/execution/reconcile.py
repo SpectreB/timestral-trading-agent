@@ -1,6 +1,3 @@
-"""Reconciliation (D-011): what actually happened to the orders that were sent. Slippage is signed
-so that positive always means worse for us."""
-
 from __future__ import annotations
 
 import argparse
@@ -9,18 +6,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from pydantic import Field
+
+from agent.config import Frozen
 from agent.execution.audit import FileAuditStore
 
 TERMINAL = frozenset({"filled", "canceled", "expired", "rejected", "done_for_day"})
 
 
-@dataclass(frozen=True)
-class OrderState:
+class OrderState(Frozen):
     status: str
-    filled_qty: float
-    filled_avg_price: float | None
-    submitted_at: str | None
-    filled_at: str | None
+    filled_qty: float = Field(ge=0)
+    filled_avg_price: float | None = Field(default=None, gt=0)
+    submitted_at: str | None = None
+    filled_at: str | None = None
 
 
 class OrderLookup(Protocol):
@@ -30,7 +29,7 @@ class OrderLookup(Protocol):
 @dataclass
 class ReconcileResult:
     written: list[str] = field(default_factory=list)
-    pending: list[str] = field(default_factory=list)  # orders not in a final state yet
+    pending: list[str] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)
 
 
@@ -92,7 +91,6 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def _reconcile_one(
     run: dict[str, Any], submissions: dict[str, Any], lookup: OrderLookup, now: datetime
 ) -> dict[str, Any] | None:
-    """The reconciliation payload, or None if some order is not in a final state yet."""
     reference = {o["client_order_id"]: o.get("reference_price") for o in run["orders"]}
     rows: list[dict[str, Any]] = []
     for sub in submissions["submissions"]:
@@ -103,7 +101,7 @@ def _reconcile_one(
             continue
         state = lookup.order_by_client_id(coid)
         if state is None:
-            rows.append(_order_row(sub, ref, OrderState("not_found", 0.0, None, None, None)))
+            rows.append(_order_row(sub, ref, OrderState(status="not_found", filled_qty=0.0)))
         elif state.status not in TERMINAL:
             return None
         else:
@@ -122,7 +120,7 @@ def reconcile_runs(store: FileAuditStore, lookup: OrderLookup, now: datetime) ->
         rid = run["run_id"]
         submissions = store.read_reconciliation(rid)
         if submissions is None or store.has_reconciliation(f"{rid}_fills"):
-            continue  # dry run, nothing sent, or already reconciled
+            continue
         try:
             payload = _reconcile_one(run, submissions, lookup, now)
         except Exception as error:  # one bad lookup must not block the other runs

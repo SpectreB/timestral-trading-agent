@@ -1,13 +1,10 @@
-"""Historical replay of the agent (D-015, test case 1). Point-in-time data and anonymised assets,
-against the LLM's lookahead bias."""
-
 from __future__ import annotations
 
 import argparse
 import json
 import random
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -15,7 +12,7 @@ from typing import Any
 import pandas as pd
 
 from agent.checks.safety import final_check
-from agent.config import AgentConfig, Asset
+from agent.config import AgentConfig, Asset, evolve
 from agent.decision.baseline import baseline_weights
 from agent.decision.decide import DecisionInput, LLMClient, build_payload
 from agent.decision.decide_tools import decide_agent
@@ -26,30 +23,29 @@ from agent.inputs.data import NEW_YORK
 from agent.inputs.forecast import QuantileModel, forecast_assets
 
 START_EQUITY = 100_000.0
-COST_BPS = 5.0  # assumed cost per side on top of the open; the live slippage will be measured
+COST_BPS = 5.0
 SYNTHETIC_START = "2100-01-04"
 OBSERVATION_WINDOW = 12
 
 
-class ReplayError(RuntimeError):
-    """The replay cannot continue without breaking its own rules."""
+class ReplayError(RuntimeError): ...
 
 
 def anonymise(cfg: AgentConfig, seed: int = 0) -> tuple[AgentConfig, dict[str, str]]:
-    """The configuration seen by the LLM: aliases in a shuffled order, generic names."""
     rng = random.Random(seed)
     aliases = [f"A{i + 1:02d}" for i in range(len(cfg.universe))]
     rng.shuffle(aliases)
     mapping = {a.symbol: alias for a, alias in zip(cfg.universe, aliases, strict=True)}
     universe = tuple(
-        Asset(mapping[a.symbol], f"Asset {mapping[a.symbol]}", a.type, a.group)
+        Asset(
+            symbol=mapping[a.symbol], name=f"Asset {mapping[a.symbol]}", type=a.type, group=a.group
+        )
         for a in cfg.universe
     )
-    return replace(cfg, universe=universe, benchmark=mapping[cfg.benchmark]), mapping
+    return evolve(cfg, universe=universe, benchmark=mapping[cfg.benchmark]), mapping
 
 
 def point_in_time(history: pd.DataFrame, session: pd.Timestamp, n: int) -> pd.DataFrame:
-    """The last `n` closes strictly before `session`: nothing from the future gets through."""
     window = history.loc[history.index < session].iloc[-n:]
     if len(window) < n:
         raise ReplayError(f"only {len(window)} sessions before {session.date()}, {n} needed")
@@ -61,8 +57,6 @@ def point_in_time(history: pd.DataFrame, session: pd.Timestamp, n: int) -> pd.Da
 def _view(
     closes_a: pd.DataFrame, synthetic: pd.DatetimeIndex, session: pd.Timestamp, cfg: AgentConfig
 ) -> tuple[pd.DataFrame, pd.DataFrame, datetime]:
-    """What the decision at `session` may see: the real history before it (for the simulation), the
-    same history on a synthetic calendar (for the LLM), and a synthetic 10:00 timestamp."""
     history = point_in_time(closes_a, session, cfg.forecast.context_length)
     shown = history.copy()
     shown.index = synthetic[closes_a.index.get_indexer(history.index)]
@@ -95,8 +89,9 @@ def execute_at_open(
     rid: str,
     cost_bps: float = COST_BPS,
 ) -> list[Any]:
-    """Plan with the production planner and fill every order at the open plus a cost."""
-    positions = {s: Position(q, q * opens[s]) for s, q in pf.shares.items() if q > 0}
+    positions = {
+        s: Position(quantity=q, market_value=q * opens[s]) for s, q in pf.shares.items() if q > 0
+    }
     plan = plan_orders(target, positions, pf.value(opens), opens, cfg, rid)
     cost = cost_bps / 1e4
     for order in plan.orders:
@@ -122,7 +117,6 @@ class ReplayResult:
 def record_observations(
     store: FileAuditStore, closes: pd.DataFrame, first: pd.Timestamp, last: pd.Timestamp
 ) -> None:
-    """The observed closes (alias symbols, real dates) that the metrics of D-014 need."""
     for pos, ts in enumerate(closes.index):
         if not first <= ts <= last:
             continue
@@ -256,7 +250,6 @@ PROBE_QUESTION = (
 
 
 def score_probe(answer: str, mapping: Mapping[str, str], true_period: str) -> dict[str, Any]:
-    """How much of the anonymised data the LLM managed to identify."""
     real = {alias: symbol for symbol, alias in mapping.items()}
     try:
         data = json.loads(answer)
@@ -289,7 +282,6 @@ def run_probe(
     llm: LLMClient,
     seed: int = 0,
 ) -> list[dict[str, Any]]:
-    """Ask the LLM to identify the anonymised payload of each given session."""
     alias_cfg, mapping = anonymise(cfg, seed)
     closes_a = closes[list(cfg.symbols)].rename(columns=mapping)
     synthetic = pd.bdate_range(SYNTHETIC_START, periods=len(closes_a))
@@ -342,7 +334,6 @@ def write_manifest(
 
 
 def replay_report(store: FileAuditStore) -> dict[str, Any]:
-    """The D-014 report over the replay records (the benchmark alias comes from each record)."""
     runs = sorted(store.read_runs(), key=lambda r: r["started_at"])
     return performance_report(runs, store.read_observations())
 
@@ -460,7 +451,6 @@ Assets are identified when the ticker matches exactly. Sector groups are kept in
 def load_history(  # pragma: no cover - network and cache
     cache: Path, cfg: AgentConfig, end: pd.Timestamp, n_sessions: int
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Adjusted closes and opens, from the snapshot if present, else from Alpaca (then saved)."""
     closes_file, opens_file = cache / "closes.csv", cache / "opens.csv"
     if closes_file.exists() and opens_file.exists():
         return (

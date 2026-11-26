@@ -12,7 +12,6 @@ from pydantic import BaseModel, ValidationError
 from agent.config import AgentConfig
 from agent.decision.schemas import Proposal
 
-# A deviation from baseline smaller than this does not need a rationale (rounding noise).
 DEVIATION_NEEDING_RATIONALE = 0.005
 _EPS = 1e-9
 
@@ -22,7 +21,6 @@ class Correction(BaseModel):
     symbol: str | None
     before: float
     after: float
-    # Counted: LLM rule violations, which feed the severity check. Uncounted: routine adjustments.
     counted: bool
 
 
@@ -47,13 +45,10 @@ def _reject(reason: str, corrections: list[Correction] | None = None) -> Guardra
 
 
 def drawdown_actions(drawdown: float, cfg: AgentConfig) -> list[str]:
-    """Circuit-breaker levels reached."""
     return [lvl.action for lvl in cfg.drawdown_levels if drawdown <= lvl.threshold + _EPS]
 
 
 def _check_reference(name: str, weights: Mapping[str, float], cfg: AgentConfig) -> None:
-    """Baseline and current portfolios come from our own code: a bad one is a bug, not an LLM error,
-    so it raises instead of rejecting."""
     if set(weights) != set(cfg.symbols):
         raise ValueError(f"{name} portfolio must cover exactly the universe")
     if any(w < 0 for w in weights.values()) or sum(weights.values()) > 1 + _EPS:
@@ -67,7 +62,6 @@ def apply_guardrails(
     drawdown: float,
     cfg: AgentConfig,
 ) -> GuardrailResult:
-    """Validate and bound an LLM proposal."""
     _check_reference("baseline", baseline, cfg)
     _check_reference("current", current, cfg)
     risk = cfg.risk

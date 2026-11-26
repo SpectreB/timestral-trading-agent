@@ -37,7 +37,6 @@ def _quantiles(levels: tuple[float, ...], values: np.ndarray) -> dict[str, float
 
 
 def _probability_below_zero(levels: tuple[float, ...], values: np.ndarray) -> float:
-    """P(return < 0) read from the quantile function by linear interpolation."""
     lv = np.asarray(levels, dtype=float)
     if values[0] >= 0:
         return _r(lv[0], 3)
@@ -46,13 +45,10 @@ def _probability_below_zero(levels: tuple[float, ...], values: np.ndarray) -> fl
     return _r(float(np.interp(0.0, values, lv)), 3)
 
 
-class ToolError(ValueError):
-    """An invalid tool call: its message is returned to the LLM."""
+class ToolError(ValueError): ...
 
 
 class TimestralTools:
-    """The tools of one decision."""
-
     def __init__(
         self,
         *,
@@ -66,7 +62,7 @@ class TimestralTools:
         news: NewsCovariates | None = None,
     ) -> None:
         self.forecasts = forecasts
-        self.news = news  # D-019: present only for an agent with news covariates
+        self.news = news
         self.closes = closes
         self.model = model
         self.baseline = dict(baseline)
@@ -80,7 +76,7 @@ class TimestralTools:
     def specs(self) -> list[dict[str, Any]]:
         specs = self._base_specs()
         if not self.cfg.news.enabled:
-            return specs  # the agent without news keeps exactly its tools
+            return specs
         covariates = {
             "type": "array",
             "items": {"type": "string", "enum": list(FAMILIES)},
@@ -218,7 +214,6 @@ class TimestralTools:
         return self.cfg.tools.max_calls - len(self.calls)
 
     def call(self, name: str, arguments: str) -> str:
-        """Run one tool call from the LLM and return its JSON result (errors included)."""
         if self.budget_left <= 0:
             result: dict[str, Any] = {
                 "error": "Tool budget exhausted: give your final decision now."
@@ -274,7 +269,6 @@ class TimestralTools:
         return tuple(f for f in FAMILIES if f in covariates)
 
     def _forecasts(self, families: tuple[str, ...]) -> Mapping[str, AssetForecast]:
-        """Timestral's forecasts with the chosen covariates, computed once per combination."""
         if families not in self._variants:
             kwargs = forecast_kwargs(self.news, families, list(self.closes.columns))
             self._variants[families] = forecast_assets(self.closes, self.model, self.cfg, kwargs)
@@ -317,7 +311,7 @@ class TimestralTools:
                 "width_80": _r(fc[s].width(h)),
                 "volatility": _r(vols[s]),
             }
-            if families:  # what the information changed, against the prices-only forecast
+            if families:
                 out["vs_prices_only"] = {
                     "width_80_change": _r(fc[s].width(h) - self.forecasts[s].width(h)),
                     "median_change": _r(fc[s].median(h) - self.forecasts[s].median(h)),
@@ -335,14 +329,12 @@ class TimestralTools:
         return result
 
     def portfolio_series(self, weights: Mapping[str, float]) -> np.ndarray:
-        """Value history of the candidate holdings, scaled to 1 at the last close."""
         values = self.closes[list(self.cfg.symbols)].to_numpy(dtype=np.float64)
         w = np.array([weights[s] for s in self.cfg.symbols])
         cash = 1.0 - float(w.sum())
         return cash + (values / values[-1]) @ w  # type: ignore[no-any-return]
 
     def _portfolio_forecast(self, w: Mapping[str, float], h: int) -> dict[str, float]:
-        """Timestral's forecast of the portfolio's own value series (all cash: no risk)."""
         if sum(w.values()) <= 0:
             return {**dict.fromkeys(LEVELS_SHOWN, 0.0), "probability_of_loss": 0.0}
         series = self.portfolio_series(w)

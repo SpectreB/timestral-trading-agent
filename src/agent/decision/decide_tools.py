@@ -1,6 +1,3 @@
-"""Decision stage of the agent that uses Timestral as a tool (D-018). Same guardrails, retry and
-fallback as the pipeline agent; only the +15 point bound is off."""
-
 from __future__ import annotations
 
 import json
@@ -35,16 +32,12 @@ def decide_agent(
     cfg: AgentConfig,
     on_llm_failure: Literal["hold", "raise"] = "hold",
 ) -> Decision:
-    """The decision of whichever agent `cfg` describes: the run, the replay and the evaluations all
-    go through here, so both agents are run by exactly the same code around the decision."""
     if cfg.agent == "tools":
         if not isinstance(llm, ToolLLMClient):
             raise TypeError("the tool agent needs an LLM client that supports tool calls")
         if model is None:
             raise ValueError("the tool agent needs the Timestral model (its portfolio tool)")
         return decide_with_tools(inp, llm, model, cfg, on_llm_failure)
-    if cfg.agent != "pipeline":
-        raise ValueError(f"unknown agent {cfg.agent!r}")
     return decide(inp, llm, cfg, on_llm_failure)
 
 
@@ -89,7 +82,7 @@ def decide_with_tools(
     for _ in range(cfg.tools.max_rounds):
         try:
             step = llm.step(messages, specs)
-        except Exception as error:  # same policy as the final answer (D-010)
+        except Exception as error:
             if on_llm_failure == "raise":
                 raise
             steps.append(
@@ -102,9 +95,9 @@ def decide_with_tools(
                     completion_tokens=0,
                 )
             )
-            break  # go straight to the final answer, which has its own retry and fallback
+            break
         steps.append(step)
-        if not step.tool_calls:  # done exploring; keep what it said for the final answer
+        if not step.tool_calls:
             if step.text.strip():
                 messages.append({"role": "assistant", "content": step.text})
             break
