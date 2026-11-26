@@ -138,7 +138,12 @@ class FakeBroker:
     def account(self) -> Any:
         from agent.execution.execute import AccountSnapshot
 
-        return AccountSnapshot(self.equity, self.is_paper, self.status, self.blocked)
+        return AccountSnapshot(
+            equity=self.equity,
+            is_paper=self.is_paper,
+            status=self.status,
+            trading_blocked=self.blocked,
+        )
 
     def positions(self) -> dict[str, Any]:
         return dict(self._positions)

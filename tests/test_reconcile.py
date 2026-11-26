@@ -34,7 +34,13 @@ class Lookup:
 
 
 def filled(qty: float, price: float, status: str = "filled") -> OrderState:
-    return OrderState(status, qty, price, "2026-11-23T15:00:01+00:00", "2026-11-23T15:00:02+00:00")
+    return OrderState(
+        status=status,
+        filled_qty=qty,
+        filled_avg_price=price,
+        submitted_at="2026-11-23T15:00:01+00:00",
+        filled_at="2026-11-23T15:00:02+00:00",
+    )
 
 
 def live_run(tmp_path: Path, **kwargs: Any) -> tuple[FileAuditStore, FakeBroker]:
@@ -86,8 +92,10 @@ def test_partial_unfilled_and_rejected_orders_are_told_apart(tmp_path: Path) -> 
     states = states_for(broker)
     ids = [o["id"] for o in broker.submitted]
     states[ids[0]] = filled(broker.submitted[0]["quantity"] / 2, 100.0, status="canceled")
-    states[ids[1]] = OrderState("expired", 0.0, None, "2026-11-23T15:00:01+00:00", None)
-    states[ids[2]] = OrderState("rejected", 0.0, None, None, None)
+    states[ids[1]] = OrderState(
+        status="expired", filled_qty=0.0, submitted_at="2026-11-23T15:00:01+00:00"
+    )
+    states[ids[2]] = OrderState(status="rejected", filled_qty=0.0)
     reconcile_runs(store, Lookup(states), LATER)
     s = fills(store)["summary"]
     assert (s["n_filled"], s["n_partial"], s["n_unfilled"]) == (12, 1, 2)
@@ -98,7 +106,7 @@ def test_partial_unfilled_and_rejected_orders_are_told_apart(tmp_path: Path) -> 
 def test_runs_with_open_orders_wait_and_are_reconciled_later(tmp_path: Path) -> None:
     store, broker = live_run(tmp_path)
     states = states_for(broker)
-    states[broker.submitted[0]["id"]] = OrderState("new", 0.0, None, None, None)
+    states[broker.submitted[0]["id"]] = OrderState(status="new", filled_qty=0.0)
     first = reconcile_runs(store, Lookup(states), LATER)
     assert first.pending == ["2026-11-23_morning"] and first.written == []
     assert store.read_fills() == []  # nothing is written until every order is final

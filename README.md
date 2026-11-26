@@ -122,12 +122,13 @@ Setup: the secrets `MISTRAL_API_KEY`, `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` (
 | Safety | Deterministic guardrails and an independent final check, in Python | The LLM proposes; code decides what reaches the broker | [D-009, D-010](docs/decisions.md) |
 | Scheduling | GitHub Actions: trading twice a day, the accounts read hourly | No server to run; every run leaves a log | [D-002, D-007](docs/decisions.md) |
 | Records | Immutable JSON on the `audit-log` branch, CSV tables derived from it | Append-only, readable, public | [D-011](docs/decisions.md) |
-| Dashboard | React 18 front end (htm, no build step) on GitHub Pages; the data written by Python | Nothing to install; always agrees with the records | [D-012](docs/decisions.md) |
+| Dashboard | React 18 front end (htm, no build step) on GitHub Pages, reading a typed FastAPI API (live server, with a static export as fallback) | A declared, tested contract; the page works even when the server sleeps | [D-012, D-022](docs/decisions.md) |
+| Validation | Pydantic at the boundaries: LLM output, configuration, broker data, orders, news scores, API responses | Bad data fails where it enters, not deep in a run | [D-008, D-022](docs/decisions.md) |
 | Quality | ruff, mypy, pytest with hypothesis, 100% coverage on the core, gitleaks, protected `main` | Changes reach trading only through green CI | [D-009](docs/decisions.md) |
 
 ## Dashboard
 
-https://spectreb.github.io/timestral-trading-agent/, rebuilt after every run and every hourly account reading. Four views: **Live** (both accounts, the last decision and its reasoning, Timestral's forecast, the portfolio, the orders), **How it works** (the design, the inputs, the guardrails), **Evidence** (the checks above, side by side for the two agents) and **Try it** (ask an agent to decide now; no order is sent). Python writes the data from the audit log ([web.py](src/agent/dashboard/web.py)); a React page in [web/](web) lays it out ([D-012](docs/decisions.md)).
+https://spectreb.github.io/timestral-trading-agent/, rebuilt after every run and every hourly account reading. Four views: **Live** (both accounts, the last decision and its reasoning, Timestral's forecast, the portfolio, the orders), **How it works** (the design, the inputs, the guardrails), **Evidence** (the checks above, side by side for the two agents) and **Try it** (ask an agent to decide now; no order is sent). Python computes the data from the audit log ([web.py](src/agent/dashboard/web.py)) and serves it through a read-only FastAPI API ([api.py](src/agent/dashboard/api.py), [models](src/agent/dashboard/models.py), documented at `/api/docs`); a React page in [web/](web) lays it out ([D-012, D-022](docs/decisions.md)). The page shows the API's snapshot published with the site at once, then the live server's answer when it is awake. Locally: `python -m agent.dashboard.api --audit-dir audit` serves the page and the API on http://localhost:8000.
 
 ## Reading the audit log
 
@@ -157,7 +158,7 @@ src/agent/
   execution/          orders, reconciliation with the broker, the audit log
   evaluation/         forecast scoring, metrics, replays, behaviour tests
   jobs/               the entry points the workflows run (trade, smoke, valuation, simulate)
-  dashboard/          the data behind the dashboard
+  dashboard/          the dashboard's data and its API (FastAPI)
 web/                  the dashboard page (React, no build step)
 tests/                offline unit, adversarial and property-based tests
 scripts/              exploration, backtests and read-only live runs

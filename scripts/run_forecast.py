@@ -11,12 +11,11 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from dataclasses import replace
 from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 
-from agent.config import AgentConfig, ForecastConfig
+from agent.config import AgentConfig, ForecastConfig, evolve
 from agent.decision.baseline import baseline_weights
 from agent.inputs.data import AlpacaMarketData, load_context
 from agent.inputs.forecast import forecast_assets, load_model
@@ -29,7 +28,7 @@ def main() -> None:
 
     cfg = AgentConfig()
     if args.model:
-        cfg = replace(cfg, forecast=replace(cfg.forecast, model_id=args.model))
+        cfg = evolve(cfg, forecast=evolve(cfg.forecast, model_id=args.model))
     assert isinstance(cfg.forecast, ForecastConfig)
 
     load_dotenv()

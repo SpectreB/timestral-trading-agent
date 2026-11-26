@@ -675,7 +675,7 @@ Chosen with the owner after reviewers found the page hard to enter: live activit
 | **B. React from a CDN with `htm`, no build (chosen)** | Real React, nothing to install, previews in any browser | Less standard than a Vite project, no TypeScript |
 | C. Redesign the Python-rendered page | Fastest | Not React |
 
-- **Split of concerns:** Python only writes `data.json` (`agent.dashboard.web`, from the per-agent views of `agent.dashboard.records`); the page (`web/`) only lays it out. LLM text is rendered as text, never as HTML.
+- **Split of concerns:** Python computes the data (`agent.dashboard.web`, from the per-agent views of `agent.dashboard.records`) and serves it through a typed API (amended 2026-11-26, D-022); the page (`web/`) only lays it out. LLM text is rendered as text, never as HTML.
 - **Four entry points, in the order a newcomer needs them** (revised 2026-11-24 after review): *Live* (both accounts, the differences between the agents in keywords, the last decision, Timestral's forecast and the orders folded until asked for), *How it works* (the idea, the diagram with both loops, the inputs, the guardrails, what comes next), *Evidence* (four headline checks, then the side-by-side measures, behaviour tests, replay, risk calibration and the news covariate trial, framed as a check of behaviour, not a race), *Try it* (a simulation the evaluator configures; no order sent). The lexicon is a link in the header. Details open on demand (tooltips, folded sections), never the conclusion.
 - **Timestral's raw output is shown:** per asset, the 80% interval and median 1 to 5 days ahead on one shared scale, with the **spread** (q90 - q10) and the weight the rule derives from it (1 / spread) next to the final weight; a table view; the record's JSON as stored; for the tool agent, the 7 quantiles it was given.
 - **No fallback page** (amended 2026-11-26): the server-rendered page (`classic.html`) was kept as a fallback at first, then removed with the code that only it used (about 1,600 lines), so there is one front end to read and maintain. Libraries are pinned (`react@18.3.1`, `react-dom@18.3.1`, `htm@3.1.1`). Moving to option A later only replaces `web/`: the data file stays.
@@ -1093,6 +1093,38 @@ The tool agent (D-018) lets the LLM call Timestral through three tools before de
 ### Impact
 - No framework dependency; the Mistral SDK is the only LLM dependency.
 - Revisit if the project grows into several cooperating agents (for example the news analyst and the decision-maker exchanging messages), long-running sessions, or a human approval step: LangGraph (C) would then be a serious option.
+
+---
+
+## D-022 — A typed API between the back end and the page (FastAPI), Pydantic at the boundaries
+
+- **Date:** 2026-11-26
+- **Status:** Accepted by the owner on 2026-11-26 (Pydantic option A, FastAPI option B), after the owner's own code review.
+
+### Context
+The page read one JSON document written by a batch job (D-012). It worked, but the contract between Python and the page was implicit: nothing declared or checked its shape, and nothing documented it. Inside the code, Pydantic validated the LLM's output, the guardrail results and the audit record, while the configuration, the broker data, the orders and the news scores were plain dataclasses, checked by hand or not at all.
+
+### Options: Pydantic
+| Option | For | Against |
+|---|---|---|
+| **A. At the boundaries (chosen)** | Validation where data enters or leaves: configuration, broker data, orders, news articles and scores, dashboard views, API responses | Internal numerical objects (numpy forecasts, DataFrames) stay dataclasses |
+| B. Everywhere | Uniform | numpy arrays need `arbitrary_types_allowed`, so no real validation there, and slower |
+
+### Options: the back end of the page
+| Option | For | Against |
+|---|---|---|
+| A. FastAPI defines the API and is exported to static files only | Typed and documented contract, hosting unchanged | Still files in production |
+| **B. A FastAPI server, hosted, with the static export as fallback (chosen)** | A real API online; the page never depends on it to show something | One more service; a free server sleeps and takes up to a minute to wake |
+| C. A now, B as future work | Least risk | Half an answer |
+
+### Decision
+- **Pydantic at the boundaries.** The configuration is validated when built: a pinned LLM version (never `-latest`), no leverage (`max_invested <= 1 - min_cash`), fractions in [0, 1], drawdown levels negative and in order, unique symbols, a known agent kind, no unknown setting. `evolve()` makes validated copies (`dataclasses.replace` skipped validation). Orders sent to the broker (positive quantity and price, `buy` or `sell`), the account and order states read from it, news articles and the analyst's scores (sentiment in [-1, 1], relevance in [0, 1], a known event type, ISO dates) are validated where they cross the boundary. The configuration logged in every audit record is unchanged.
+- **FastAPI, read-only** (`agent.dashboard.api`): `GET /api/health`, `/api/overview`, `/api/agents`, `/api/agents/{key}`, `/api/evidence`, `/api/simulations`, each with a Pydantic response model that forbids undeclared fields; OpenAPI documentation at `/api/docs`. CORS allows the dashboard's origin only.
+- **Two ways to serve the same responses.** The Dashboard workflow exports every route, through the API itself, to `api/<route>.json` on GitHub Pages. The hosted server (Render, free plan, `render.yaml`) reads the public `audit-log` branch every 5 minutes and keeps its last good copy if GitHub fails. The page shows the snapshot at once, then switches to the live API when it answers, and says which one it shows.
+- **Simulations stay a GitHub issue (D-017):** the requester's GitHub login remains the identity and the server holds no key, so it cannot trade, call Mistral or be used to spend anything.
+
+### Impact
+The page's data has a declared, tested contract (the round trip from the live audit log was checked identical to the previous `data.json`). The server installs only `requirements-api.txt` (no model, no broker or LLM client). A configuration mistake now fails when it is built, in CI, instead of during a run.
 
 ---
 

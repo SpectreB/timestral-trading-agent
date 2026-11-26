@@ -1,5 +1,3 @@
-"""Forecast scoring (D-013): did Timestral's forecasts match what actually happened?"""
-
 from __future__ import annotations
 
 import argparse
@@ -17,13 +15,12 @@ from agent.inputs.data import NEW_YORK, MarketData, completed_closes
 if TYPE_CHECKING:
     from agent.execution.audit import FileAuditStore
 
-WINDOW = 12  # sessions per observation: covers the 5 horizons plus margin for holidays
+WINDOW = 12
 
 
 def record_observation(
     store: FileAuditStore, market: MarketData, cfg: AgentConfig, now: datetime
 ) -> str | None:
-    """Record the latest completed session window; None if it is already recorded."""
     end = now - timedelta(minutes=16)  # free data plan: consolidated feed delayed by 15 min
     raw = market.daily_closes(list(cfg.symbols), end - timedelta(days=30), end)
     closes = completed_closes(raw, now.astimezone(NEW_YORK).date(), market.is_market_open())
@@ -44,7 +41,6 @@ def record_observation(
 def score_forecasts(
     runs: Sequence[dict[str, Any]], observations: Sequence[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """One row per (run, asset, horizon) whose outcome is known."""
     ordered = sorted(observations, key=lambda o: o["as_of"])
     rows: list[dict[str, Any]] = []
     for run in runs:
@@ -82,8 +78,6 @@ def score_forecasts(
 def realised_return(
     observations: Sequence[dict[str, Any]], d0: str, h: int, symbol: str
 ) -> tuple[str, float] | None:
-    """(session, return) of `symbol` from the close of d0 to the close h sessions later, from the
-    earliest observation (sorted by date) that contains both; None if unknown."""
     for obs in observations:
         sessions = sorted(obs["closes"])
         later = [d for d in sessions if d > d0]
@@ -98,7 +92,6 @@ def realised_return(
 
 
 def calibration(scores: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Per horizon: how many forecasts are scored and how they did."""
     out = []
     for h in sorted({s["horizon"] for s in scores}):
         rows = [s for s in scores if s["horizon"] == h]

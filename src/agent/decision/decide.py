@@ -1,5 +1,3 @@
-"""Decision stage: the LLM adjusts the baseline, the guardrails bound it (D-004, D-008)."""
-
 from __future__ import annotations
 
 import json
@@ -21,8 +19,8 @@ Mode = Literal["morning", "afternoon"]
 
 
 class LLMResponse(BaseModel):
-    text: str  # the JSON answer
-    reasoning: str  # native reasoning trace, empty if none
+    text: str
+    reasoning: str
     model: str
     prompt_tokens: int
     completion_tokens: int
@@ -39,8 +37,6 @@ class ToolCall(BaseModel):
 
 
 class LLMStep(BaseModel):
-    """One turn of the tool agent (D-018): either tool calls, or a plain text answer."""
-
     text: str
     reasoning: str
     tool_calls: list[ToolCall]
@@ -81,7 +77,6 @@ class MistralLLM:  # pragma: no cover - network adapter, exercised by the smoke 
         self._cfg = cfg.llm
 
     def _call(self, messages: list[dict[str, Any]], **extra: Any) -> LLMStep:
-        # A model without native reasoning (the news analyst, D-019) gets no such parameter.
         if self._cfg.reasoning_effort:
             extra["reasoning_effort"] = self._cfg.reasoning_effort
         response = self._client.chat.complete(
@@ -165,12 +160,11 @@ class DecisionInput:
     forecasts: Mapping[str, AssetForecast]
     baseline: Mapping[str, float]
     current: Mapping[str, float]
-    closes: pd.DataFrame  # completed daily closes, used for recent returns and volatility
-    drawdown: float  # from peak equity, <= 0
+    closes: pd.DataFrame
+    drawdown: float
     equity: float
-    latest_prices: Mapping[str, float] = field(default_factory=dict)  # live reference prices
+    latest_prices: Mapping[str, float] = field(default_factory=dict)
     news: str = "No news feed is connected yet."  # untrusted text: a prompt-injection surface
-    # D-019: news turned into Timestral covariates (tool agent only).
     news_covariates: Any = None
 
 
@@ -186,14 +180,11 @@ class Decision(BaseModel):
     outcome: Literal["accepted", "corrected", "overridden", "fallback_hold"]
     target_weights: dict[str, float]
     cash: float
-    # Tool agent only (D-018): every tool call with its result, and every exploration turn.
     tool_calls: list[dict[str, Any]] = []
     steps: list[LLMStep] = []
 
 
 def load_system_prompt(cfg: AgentConfig) -> str:
-    """The versioned system prompt, filled with the limits of `cfg` (unused keys are ignored, so one
-    function serves both agents' prompts)."""
     template = (
         resources.files("agent.decision.prompts")
         .joinpath(f"{cfg.llm.prompt_version}.md")
@@ -218,7 +209,6 @@ def load_system_prompt(cfg: AgentConfig) -> str:
 
 
 def response_schema(cfg: AgentConfig) -> dict[str, Any]:
-    """Strict JSON schema sent to the API."""
     position = {
         "type": "object",
         "properties": {
@@ -256,7 +246,6 @@ def _recent_stats(closes: pd.Series) -> dict[str, float]:
 def build_payload(
     inp: DecisionInput, cfg: AgentConfig, with_forecasts: bool = True
 ) -> dict[str, Any]:
-    """The decision input sent to the LLM."""
     h = cfg.forecast.horizon
     assets = []
     for a in cfg.universe:
@@ -342,7 +331,6 @@ def final_decision(
     on_llm_failure: Literal["hold", "raise"],
     **extra: Any,
 ) -> Decision:
-    """Ask for the JSON decision, apply the guardrails, retry once if rejected, else hold."""
     schema = response_schema(cfg)
     attempts: list[Attempt] = []
 
@@ -367,7 +355,7 @@ def final_decision(
                 rejection_reason="llm_call_failed",
             )
             attempts.append(Attempt(response=failed, guardrails=rejected))
-            continue  # ask again, with the same messages
+            continue
         result = apply_guardrails(response.text, inp.baseline, inp.current, inp.drawdown, cfg)
         attempts.append(Attempt(response=response, guardrails=result))
         if result.status != "rejected":

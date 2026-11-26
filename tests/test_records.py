@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from agent.dashboard.records import AgentView, _alerts, _analysis, _measures, chronological
 from agent.execution.audit import FileAuditStore
@@ -11,6 +12,13 @@ from tests.helpers import BASELINE, FakeBroker, positions_for, proposal
 from tests.site_fixtures import _tool_cycle
 from tests.test_decide import BROKEN, FakeLLM
 from tests.test_run import cycle
+
+
+def _view(key: str, runs: list[Any], fills: list[Any] | None = None, **kw: Any) -> AgentView:
+    return AgentView.model_validate(
+        {"key": key, "title": key, "summary": "", "runs": runs, "fills": fills or [],
+         "scores": [], "report": None, **kw}
+    )  # fmt: skip
 
 
 def _last(store: FileAuditStore) -> dict[str, object]:
@@ -68,13 +76,11 @@ def test_measures_that_cannot_be_computed_are_left_out_not_invented(tmp_path: Pa
     fills = [
         {"run_id": "r", "summary": {"n_orders": 2, "n_filled": 1, "slippage_bps_weighted": None}}
     ]
-    view = AgentView(
-        "pipeline", "Pipeline agent", "", [record], fills, [], None, replay={"sessions": 0}
-    )
+    view = _view("pipeline", [record], fills, replay={"sessions": 0})
     out = _measures(view, {"tools": None, "pipeline": None})
     assert out["risk"] == "n/a" and out["filled"] == "1/2" and "slippage" not in out
     assert "past_return" not in out and "tests" not in out and out["accepted"] == "1/1"
-    assert _measures(AgentView("tools", "Tool agent", "", [], [], [], None), None) == {}
+    assert _measures(_view("tools", []), None) == {}
 
 
 def test_the_next_slot_skips_the_weekend() -> None:
@@ -95,8 +101,7 @@ def test_partial_risk_figures_and_replays_are_skipped(tmp_path: Path) -> None:
                              "max_drawdown": 0.02}},
         "risk_calibration": [{"horizon": 1, "inside_80": 0.8}],
     }  # fmt: skip
-    view = AgentView("tools", "Tool agent", "", [record], [], [], None, replay=replay)
-    out = _measures(view, None)
+    out = _measures(_view("tools", [record], replay=replay), None)
     assert out["risk"] == "n/a" and out["past_return"] == "+1.0%" and "past_cov" not in out
     replay["risk_calibration"] = [{"horizon": 5, "inside_80": 0.79}]
-    assert _measures(view, None)["past_cov"] == "79%"
+    assert _measures(_view("tools", [record], replay=replay), None)["past_cov"] == "79%"

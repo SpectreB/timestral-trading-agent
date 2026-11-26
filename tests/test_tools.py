@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from typing import Any
 
 import numpy as np
 import pytest
 
-from agent.config import ToolConfig, tool_agent_config
+from agent.config import ToolConfig, evolve, tool_agent_config
 from agent.decision.tools import TimestralTools, _probability_below_zero
 from agent.inputs.forecast import forecast_assets
 from tests.helpers import ALL_CASH, BASELINE, LEVELS, FakeTimestral, make_closes
@@ -20,7 +19,7 @@ SPREADS = [0.01 * (1 + i % 3) for i in range(15)]  # three levels of uncertainty
 
 
 def toolbox(drawdown: float = 0.0, current: dict[str, float] | None = None, **cfg: Any) -> Any:
-    config = replace(CFG, **cfg) if cfg else CFG
+    config = evolve(CFG, **cfg) if cfg else CFG
     model = FakeTimestral(SPREADS)
     forecasts = forecast_assets(CLOSES, model, config)  # type: ignore[arg-type]
     return TimestralTools(

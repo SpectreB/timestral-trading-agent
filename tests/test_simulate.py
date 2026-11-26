@@ -203,7 +203,7 @@ def test_a_stance_moves_the_limits_but_never_allows_leverage() -> None:
 
 
 def test_the_starting_point_changes_the_holdings_and_never_trades() -> None:
-    real = FakeBroker(positions={"SPY": Position(10, 1000.0)})
+    real = FakeBroker(positions={"SPY": Position(quantity=10, market_value=1000.0)})
     assert StartingPoint(real, "current", CFG.symbols).positions() == real.positions()
     assert StartingPoint(real, "cash", CFG.symbols).positions() == {}
     equal = StartingPoint(real, "equal", CFG.symbols).positions()

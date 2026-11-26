@@ -9,12 +9,12 @@ import json
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from agent.config import AgentConfig, Asset, AssetType
+from agent.config import AgentConfig, Asset, AssetType, evolve
 from agent.decision.decide import LLMClient
 from agent.evaluation.covariate_eval import PANEL_STOCKS
 from agent.execution.audit import FileAuditStore
@@ -24,7 +24,7 @@ from agent.inputs.forecast import QuantileModel
 from agent.inputs.news import NewsCovariates
 from agent.jobs.run import CycleResult, run_cycle
 
-TITLE = "Simulation request"  # the workflow only reacts to issues whose title starts so
+TITLE = "Simulation request"
 COOLDOWN = timedelta(minutes=1)
 DAILY_CAP = 20
 ANALYSIS_LIMIT = 1200
@@ -37,17 +37,15 @@ AUDIT_BRANCH = "audit-log"
 
 # What an evaluator may choose. Closed lists: anything else is ignored.
 OPTIONS: dict[str, tuple[str, ...]] = {
-    "agent": ("pipeline", "tools", "news"),  # the reference, the final agent, the final + news
-    "stance": ("balanced", "cautious", "bold"),  # how much risk the guardrails allow
-    "start": ("current", "cash", "equal"),  # the portfolio the agent starts from
-    "universe": ("standard", "wide"),  # the 15 assets traded live, or 25 more large stocks
+    "agent": ("pipeline", "tools", "news"),
+    "stance": ("balanced", "cautious", "bold"),
+    "start": ("current", "cash", "equal"),
+    "universe": ("standard", "wide"),
 }
 DEFAULT_OPTIONS = {key: values[0] for key, values in OPTIONS.items()}
-EQUAL_INVESTED = 0.90  # the equal-weight start: 90% invested, spread evenly, 10% cash
+EQUAL_INVESTED = 0.90
 _LINE = re.compile(r"^\s*(agent|stance|start|universe)\s*[:=]\s*([a-z]+)\s*$", re.IGNORECASE)
 
-# The wide universe: the large US stocks of the covariate measurement panel (D-019), each in the
-# sector group the guardrails already use, so the 30%-per-group cap applies across both lists.
 _GROUP = {
     "tech": "tech_growth", "comm": "tech_growth", "fin": "financials", "energy": "energy",
     "health": "health", "consumer": "consumer", "staples": "staples", "industrial": "industrials",
@@ -56,7 +54,6 @@ MAX_TEXT = 4000
 
 
 def parse_options(text: str) -> tuple[dict[str, str], list[str]]:
-    """The three options out of an issue text, and the options whose value was refused."""
     chosen, refused, seen = dict(DEFAULT_OPTIONS), [], set()
     for line in text[:MAX_TEXT].splitlines():
         found = _LINE.match(line)
@@ -74,31 +71,26 @@ def parse_options(text: str) -> tuple[dict[str, str], list[str]]:
 
 
 def apply_universe(cfg: AgentConfig, universe: str) -> AgentConfig:
-    """`wide` adds the panel's large stocks to the 15 assets traded live: about 40 assets, the same
-    guardrails."""
     if universe != "wide":
         return cfg
     held = set(cfg.symbols)
     extra = tuple(
-        Asset(symbol, name, AssetType.STOCK, _GROUP[group])
+        Asset(symbol=symbol, name=name, type=AssetType.STOCK, group=_GROUP[group])
         for symbol, name, group in PANEL_STOCKS
         if symbol not in held
     )
-    return replace(cfg, universe=(*cfg.universe, *extra))
+    return evolve(cfg, universe=(*cfg.universe, *extra))
 
 
 def simulation_config(base: AgentConfig, options: Mapping[str, str]) -> AgentConfig:
-    """The chosen agent's configuration with the requested universe, then stance."""
     chosen = {**DEFAULT_OPTIONS, **options}
     return apply_stance(apply_universe(base, chosen["universe"]), chosen["stance"])
 
 
 def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
-    """A stance moves the guardrail limits, never past what is safe: no leverage in any case
-    (invested at most 90%), long only, and the independent final check still applies."""
     r = cfg.risk
     if stance == "cautious":
-        risk = replace(
+        risk = evolve(
             r,
             min_cash=0.30,
             max_invested=0.70,
@@ -108,7 +100,7 @@ def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
             max_increase_vs_baseline=min(r.max_increase_vs_baseline, 0.05),
         )
     elif stance == "bold":
-        risk = replace(
+        risk = evolve(
             r,
             max_weight_etf=0.30,
             max_weight_stock=0.15,
@@ -117,14 +109,11 @@ def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
         )
     else:
         return cfg
-    return replace(cfg, risk=risk)
+    return evolve(cfg, risk=risk)
 
 
 @dataclass
 class StartingPoint:
-    """The broker as the simulation sees it: the real prices, market and account, but the holdings
-    the evaluator chose, and no way to send an order."""
-
     inner: Broker
     start: str
     symbols: Sequence[str]
@@ -162,14 +151,12 @@ _START_TEXT = {
 
 
 def label_for(now: datetime, options: Mapping[str, str] | None = None) -> str:
-    """The run's id suffix; an option that differs from the default is part of it."""
     chosen = {**DEFAULT_OPTIONS, **(options or {})}
     extra = "".join(f"-{chosen[k]}" for k in OPTIONS if chosen[k] != DEFAULT_OPTIONS[k])
     return f"sim-{now.astimezone(NEW_YORK):%H%M%S}{extra}"
 
 
 def throttle(store: FileAuditStore, now: datetime) -> str | None:
-    """Why a new simulation must wait, or None if it may run now."""
     times = [datetime.fromisoformat(r["started_at"]) for r in store.read_runs()]
     today = now.astimezone(NEW_YORK).date()
     if sum(t.astimezone(NEW_YORK).date() == today for t in times) >= DAILY_CAP:
@@ -184,7 +171,6 @@ def throttle(store: FileAuditStore, now: datetime) -> str | None:
 
 
 def neutralise(text: str, limit: int) -> str:
-    """LLM text made safe to post: no HTML, no @-mention, no Markdown structure, bounded."""
     clean = html.escape(" ".join(text.split()), quote=False).replace("@", "@​")
     for char in "`*_#|[]":
         clean = clean.replace(char, "\\" + char)
@@ -205,13 +191,12 @@ def comment(
     options: Mapping[str, str] | None = None,
     refused: Sequence[str] = (),
 ) -> str:
-    """The reply posted in the issue once the simulation is recorded."""
     chosen = {**DEFAULT_OPTIONS, **(options or {})}
     chosen_line = (
         f"Options: agent **{chosen['agent']}**, stance **{chosen['stance']}**, start from "
         f"**{chosen['start']}**, universe **{chosen['universe']}**."
     )
-    if refused:  # only the names of our own options: the refused text is never echoed
+    if refused:
         chosen_line += f" Unknown value for {', '.join(refused)}: the default was used."
     p = record["portfolios"]
     cur, fin = p["current"], p["final"]
@@ -290,7 +275,6 @@ def simulate(
     news: Callable[[Any], NewsCovariates] | None = None,
     history_dir: Path | None = None,
 ) -> tuple[str, CycleResult | None]:
-    """Run one throttled simulation and return the reply to post (and the cycle result)."""
     chosen = {**DEFAULT_OPTIONS, **(options or {})}
     cfg = simulation_config(cfg, chosen)
     store = FileAuditStore(root / SIMULATIONS)
@@ -306,8 +290,8 @@ def simulate(
         model=model,
         llm=llm,
         store=store,
-        live=False,  # a simulation never trades...
-        env={**env, "TRADING_ENABLED": "false"},  # ...even if live were requested by mistake
+        live=False,
+        env={**env, "TRADING_ENABLED": "false"},
         label=label_for(now, chosen),
         requested_by=requester,
         history=FileAuditStore(history_dir or root),
@@ -339,9 +323,8 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the Simulate workf
 
     options, refused = parse_options(os.environ.get(args.options_env, ""))
     agent = options["agent"]
-    # The news covariates must cover the same assets as the forecasts (the wide universe too).
     cfg = simulation_config(config_for(agent), options)
-    key, secret = alpaca_keys(agent, os.environ)  # each agent's own paper account
+    key, secret = alpaca_keys(agent, os.environ)
     reply, _ = simulate(
         now=datetime.now(UTC),
         cfg=cfg,

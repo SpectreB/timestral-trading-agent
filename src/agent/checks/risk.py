@@ -13,20 +13,18 @@ import pandas as pd
 
 from agent.inputs.forecast import AssetForecast
 
-Z80 = 1.2815515655446004  # standard normal quantile at 0.90
-CORRELATION_WINDOW = 252  # sessions, about one year
-SHRINKAGE = 0.2  # weight of the identity in the shrunk correlation
+Z80 = 1.2815515655446004
+CORRELATION_WINDOW = 252
+SHRINKAGE = 0.2
 
 
 def forecast_vols(forecasts: Mapping[str, AssetForecast], horizon: int) -> dict[str, float]:
-    """Standard deviation of each asset's cumulative return at `horizon`, from its 80% interval."""
     return {s: f.width(horizon) / (2 * Z80) for s, f in forecasts.items()}
 
 
 def correlation(
     closes: pd.DataFrame, window: int = CORRELATION_WINDOW, shrinkage: float = SHRINKAGE
 ) -> pd.DataFrame:
-    """Shrunk correlation of daily log returns over the last `window` sessions."""
     log_prices = pd.DataFrame(np.log(closes.to_numpy(dtype=float)), columns=closes.columns)
     returns = log_prices.diff().iloc[-window:]
     raw = returns.corr().fillna(0.0).to_numpy(copy=True)  # pandas 3 views are read-only
@@ -52,7 +50,6 @@ def portfolio_vol(weights: Mapping[str, float], cov: pd.DataFrame) -> float:
 
 
 def risk_contributions(weights: Mapping[str, float], cov: pd.DataFrame) -> dict[str, float]:
-    """Each asset's share of the portfolio's forecast variance (shares sum to 1)."""
     w = _vector(weights, cov)
     variance = float(w @ cov.to_numpy() @ w)
     if variance <= 0:
@@ -67,7 +64,6 @@ def risk_snapshot(
     horizons: tuple[int, ...],
     portfolios: Mapping[str, Mapping[str, float] | None],
 ) -> dict[str, Any]:
-    """Everything the audit record keeps about forecast risk for one run."""
     corr = correlation(closes)
     vols: dict[str, dict[str, float]] = {}
     pvols: dict[str, dict[str, float]] = {}
