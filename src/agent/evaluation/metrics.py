@@ -1,31 +1,5 @@
-"""Performance metrics (D-014): how is the agent doing, and what does each layer add?
-
-Everything here is derived from the audit log (run records + observed closes), with no
-network, so the figures can be recomputed at any time and always agree with the records.
-
-**Shadow portfolios.** Every run record holds the baseline (Timestral rule), the LLM proposal
-and the final target. Valued with the observed closes, they isolate each layer:
-
-    equal_weight -> baseline        what Timestral's risk ranking adds
-    baseline     -> llm_proposal    what the LLM's judgement adds
-    llm_proposal -> agent           what the guardrails change
-    spy          -> agent           the agent against the market
-
-- agent: the final target after guardrails, as if executed exactly (no costs, no slippage);
-  the real account (with its fills and costs) is reported separately from the equity.
-- llm_proposal: falls back to the final target when the proposal was rejected.
-- equal_weight: 6% per asset and 10% cash, the same invested share as the baseline.
-- spy: 100% SPY.
-
-**Timing.** Daily close-to-close returns. The return of session t is earned by the portfolio of
-the latest run made before t, or of the morning run of t itself (it trades 30 minutes after the
-open; the 09:30-10:00 move is attributed to it, a small approximation stated here).
-
-**Robustness.** Each comparison reports its number of sessions and, from 10 sessions on, a 95%
-confidence interval on the mean daily difference from a moving-block bootstrap (blocks of 5
-sessions, to respect the dependence between consecutive days). Below that, no interval is
-claimed: a few days of returns cannot separate skill from noise.
-"""
+"""Performance metrics (D-014): how is the agent doing, and what does each layer add? Shadow
+portfolios (equal weight, baseline, LLM proposal, final) isolate what each layer adds."""
 
 from __future__ import annotations
 
@@ -167,7 +141,7 @@ def comparisons(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
 def risk_calibration(
     runs: Sequence[dict[str, Any]], observations: Sequence[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Did the forecast portfolio risk (D-014) match what happened? One row per run and horizon."""
+    """Did the forecast portfolio risk (D-014) match what happened?"""
     ordered = sorted(observations, key=lambda o: o["as_of"])
     rows = []
     for run in runs:
@@ -215,12 +189,7 @@ def summarise_risk(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
 def confidence_calibration(
     runs: Sequence[dict[str, Any]], observations: Sequence[dict[str, Any]], horizon: int = 5
 ) -> list[dict[str, Any]]:
-    """Each LLM deviation from the baseline, its stated confidence, and whether it paid off.
-
-    The prompt defines confidence as the probability that the deviation does better than the
-    baseline weight over the horizon. Operationally: a tilt pays off when the extra (or missing)
-    weight times the asset's realised return over the horizon is positive.
-    """
+    """Each LLM deviation from the baseline, its stated confidence, and whether it paid off."""
     ordered = sorted(observations, key=lambda o: o["as_of"])
     rows = []
     for run in runs:

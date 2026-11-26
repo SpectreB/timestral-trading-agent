@@ -1,30 +1,5 @@
-"""News analysis turned into covariates for Timestral (D-019, the brief's bonus).
-
-Two families of covariates, each a set of daily series per asset:
-
-- `news` (**past covariates**, known up to the last close): for each of the 5 stocks, the daily
-  volume of relevant articles (log scale) and their average sentiment (-1 to +1). The 10 ETFs get
-  none: company news is diluted in a basket, and they serve as the control group of the
-  measurement.
-- `events` (**known-future covariates**, also defined over the forecast horizon): 0/1 indicators
-  of dated events announced in the news: the company's earnings, other dated company events,
-  and macro releases (inflation, jobs). Macro events apply to every asset; their dates come from
-  the official FRED calendar, because company news rarely states them (measured: 1 macro date
-  found in six months of stock news, against 12 official ones), the news-extracted ones being
-  kept as a fallback and as a check of the analyst.
-
-Pipeline:
-1. Articles come from Alpaca News (free, tagged by ticker; history from mid-2026 only).
-2. A separate **news analyst** (a small pinned Mistral model, temperature 0, strict JSON) reads
-   each headline and summary once and returns numbers and enums only: sentiment, relevance,
-   and an announced event with its date. Its scores are cached, so each article is read once.
-3. The scores become the covariate arrays Timestral takes (`past_covariates` (B, 2, T) and
-   `known_covariates` (B, 3, T + H)). Before the start of the news coverage the values are
-   missing (NaN, which Timestral accepts), not zero: "unknown" is not "no news".
-
-Article text is untrusted. It only ever reaches the analyst, whose output is bounded numbers and
-enums: the decision LLM never reads it.
-"""
+"""News analysis turned into covariates for Timestral (D-019, the brief's bonus). Article text is
+untrusted: only the analyst reads it and returns bounded numbers; the decision LLM never sees it."""
 
 from __future__ import annotations
 
@@ -103,9 +78,6 @@ class AnalystLLM(Protocol):
     def complete(self, messages: list[dict[str, Any]], schema: dict[str, Any]) -> Any: ...
 
 
-# --------------------------------------------------------------------------- calendar
-
-
 def _holidays(start: date, end: date) -> set[date]:
     return {d.date() for d in USFederalHolidayCalendar().holidays(start, end + timedelta(days=7))}
 
@@ -123,17 +95,14 @@ def next_sessions(last: date, n: int) -> list[date]:
 
 
 def session_of(created_at: datetime, sessions: Sequence[date]) -> date | None:
-    """The session whose close is the first one after the article: news after 16:00 New York
-    time counts for the next session. None if after the last session given."""
+    """The session whose close is the first one after the article: news after 16:00 New York time
+    counts for the next session."""
     local = created_at.astimezone(NEW_YORK)
     day = local.date() + timedelta(days=1 if local.hour >= CLOSE_HOUR else 0)
     for s in sessions:
         if s >= day:
             return s
     return None
-
-
-# --------------------------------------------------------------------------- analyst
 
 
 def analyst_schema() -> dict[str, Any]:
@@ -179,8 +148,7 @@ def _event(kind: Any, when: Any, published: date) -> tuple[str | None, str | Non
 def analyse(
     items: Sequence[tuple[Article, str, date]], llm: AnalystLLM, batch_size: int
 ) -> list[Score]:
-    """Score (article, symbol, session) items in batches. Items the analyst skipped or answered
-    badly get no score: they are simply not counted (never invented)."""
+    """Score (article, symbol, session) items in batches."""
     scores: list[Score] = []
     for start in range(0, len(items), batch_size):
         batch = items[start : start + batch_size]
@@ -221,12 +189,8 @@ def analyse(
     return scores
 
 
-# --------------------------------------------------------------------------- cache
-
-
 class ScoreCache:
-    """Append-only file of the analyst's scores: each article is read once per analyst version.
-    Kept on the audit-log branch, so scheduled runs only score the day's new articles."""
+    """Append-only file of the analyst's scores: each article is read once per analyst version."""
 
     def __init__(self, root: Path) -> None:
         self.path = root / "news" / f"{ANALYST_VERSION}.jsonl"
@@ -256,9 +220,6 @@ class ScoreCache:
 
     def scores(self) -> list[Score]:
         return list(self._scores.values())
-
-
-# --------------------------------------------------------------------------- covariates
 
 
 @dataclass(frozen=True)
@@ -400,8 +361,8 @@ def macro_check(cov: NewsCovariates) -> dict[str, Any]:
 
 
 def news_record(cov: NewsCovariates | None, error: str | None) -> dict[str, Any]:
-    """What the run record keeps about the news: enough to rebuild the covariates and audit
-    the analyst (every score used, with its article id), never the article text."""
+    """What the run record keeps about the news: enough to rebuild the covariates and audit the
+    analyst (every score used, with its article id), never the article text."""
     if cov is None:
         return {"available": False, "error": error}
     return {
@@ -413,9 +374,6 @@ def news_record(cov: NewsCovariates | None, error: str | None) -> dict[str, Any]
         "n_scores": len(cov.scores),
         "macro_check": macro_check(cov),
     }
-
-
-# --------------------------------------------------------------------------- assembly
 
 
 def news_covariates(
@@ -469,9 +427,6 @@ def forecast_kwargs(
     if tuple(symbols) != cov.symbols:
         raise NewsError("covariates and forecast batch are not in the same order")
     return {k: v for k, v in cov.arrays(chosen).items() if v is not None}
-
-
-# --------------------------------------------------------------------------- adapters
 
 
 class AlpacaNews:  # pragma: no cover - network adapter
@@ -538,7 +493,7 @@ def fred_release_dates(
 
 def main() -> None:  # pragma: no cover - CLI wiring, runs in the Trade workflow
     """Score the news published since the start of the coverage, so the analysed history keeps
-    growing on the audit-log branch even before an agent uses it. Prints the coverage."""
+    growing on the audit-log branch even before an agent uses it."""
     import argparse
     import os
     from dataclasses import replace

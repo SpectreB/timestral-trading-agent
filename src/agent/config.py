@@ -1,9 +1,4 @@
-"""Central configuration: every tunable parameter of the agent lives here.
-
-Each value traces back to a decision in docs/decisions.md. Values marked "provisional"
-are parameters we expect to revisit with evidence (see the parameters-vs-architecture
-distinction in the decision log).
-"""
+"""Central configuration: every tunable parameter of the agent lives here."""
 
 from __future__ import annotations
 
@@ -21,8 +16,7 @@ class Asset:
     symbol: str
     name: str
     type: AssetType
-    # Risk group used by the sector cap (D-010). Assets in the same group are
-    # aggregated, e.g. XLE + XOM both count towards "energy".
+    # Sector cap group (D-010): XLE and XOM both count towards "energy".
     group: str
 
 
@@ -72,7 +66,7 @@ class LLMConfig:
 
 @dataclass(frozen=True)
 class RiskLimits:
-    """D-004 and D-010. Weights are fractions of portfolio equity."""
+    """Portfolio risk limits (D-004, D-010)."""
 
     min_cash: float = 0.10
     max_invested: float = 0.90  # no leverage: Alpaca would allow 2x buying power
@@ -168,14 +162,7 @@ class AgentConfig:
 
 
 def tool_agent_config(base: AgentConfig | None = None) -> AgentConfig:
-    """The agent that uses Timestral as a tool (D-018), derived from the pipeline agent.
-
-    Differences, and only these: the agent kind, the largest Timestral model (D-006: sizes are
-    indistinguishable on our data, 209M is the best on Mistral's benchmarks and costs ~0.5 s per
-    run), its own prompt, and no bound relative to the baseline (option B, "bounded freedom":
-    the baseline is a tool the LLM may consult, not an anchor). Every absolute limit (caps, cash
-    floor, drawdown circuit breaker, turnover, severity) is unchanged.
-    """
+    """The agent that uses Timestral as a tool (D-018), derived from the pipeline agent."""
     from dataclasses import replace
 
     base = base or AgentConfig()
@@ -189,9 +176,8 @@ def tool_agent_config(base: AgentConfig | None = None) -> AgentConfig:
 
 
 def news_agent_config(base: AgentConfig | None = None) -> AgentConfig:
-    """The tool agent with news covariates (D-019): same agent, its tools can also ask Timestral
-    for forecasts conditioned on the news. Integrated and testable; it replaces the live tool
-    agent only once the covariates are measured and adopted."""
+    """The tool agent with news covariates (D-019): same agent, its tools can also ask Timestral for
+    forecasts conditioned on the news."""
     from dataclasses import replace
 
     cfg = tool_agent_config(base)

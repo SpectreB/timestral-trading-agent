@@ -1,17 +1,5 @@
-"""Decision stage of the agent that uses Timestral as a tool (D-018).
-
-Flow:
-1. The LLM receives its own system prompt and the market context **without** Timestral's
-   forecasts or the baseline: it obtains them by calling its tools (`agent.decision.tools`).
-2. Exploration: up to `max_rounds` turns in which it may call tools (`max_calls` calls in total).
-   Each call is validated, answered and recorded.
-3. Final answer: the same strict JSON schema as the pipeline agent, then **the same guardrails**,
-   the same retry and the same fallback (hold the current positions), via `final_decision`.
-
-The only guardrail that differs is the one tied to the baseline: with "bounded freedom" (option
-B) the baseline is a reference, not an anchor, so the +15 point bound is off in this agent's
-config (`tool_agent_config`). Every absolute limit applies unchanged.
-"""
+"""Decision stage of the agent that uses Timestral as a tool (D-018). Same guardrails, retry and
+fallback as the pipeline agent; only the +15 point bound is off."""
 
 from __future__ import annotations
 
@@ -47,8 +35,8 @@ def decide_agent(
     cfg: AgentConfig,
     on_llm_failure: Literal["hold", "raise"] = "hold",
 ) -> Decision:
-    """The decision of whichever agent `cfg` describes: the run, the replay and the evaluations
-    all go through here, so both agents are run by exactly the same code around the decision."""
+    """The decision of whichever agent `cfg` describes: the run, the replay and the evaluations all
+    go through here, so both agents are run by exactly the same code around the decision."""
     if cfg.agent == "tools":
         if not isinstance(llm, ToolLLMClient):
             raise TypeError("the tool agent needs an LLM client that supports tool calls")

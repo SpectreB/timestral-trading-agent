@@ -1,9 +1,5 @@
-"""Independent final check before any order is sent (D-009, defence in depth).
-
-This module deliberately shares no code with `guardrails.py`: it re-checks the core
-invariants with the simplest possible logic, so that a bug in the guardrails cannot reach
-the broker. Any violation aborts the run.
-"""
+"""Independent final check before any order is sent (D-009, defence in depth). It shares no code
+with the guardrails, so a bug there cannot reach the broker."""
 
 from __future__ import annotations
 

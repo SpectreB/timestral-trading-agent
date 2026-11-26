@@ -72,8 +72,8 @@ def _et(iso: str) -> datetime:
 
 
 def _points(runs: list[dict[str, Any]], valuations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The account's value over time: the start of every run (with its detail) and the samples
-    taken between runs, oldest first. A sample taken before the first run is left out."""
+    """The account's value over time: the start of every run (with its detail) and the samples taken
+    between runs, oldest first."""
     first = _et(runs[0]["started_at"])
     out = [
         {
@@ -106,9 +106,7 @@ SLOT_HOURS = (10, 15)  # the two scheduled runs of the day, US Eastern time
 
 
 def _next_slot(now: datetime) -> datetime:
-    """The next scheduled slot after `now` (weekdays only; holidays are not modelled). Counted
-    from the present, not from the last run: a run that did not happen must not make the
-    page announce a slot that is already in the past."""
+    """The next scheduled slot after `now` (weekdays only; holidays are not modelled)."""
     et = now.astimezone(ZoneInfo("America/New_York"))
     day = et.replace(hour=0, minute=0, second=0, microsecond=0)
     while True:
@@ -235,8 +233,8 @@ def _median(values: list[float]) -> float:
 
 
 def _measures(a: AgentView, evals: dict[str, Any] | None) -> dict[str, str]:
-    """Concrete measures of one agent, as text: how it decides, what risk it takes, how it
-    executes, how it behaved in tests, how it did on the past. 'n/a' when not measurable yet."""
+    """Concrete measures of one agent, as text: how it decides, what risk it takes, how it executes,
+    how it behaved in tests, how it did on the past. 'n/a' when not measurable yet."""
     out: dict[str, str] = {}
     runs = a.runs
     if runs:

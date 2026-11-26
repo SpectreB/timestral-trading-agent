@@ -1,28 +1,5 @@
-"""Simulations requested by the evaluators (D-017).
-
-An evaluator clicks "Run a simulation" on the dashboard, which opens a pre-filled GitHub issue.
-The `Simulate` workflow picks it up and calls this module, which:
-
-1. throttles requests (one at a time is enforced by the workflow; here: at least a minute
-   between two simulations and at most 20 a day), answering a refusal politely;
-2. runs one full cycle on the current portfolio, **never sending an order**: dry run forced and
-   the kill switch forced off, whatever the environment says;
-3. stores the record apart from the real agent's (`simulations/`), so the metrics of the real
-   agent are untouched, with the requester's GitHub login;
-4. writes the reply posted in the issue: the decision, the main moves and the LLM's reading.
-
-The evaluator may choose three options (D-017, amended): the agent, a risk stance and the
-starting portfolio. They travel as `key: value` lines in the issue and are read by `parse_options`
-only: a closed list of values, so nothing else of the issue is ever used, and the text never
-reaches a shell command.
-
-Everything that comes from outside is untrusted: the issue text is reduced to those three words,
-and the LLM's text posted back is neutralised (no @-mention, no HTML) and length-limited.
-
-Usage (in the workflow):
-    OPTIONS="$ISSUE_BODY" python -m agent.jobs.simulate --audit-dir audit --requested-by LOGIN \
-        --comment-out comment.md
-"""
+"""Simulations requested by the evaluators (D-017). Never sends an order. The issue text is reduced
+to closed-list options and never reaches a shell."""
 
 from __future__ import annotations
 
@@ -79,10 +56,7 @@ MAX_TEXT = 4000
 
 
 def parse_options(text: str) -> tuple[dict[str, str], list[str]]:
-    """The three options out of an issue text, and the options whose value was refused.
-
-    Only lines `agent|stance|start: <word>` count, the word must be in the closed list, the
-    first occurrence wins, and nothing of the text is echoed back (it is untrusted)."""
+    """The three options out of an issue text, and the options whose value was refused."""
     chosen, refused, seen = dict(DEFAULT_OPTIONS), [], set()
     for line in text[:MAX_TEXT].splitlines():
         found = _LINE.match(line)
@@ -100,8 +74,8 @@ def parse_options(text: str) -> tuple[dict[str, str], list[str]]:
 
 
 def apply_universe(cfg: AgentConfig, universe: str) -> AgentConfig:
-    """`wide` adds the panel's large stocks to the 15 assets traded live: about 40 assets, the
-    same guardrails. Simulations only: the live agents keep their universe."""
+    """`wide` adds the panel's large stocks to the 15 assets traded live: about 40 assets, the same
+    guardrails."""
     if universe != "wide":
         return cfg
     held = set(cfg.symbols)
@@ -114,8 +88,7 @@ def apply_universe(cfg: AgentConfig, universe: str) -> AgentConfig:
 
 
 def simulation_config(base: AgentConfig, options: Mapping[str, str]) -> AgentConfig:
-    """The chosen agent's configuration with the requested universe, then stance. Built once,
-    so everything in the run (forecasts, news covariates, guardrails) sees the same assets."""
+    """The chosen agent's configuration with the requested universe, then stance."""
     chosen = {**DEFAULT_OPTIONS, **options}
     return apply_stance(apply_universe(base, chosen["universe"]), chosen["stance"])
 
@@ -149,8 +122,8 @@ def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
 
 @dataclass
 class StartingPoint:
-    """The broker as the simulation sees it: the real prices, market and account, but the
-    holdings the evaluator chose, and no way to send an order."""
+    """The broker as the simulation sees it: the real prices, market and account, but the holdings
+    the evaluator chose, and no way to send an order."""
 
     inner: Broker
     start: str
@@ -317,10 +290,7 @@ def simulate(
     news: Callable[[Any], NewsCovariates] | None = None,
     history_dir: Path | None = None,
 ) -> tuple[str, CycleResult | None]:
-    """Run one throttled simulation and return the reply to post (and the cycle result).
-
-    `cfg` is the chosen agent's configuration; the stance and the starting portfolio come from
-    `options`. `history_dir` holds the records that give the agent's peak equity."""
+    """Run one throttled simulation and return the reply to post (and the cycle result)."""
     chosen = {**DEFAULT_OPTIONS, **(options or {})}
     cfg = simulation_config(cfg, chosen)
     store = FileAuditStore(root / SIMULATIONS)

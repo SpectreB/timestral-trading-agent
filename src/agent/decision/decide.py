@@ -1,14 +1,4 @@
-"""Decision stage: the LLM adjusts the baseline portfolio, the guardrails bound it (D-004, D-008).
-
-Flow:
-1. Build the prompt: versioned system prompt + a JSON payload (forecasts, baseline,
-   current portfolio, recent market data, drawdown state).
-2. Call the LLM with a strict JSON schema (`analysis` first). Its reasoning trace is kept.
-3. Apply the guardrails. If the proposal is rejected, retry once, telling the LLM why.
-4. If it is still rejected, fall back to holding the current positions (D-010).
-
-Every attempt (prompt, raw answer, reasoning, guardrail result) is returned for the audit log.
-"""
+"""Decision stage: the LLM adjusts the baseline, the guardrails bound it (D-004, D-008)."""
 
 from __future__ import annotations
 
@@ -28,9 +18,6 @@ from agent.config import AgentConfig
 from agent.inputs.forecast import AssetForecast
 
 Mode = Literal["morning", "afternoon"]
-
-
-# --------------------------------------------------------------------------- LLM client
 
 
 class LLMResponse(BaseModel):
@@ -171,9 +158,6 @@ class MistralLLM:  # pragma: no cover - network adapter, exercised by the smoke 
         return self._response(step)
 
 
-# --------------------------------------------------------------------------- inputs / outputs
-
-
 @dataclass(frozen=True)
 class DecisionInput:
     now: datetime
@@ -207,12 +191,9 @@ class Decision(BaseModel):
     steps: list[LLMStep] = []
 
 
-# --------------------------------------------------------------------------- prompt
-
-
 def load_system_prompt(cfg: AgentConfig) -> str:
-    """The versioned system prompt, filled with the limits of `cfg` (unused keys are ignored,
-    so one function serves both agents' prompts)."""
+    """The versioned system prompt, filled with the limits of `cfg` (unused keys are ignored, so one
+    function serves both agents' prompts)."""
     template = (
         resources.files("agent.decision.prompts")
         .joinpath(f"{cfg.llm.prompt_version}.md")
@@ -237,7 +218,7 @@ def load_system_prompt(cfg: AgentConfig) -> str:
 
 
 def response_schema(cfg: AgentConfig) -> dict[str, Any]:
-    """Strict JSON schema sent to the API. Property order puts `analysis` first."""
+    """Strict JSON schema sent to the API."""
     position = {
         "type": "object",
         "properties": {
@@ -275,8 +256,7 @@ def _recent_stats(closes: pd.Series) -> dict[str, float]:
 def build_payload(
     inp: DecisionInput, cfg: AgentConfig, with_forecasts: bool = True
 ) -> dict[str, Any]:
-    """The decision input sent to the LLM. Without forecasts (the tool agent, D-018), Timestral's
-    forecasts and the baseline are left out: the LLM asks for them through its tools."""
+    """The decision input sent to the LLM."""
     h = cfg.forecast.horizon
     assets = []
     for a in cfg.universe:
@@ -334,9 +314,6 @@ def _retry_message(result: GuardrailResult) -> str:
     return "\n".join(lines)
 
 
-# --------------------------------------------------------------------------- decision
-
-
 def failure_text(error: Exception) -> str:
     return f"LLM call failed: {type(error).__name__}: {str(error)[:300]}"
 
@@ -347,9 +324,9 @@ def decide(
     cfg: AgentConfig,
     on_llm_failure: Literal["hold", "raise"] = "hold",
 ) -> Decision:
-    """`on_llm_failure`: live, a call that fails (timeout, outage) counts as a rejected attempt,
-    so the agent ends up holding its positions and the run is still recorded; the replay
-    raises instead, because an outage must not be recorded as a decision to hold."""
+    """`on_llm_failure`: live, a call that fails (timeout, outage) counts as a rejected attempt, so
+    the agent ends up holding its positions and the run is still recorded; the replay raises
+    instead, because an outage must not be recorded as a decision to hold."""
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": load_system_prompt(cfg)},
         {"role": "user", "content": json.dumps(build_payload(inp, cfg), indent=1)},
@@ -365,9 +342,7 @@ def final_decision(
     on_llm_failure: Literal["hold", "raise"],
     **extra: Any,
 ) -> Decision:
-    """Ask for the JSON decision, apply the guardrails, retry once if rejected, else hold.
-
-    Shared by both agents; `extra` fills the tool agent's fields of the Decision."""
+    """Ask for the JSON decision, apply the guardrails, retry once if rejected, else hold."""
     schema = response_schema(cfg)
     attempts: list[Attempt] = []
 

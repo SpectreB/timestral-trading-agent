@@ -1,14 +1,5 @@
-"""Reconciliation (D-011): what actually happened to the orders that were sent.
-
-A run record says what the agent decided and planned; this module appends what the broker
-did with it: final status, filled quantity, average fill price and slippage against the
-reference price. Results go to `reconciliation/<run_id>_fills.json`, written once, only when
-every order of the run has reached a final state (day orders end at the close), so it can
-run at any time and as often as needed: it is idempotent.
-
-Slippage is signed so that positive always means worse for us: paying more than the
-reference on a buy, receiving less on a sell, in basis points.
-"""
+"""Reconciliation (D-011): what actually happened to the orders that were sent. Slippage is signed
+so that positive always means worse for us."""
 
 from __future__ import annotations
 
