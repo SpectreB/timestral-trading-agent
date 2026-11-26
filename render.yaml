@@ -1,0 +1,16 @@
+# The live dashboard API (D-022) on Render's free plan. It reads the public audit-log branch:
+# no secret is needed. The static snapshot on GitHub Pages stays the fallback.
+services:
+  - type: web
+    name: timestral-dashboard-api
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements-api.txt && pip install --no-deps -e .
+    startCommand: uvicorn agent.dashboard.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: ALLOWED_ORIGINS
+        value: https://spectreb.github.io

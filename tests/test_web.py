@@ -26,9 +26,19 @@ from tests.test_run import cycle
 
 
 def _site(tmp_path: Path, **kwargs: Any) -> dict[str, Any]:
-    path = build(tmp_path / "audit", tmp_path / "site", STAMP, **kwargs)
-    data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    return data
+    """The site's data, read from the API snapshot the way the page reads it."""
+    api = build(tmp_path / "audit", tmp_path / "site", STAMP, **kwargs)
+
+    def get(path: str) -> Any:
+        return json.loads((api / f"{path}.json").read_text(encoding="utf-8"))
+
+    agents = [get(f"agents/{a['key']}") for a in get("agents")]
+    return {
+        **get("overview"),
+        "agents": agents,
+        **get("evidence"),
+        "simulations": get("simulations"),
+    }
 
 
 def _docs(tmp_path: Path) -> dict[str, Path]:
@@ -51,7 +61,7 @@ def test_the_site_has_the_page_and_its_data(tmp_path: Path) -> None:
     cycle(tmp_path / "audit")
     data = _site(tmp_path)
     site = tmp_path / "site"
-    for name in ("index.html", "app.js", "style.css", "data.json"):
+    for name in ("index.html", "app.js", "style.css", "api/overview.json", "api/openapi.json"):
         assert (site / name).exists(), name
     assert (site / "index.html").read_text() == (WEB_DIR / "index.html").read_text()
     assert [a["key"] for a in data["agents"]] == ["pipeline"]  # no tool agent records yet
@@ -174,7 +184,7 @@ def test_the_page_renders_text_only_and_loads_pinned_libraries() -> None:
         assert lib in page
     app = (WEB_DIR / "app.js").read_text()
     assert "dangerouslySetInnerHTML" not in app and "innerHTML" not in app
-    assert "data.json" in app
+    assert "api/${path}.json" in app
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
