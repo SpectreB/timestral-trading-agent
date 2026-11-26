@@ -703,10 +703,11 @@ WHATS_NEXT: tuple[dict[str, str], ...] = (
         "text": "More single stocks, where company news should matter most.",
     },
     {
-        "kind": "Soundness",
-        "id": "D-016",
-        "title": "How to check that the LLM behaves soundly",
-        "text": "Does the confidence the LLM states match how often its bets pay off?",
+        "kind": "Conversation",
+        "id": "D-018",
+        "title": "A second agent that uses Timestral as a tool, on its own paper account",
+        "text": "Talk with Mistral Large 4 about its choices, and leave a view it weighs at its "
+        "next decision: same guardrails, on the record.",
     },
 )
 
