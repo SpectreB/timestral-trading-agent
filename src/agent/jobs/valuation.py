@@ -1,13 +1,4 @@
-"""The account's value, sampled between runs.
-
-A run records the account once, when it starts. Between two runs the positions move with the
-market and the page would still show the value of the last run. This module takes one sample of
-the real account (equity and the market value of each position) and writes it to the audit log
-(`valuations/`). It only reads from the broker: it can never send an order.
-
-Samples are facts, one file per minute and per agent; a repeated call within the same minute
-writes nothing.
-"""
+"""The account's value, sampled between runs. Read-only: it can never send an order."""
 
 from __future__ import annotations
 

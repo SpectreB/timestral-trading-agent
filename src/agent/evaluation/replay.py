@@ -1,28 +1,5 @@
-"""Historical replay of the agent (D-015, test case 1).
-
-The same agent as in production (prompt, model, guardrails, execution planning) is run over
-past sessions, one decision per session, to get a sample large enough to judge it. What differs
-from live, and why:
-
-- **Point-in-time data, enforced in code.** A decision at session t only receives closes
-  before t (`point_in_time`); the strict rule also applies to the portfolio weights, which are
-  valued at the previous close. Trades are filled at the session's open plus a cost.
-- **Anonymised assets.** The LLM may have seen these markets during its training: shown real
-  tickers and dates it could "remember" what follows. Assets are renamed (type and sector group
-  are kept, the guardrails need them), the calendar is synthetic, no price level and no news are
-  shown. The mapping is kept in the manifest for the evaluation, and a leakage probe measures how
-  much the LLM can still identify.
-- **No broker.** Execution is simulated; nothing here can reach Alpaca.
-- **Resumable.** Records are immutable and keyed by session: a restart skips what is done and
-  rebuilds the portfolio from the stored targets, with no new LLM call.
-
-Records, observations and tables use the same structures as the live audit log, so the metrics
-of D-014 apply unchanged.
-
-Usage:
-    python -m agent.evaluation.replay run   --out docs/replay [--sessions 63] [--end 2026-11-20]
-    python -m agent.evaluation.replay probe --out docs/replay [--n 5]
-"""
+"""Historical replay of the agent (D-015, test case 1). Point-in-time data and anonymised assets,
+against the LLM's lookahead bias."""
 
 from __future__ import annotations
 
@@ -58,13 +35,8 @@ class ReplayError(RuntimeError):
     """The replay cannot continue without breaking its own rules."""
 
 
-# --------------------------------------------------------------------------- anonymisation
-
-
 def anonymise(cfg: AgentConfig, seed: int = 0) -> tuple[AgentConfig, dict[str, str]]:
-    """The configuration seen by the LLM: aliases in a shuffled order, generic names.
-
-    Type and sector group are kept: the guardrails and the reasoning need them."""
+    """The configuration seen by the LLM: aliases in a shuffled order, generic names."""
     rng = random.Random(seed)
     aliases = [f"A{i + 1:02d}" for i in range(len(cfg.universe))]
     rng.shuffle(aliases)
@@ -89,8 +61,8 @@ def point_in_time(history: pd.DataFrame, session: pd.Timestamp, n: int) -> pd.Da
 def _view(
     closes_a: pd.DataFrame, synthetic: pd.DatetimeIndex, session: pd.Timestamp, cfg: AgentConfig
 ) -> tuple[pd.DataFrame, pd.DataFrame, datetime]:
-    """What the decision at `session` may see: the real history before it (for the simulation),
-    the same history on a synthetic calendar (for the LLM), and a synthetic 10:00 timestamp."""
+    """What the decision at `session` may see: the real history before it (for the simulation), the
+    same history on a synthetic calendar (for the LLM), and a synthetic 10:00 timestamp."""
     history = point_in_time(closes_a, session, cfg.forecast.context_length)
     shown = history.copy()
     shown.index = synthetic[closes_a.index.get_indexer(history.index)]
@@ -100,9 +72,6 @@ def _view(
         shown,
         datetime.combine(day, datetime.min.time()).replace(hour=10, tzinfo=NEW_YORK),
     )
-
-
-# --------------------------------------------------------------------------- simulated broker
 
 
 @dataclass
@@ -140,9 +109,6 @@ def execute_at_open(
             pf.cash += order.quantity * fill
             pf.shares[order.symbol] = pf.shares.get(order.symbol, 0.0) - order.quantity
     return order_records(plan, "replay_filled")
-
-
-# --------------------------------------------------------------------------- the replay
 
 
 @dataclass(frozen=True)
@@ -261,8 +227,6 @@ def run_replay(
     return ReplayResult(len(sessions), resumed, errors, equity)
 
 
-# --------------------------------------------------------------------------- leakage probe
-
 PROBE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -350,9 +314,6 @@ def run_probe(
         result = score_probe(response.text, mapping, session.date().isoformat()[:7])
         out.append({"session": session.date().isoformat(), **result, "answer": response.text})
     return out
-
-
-# --------------------------------------------------------------------------- report
 
 
 def write_manifest(
@@ -494,9 +455,6 @@ Assets are identified when the ticker matches exactly. Sector groups are kept in
   without any change of the value fixed beforehand.
 - Anonymisation reduces, and does not remove, the chance that the LLM recognises a market episode.
 """
-
-
-# --------------------------------------------------------------------------- command line
 
 
 def load_history(  # pragma: no cover - network and cache

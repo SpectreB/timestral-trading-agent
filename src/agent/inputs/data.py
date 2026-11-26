@@ -1,8 +1,4 @@
-"""Market data: daily closes for the universe, completed bars only, validated.
-
-The `MarketData` protocol keeps the pipeline independent of Alpaca: tests use a fake
-source (no network, D-009), production uses `AlpacaMarketData`.
-"""
+"""Market data: daily closes for the universe, completed bars only, validated."""
 
 from __future__ import annotations
 
@@ -43,11 +39,7 @@ def completed_closes(closes: pd.DataFrame, today: date, market_open: bool) -> pd
 
 
 def load_context(source: MarketData, cfg: AgentConfig, now: datetime) -> pd.DataFrame:
-    """Return the last `context_length` completed closes for the universe, validated.
-
-    Raises DataError if a symbol is missing, history is too short, the latest bar is
-    incomplete for any symbol, too many values are missing, or the data is stale.
-    """
+    """Return the last `context_length` completed closes for the universe, validated."""
     symbols = list(cfg.symbols)
     n = cfg.forecast.context_length
     end = now - timedelta(minutes=16)  # free data plan: consolidated feed delayed by 15 min
@@ -83,8 +75,8 @@ def load_context(source: MarketData, cfg: AgentConfig, now: datetime) -> pd.Data
 
 
 class AlpacaMarketData:  # pragma: no cover - network adapter, exercised by the smoke test
-    """Alpaca implementation: consolidated (SIP) feed, prices adjusted for splits and
-    dividends (without adjustment a 10:1 split looks like a -90% crash)."""
+    """Alpaca implementation: consolidated (SIP) feed, prices adjusted for splits and dividends
+    (without adjustment a 10:1 split looks like a -90% crash)."""
 
     def __init__(self, api_key: str, secret_key: str) -> None:
         from alpaca.data.historical import StockHistoricalDataClient

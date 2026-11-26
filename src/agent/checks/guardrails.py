@@ -1,21 +1,5 @@
-"""Deterministic guardrails between the LLM proposal and the broker (D-010, layers 1 and 2).
-
-Pipeline of checks, in order:
-
-Layer 1: is the LLM output usable? (severe -> reject)
-    invalid JSON, schema violation, non-finite value, duplicate / unknown / missing asset,
-    deviation from baseline without a rationale, weights + cash outside 95-105%.
-
-Layer 2: does the portfolio respect the risk rules? (correct and log)
-    renormalise, negative weight -> 0, drawdown circuit breaker, asymmetric bound vs
-    baseline, per-asset cap, per-group cap, exposure cap (cash floor).
-
-Severity: if the LLM needed too many corrections (too many assets, or too many points in
-total), it did not understand the rules and the whole proposal is rejected.
-
-Weight freed by a correction always goes to cash, never to other assets: a correction can
-only reduce risk.
-"""
+"""Deterministic guardrails between the LLM proposal and the broker (D-010, layers 1 and 2). Weight
+freed by a correction goes to cash: a correction can only reduce risk."""
 
 from __future__ import annotations
 
@@ -38,8 +22,7 @@ class Correction(BaseModel):
     symbol: str | None
     before: float
     after: float
-    # Counted corrections are LLM rule violations and feed the severity check.
-    # Uncounted ones are routine adjustments (renormalisation, confidence clipping).
+    # Counted: LLM rule violations, which feed the severity check. Uncounted: routine adjustments.
     counted: bool
 
 
@@ -64,13 +47,13 @@ def _reject(reason: str, corrections: list[Correction] | None = None) -> Guardra
 
 
 def drawdown_actions(drawdown: float, cfg: AgentConfig) -> list[str]:
-    """Circuit-breaker levels reached. Levels are cumulative: -8% also implies reduce-only."""
+    """Circuit-breaker levels reached."""
     return [lvl.action for lvl in cfg.drawdown_levels if drawdown <= lvl.threshold + _EPS]
 
 
 def _check_reference(name: str, weights: Mapping[str, float], cfg: AgentConfig) -> None:
-    """Baseline and current portfolios come from our own code: a bad one is a bug, not an
-    LLM error, so it raises instead of rejecting."""
+    """Baseline and current portfolios come from our own code: a bad one is a bug, not an LLM error,
+    so it raises instead of rejecting."""
     if set(weights) != set(cfg.symbols):
         raise ValueError(f"{name} portfolio must cover exactly the universe")
     if any(w < 0 for w in weights.values()) or sum(weights.values()) > 1 + _EPS:
@@ -84,18 +67,11 @@ def apply_guardrails(
     drawdown: float,
     cfg: AgentConfig,
 ) -> GuardrailResult:
-    """Validate and bound an LLM proposal.
-
-    raw: the LLM output (JSON text or already-decoded dict).
-    baseline: the rule-based portfolio (D-004), weights per symbol.
-    current: the portfolio currently held, weights per symbol.
-    drawdown: current drawdown from peak equity, as a fraction <= 0.
-    """
+    """Validate and bound an LLM proposal."""
     _check_reference("baseline", baseline, cfg)
     _check_reference("current", current, cfg)
     risk = cfg.risk
 
-    # ---------------------------------------------------------------- Layer 1
     if isinstance(raw, str):
         try:
             raw = json.loads(raw)
@@ -123,7 +99,6 @@ def apply_guardrails(
     if abs(total - 1.0) > risk.weight_sum_tolerance:
         return _reject("weights_do_not_sum_to_one")
 
-    # ---------------------------------------------------------------- Layer 2
     corrections: list[Correction] = []
     weights = {p.symbol: p.target_weight for p in proposal.positions}
 
@@ -211,7 +186,6 @@ def apply_guardrails(
         factor = max_invested / invested
         weights = {s: w * factor for s, w in weights.items()}
 
-    # ---------------------------------------------------------------- Severity
     counted = [c for c in corrections if c.counted]
     corrected_assets = {c.symbol for c in counted if c.symbol is not None}
     total_correction = sum(abs(c.before - c.after) for c in counted)

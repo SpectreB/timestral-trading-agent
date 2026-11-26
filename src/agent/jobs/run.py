@@ -1,15 +1,6 @@
-"""One full cycle: data -> forecast -> baseline -> decide -> guardrails -> execute -> audit.
-
-Safe by default: without `--live` nothing is ever sent to the broker (dry run). Live orders
-need `--live`, the TRADING_ENABLED kill switch set to "true", and an open market.
-
-Order of operations is write-ahead: the run record (including the planned orders) is written
-to the audit log *before* any order is sent, so the agent can never act without a record.
-Submission results then go to `reconciliation/<run_id>.json`.
-
-Usage:
-    python -m agent.jobs.run --mode morning [--live] [--audit-dir audit]
-"""
+"""One full cycle: data -> forecast -> baseline -> decide -> guardrails -> execute -> audit. Dry run
+unless --live, TRADING_ENABLED and an open market; the record is written before any order is
+sent."""
 
 from __future__ import annotations
 
@@ -45,9 +36,7 @@ from agent.inputs.news import NewsCovariates, news_record
 
 Status = Literal["done", "already_done", "market_closed"]
 
-# D-018: two agents, each trading its own Alpaca paper account.
-# "news" is the tool agent with news covariates (D-019): it would take over the tool agent's
-# account once adopted, so it uses the same keys.
+# D-018: one Alpaca paper account per agent; "news" (D-019) would take over the tool agent's.
 AGENTS = ("pipeline", "tools", "news")
 ALPACA_KEY_NAMES = {
     "pipeline": ("ALPACA_API_KEY", "ALPACA_SECRET_KEY"),
@@ -67,8 +56,8 @@ def config_for(agent: str) -> AgentConfig:
 def news_provider(
     cfg: AgentConfig, audit_dir: Path, env: Mapping[str, str]
 ) -> Callable[[pd.DataFrame], NewsCovariates] | None:  # pragma: no cover - network wiring
-    """The production news pipeline of D-019: Alpaca News, the Mistral analyst, the score cache
-    kept with the audit log, and the FRED calendar for the extraction check."""
+    """The production news pipeline of D-019: Alpaca News, the Mistral analyst, the score cache kept
+    with the audit log, and the FRED calendar for the extraction check."""
     if not cfg.news.enabled:
         return None
     from dataclasses import replace
@@ -132,8 +121,7 @@ def run_cycle(
     history: FileAuditStore | None = None,
     news: Callable[[pd.DataFrame], NewsCovariates] | None = None,
 ) -> CycleResult:
-    """One cycle. `label` gives the run its own id (simulations, D-017); `history` is the store
-    whose records give the peak equity, when the records are written elsewhere."""
+    """One cycle."""
     now_ny = now.astimezone(NEW_YORK)
     rid = run_id(now_ny, label or mode)
     if store.has_run(rid):  # idempotent: a retried job must not trade twice

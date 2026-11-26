@@ -1,28 +1,5 @@
-"""Timestral as a set of tools the LLM calls before deciding (D-018).
-
-Three tools, each a question the LLM may ask:
-
-- `get_forecasts`: Timestral's quantile forecast of chosen assets at a chosen horizon (1 to 5
-  trading days), with the volatility implied by the 80% interval.
-- `evaluate_portfolio`: what a candidate allocation would look like. Two views of its risk:
-  1. **Timestral forecasts the portfolio itself.** The value history of the candidate holdings
-     is rebuilt over the context window and given to Timestral as one more series. Its quantiles
-     describe the portfolio's own distribution, correlations included, with no normal
-     assumption: probability of a loss, bad-case loss (5% quantile).
-  2. The risk decomposition of D-014 (Timestral volatilities x shrunk historical correlation):
-     forecast volatility and each asset's share of the risk.
-  It compares the allocation with the portfolio held now (points traded, change in forecast
-  volatility and in bad case), so a change that trades a lot for little risk
-  benefit is visible (D-018, calm-market finding). It also says whether the guardrails would
-  accept the allocation as it is, using the production guardrails themselves, so the LLM can
-  correct itself before answering.
-- `get_baseline`: the rule-based portfolio (weights inversely proportional to the forecast
-  interval width), as a reference the LLM may use or ignore.
-
-Everything the LLM sends is untrusted: arguments are validated, a bad call returns an error the
-LLM can read (never an exception), and the number of calls is capped. Every call and its result
-is recorded for the audit log.
-"""
+"""Timestral as a set of tools the LLM calls before deciding (D-018). Every argument from the LLM is
+untrusted: validated, errors returned as text, calls capped."""
 
 from __future__ import annotations
 
@@ -74,7 +51,7 @@ class ToolError(ValueError):
 
 
 class TimestralTools:
-    """The tools of one decision. `forecasts` is the batched Timestral run of the cycle."""
+    """The tools of one decision."""
 
     def __init__(
         self,
@@ -99,8 +76,6 @@ class TimestralTools:
         self.calls: list[dict[str, Any]] = []
         self._corr = correlation(closes)
         self._variants: dict[tuple[str, ...], Mapping[str, AssetForecast]] = {(): forecasts}
-
-    # ------------------------------------------------------------------ schemas
 
     def specs(self) -> list[dict[str, Any]]:
         specs = self._base_specs()
@@ -238,8 +213,6 @@ class TimestralTools:
             },
         ]
 
-    # ------------------------------------------------------------------ dispatch
-
     @property
     def budget_left(self) -> int:
         return self.cfg.tools.max_calls - len(self.calls)
@@ -272,8 +245,6 @@ class TimestralTools:
                 result = {"error": str(error)}
         self.calls.append({"name": name, "arguments": arguments, "result": result})
         return json.dumps(result)
-
-    # ------------------------------------------------------------------ validation
 
     def _horizon(self, h: Any) -> int:
         if isinstance(h, bool) or not isinstance(h, int | float) or h != int(h):
@@ -332,8 +303,6 @@ class TimestralTools:
             raise ToolError("weights sum to more than 1: no leverage")
         return out
 
-    # ------------------------------------------------------------------ tools
-
     def get_forecasts(self, symbols: Any, horizon: Any, covariates: Any = ()) -> dict[str, Any]:
         h = self._horizon(horizon)
         chosen = self._symbols(symbols)
@@ -366,10 +335,7 @@ class TimestralTools:
         return result
 
     def portfolio_series(self, weights: Mapping[str, float]) -> np.ndarray:
-        """Value history of the candidate holdings, scaled to 1 at the last close.
-
-        Holdings are those the weights give today (shares bought at the last close), so the
-        series is what holding this portfolio would have been worth on each past day."""
+        """Value history of the candidate holdings, scaled to 1 at the last close."""
         values = self.closes[list(self.cfg.symbols)].to_numpy(dtype=np.float64)
         w = np.array([weights[s] for s in self.cfg.symbols])
         cash = 1.0 - float(w.sum())
@@ -397,19 +363,15 @@ class TimestralTools:
         families = self._families(covariates)
         invested = sum(w.values())
 
-        # 1. Timestral forecasts the portfolio's own value series.
         forecast = self._portfolio_forecast(w, h)
 
-        # 2. Risk decomposition from the asset forecasts (D-014).
         cov = covariance(forecast_vols(self._forecasts(families), h), self._corr)
         shares = risk_contributions(w, cov)
         top = sorted(((s, x) for s, x in shares.items() if w[s] > 0), key=lambda t: -t[1])[:5]
         vol = portfolio_vol(w, cov)
 
-        # 3. Against the portfolio held now: what the change trades, and what it buys in risk.
-        #    Makes churn visible: many points traded for a negligible change in risk. Only measures
-        #    of dispersion are compared: the probability of a loss moves with the median, which has
-        #    no measured skill, so comparing it would reward guessing the direction.
+        # Only dispersion is compared with the portfolio held: the probability of a loss moves
+        # with the median, which has no measured skill.
         held = self._portfolio_forecast(self.current, h)
         versus_current = {
             "points_traded": _r(100 * sum(abs(w[s] - self.current[s]) for s in w), 2),
@@ -417,7 +379,6 @@ class TimestralTools:
             "bad_case_q05_change": _r(forecast["q05"] - held["q05"]),
         }
 
-        # 4. Would the guardrails accept it as it is?
         proposal = {
             "analysis": "tool check",
             "positions": [

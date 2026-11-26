@@ -1,16 +1,5 @@
-"""Execution stage: target weights -> marketable limit orders (D-010).
-
-P0 safeguards implemented here, each preventing a concrete failure:
-- paper-account check (`preflight`): a configuration mistake must never trade real money;
-- idempotent client order ids (`<run_id>-<symbol>-<side>`): a re-run cannot buy twice;
-- kill switch (`trading_enabled`): the environment variable TRADING_ENABLED must be "true"
-  for live orders, so the agent can be stopped without touching code;
-- market-open check is done by the caller (`run.py`) before any live order.
-
-Planning is pure and deterministic. The planned post-trade portfolio is re-checked with the
-independent final check; if the no-trade band would leave an invariant broken (for example a
-position drifting above its cap), the band is relaxed, and if no plan is safe the run aborts.
-"""
+"""Execution stage: target weights -> marketable limit orders (D-010). Safeguards: paper-account
+check, idempotent client order ids, TRADING_ENABLED kill switch."""
 
 from __future__ import annotations
 
@@ -193,8 +182,7 @@ def order_records(plan: Plan, status: str) -> list[OrderRecord]:
 
 
 def submit_orders(plan: Plan, broker: Broker) -> list[OrderRecord]:
-    """Send the orders, sells first. A failed sell aborts the buys: without the proceeds of
-    the sell, the buys could only be funded with margin, i.e. leverage."""
+    """Send the orders, sells first: a failed sell aborts the buys, which would need margin."""
     records: list[OrderRecord] = []
     sell_failed = False
     for o in plan.orders:
@@ -223,8 +211,7 @@ def submit_orders(plan: Plan, broker: Broker) -> list[OrderRecord]:
 
 
 class AlpacaBroker:  # pragma: no cover - network adapter, exercised by the smoke test
-    """Alpaca paper trading. Reference prices come from the IEX feed: the free plan does not
-    allow recent consolidated (SIP) data."""
+    """Alpaca paper trading."""
 
     def __init__(self, api_key: str, secret_key: str) -> None:
         from alpaca.data.historical import StockHistoricalDataClient

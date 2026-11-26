@@ -1,16 +1,5 @@
-"""Daily smoke test on the real services (D-009): detect external breakage before trading.
-
-It exercises every external dependency the morning run needs, places no order and writes
-no audit record:
-- Alpaca: the account is an active paper account, daily bars load and validate, live
-  reference prices are valid for the whole universe;
-- Timestral: the weights load from cache or the Hub and forecast the whole universe;
-- Mistral: the **pinned** model answers a strict-schema request. The answer must report the
-  pinned model id: a silent alias change would otherwise go unnoticed.
-
-Usage:
-    python -m agent.jobs.smoke
-"""
+"""Daily smoke test on the real services (D-009): detect external breakage before trading. Places no
+order; checks that Mistral answers with the pinned model id."""
 
 from __future__ import annotations
 

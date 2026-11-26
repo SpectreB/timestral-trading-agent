@@ -1,16 +1,5 @@
-"""The data behind the dashboard (D-012): one JSON file read by the React page in `web/`.
-
-Python computes, the page only displays. Every figure comes from the audit records, the replay
-reports, the behaviour tests and the covariate trial, through the same functions as before
-(`agent.dashboard`), so the two views cannot disagree. Values stay raw (fractions, dollars,
-ISO times): formatting belongs to the page.
-
-The site has three parts, in the order a newcomer needs them:
-- **Live**: what each agent holds, what it decided at its last run and why, Timestral's raw
-  forecast behind it, the orders, the account value over time;
-- **How it works**: the design, the guardrails, and the evidence that the decisions are sound;
-- **Try it**: ask an agent to decide now on live data, without sending any order.
-"""
+"""The data behind the dashboard (D-012): one JSON file read by the React page in `web/`. Python
+computes, the page only displays."""
 
 from __future__ import annotations
 
@@ -67,14 +56,9 @@ def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat(timespec="seconds")
 
 
-# --------------------------------------------------------------------------- one agent
-
-
 def _forecast(run: dict[str, Any]) -> dict[str, Any]:
-    """Timestral's output at the run, as recorded: for each asset and each horizon the 10%
-    and 90% quantiles, the median and the spread (width of the 80% interval, q90 - q10).
-    With the weight the rule derives from it (inversely proportional to the spread) and the
-    final weight, so the page can show the path from the raw forecast to the portfolio."""
+    """Timestral's output at the run, as recorded: for each asset and each horizon the 10% and 90%
+    quantiles, the median and the spread (width of the 80% interval, q90 - q10)."""
     p = run["portfolios"]
     names = {a["symbol"]: a for a in run["config"]["universe"]}
     assets = []
@@ -218,8 +202,8 @@ def _portfolio_vol(run: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _orders(a: AgentView) -> list[dict[str, Any]]:
-    """Every order, most recent first: reconciled ones with what the broker did, sent ones that
-    are not reconciled yet shown as such (never hidden)."""
+    """Every order, most recent first: reconciled ones with what the broker did, sent ones that are
+    not reconciled yet shown as such (never hidden)."""
     out = []
     reconciled = {f["run_id"] for f in a.fills}
     for f in reversed(a.fills):
@@ -314,8 +298,8 @@ SESSIONS_PER_MONTH = 21  # US trading sessions in a typical month
 
 
 def _cost(runs: list[dict[str, Any]]) -> dict[str, str]:
-    """What a decision costs, averaged over the live runs: Mistral tokens (in, out) and their
-    price at the list rate. Our calls run on the sponsored plan's free tier: nothing is billed."""
+    """What a decision costs, averaged over the live runs: Mistral tokens (in, out) and their price
+    at the list rate."""
     if not runs:
         return {}
     used = [_tokens(r) for r in runs]
@@ -408,9 +392,6 @@ def agent_data(
         "calibration": calibration(a.scores),
         "risk_calibration": report.get("risk_calibration", []),
     }
-
-
-# --------------------------------------------------------------------------- the design
 
 
 def _rules() -> list[dict[str, str]]:
@@ -562,8 +543,8 @@ def _covariates(cov: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _sim_options(run_id: str) -> dict[str, str]:
-    """The options of a simulation, read back from its id: an option that differs from the
-    default is part of it (`agent.jobs.simulate.label_for`); every option value is unique."""
+    """The options of a simulation, read back from its id: an option that differs from the default
+    is part of it (`agent.jobs.simulate.label_for`); every option value is unique."""
     chosen = dict(DEFAULT_OPTIONS)
     by_value = {v: k for k, values in OPTIONS.items() for v in values}
     for token in run_id.split("-")[1:]:
@@ -573,8 +554,8 @@ def _sim_options(run_id: str) -> dict[str, str]:
 
 
 def _sim_portfolio(run: dict[str, Any]) -> list[dict[str, Any]]:
-    """What the simulated agent would hold, largest first, with its weight at the start; then
-    the positions it would sell entirely (weight 0), so a change is never hidden."""
+    """What the simulated agent would hold, largest first, with its weight at the start; then the
+    positions it would sell entirely (weight 0), so a change is never hidden."""
     current, final = run["portfolios"]["current"], run["portfolios"]["final"]
     kinds = {a["symbol"]: a["type"] for a in run["config"]["universe"]}
     held = sorted((s for s in final if final[s] >= 0.0005), key=lambda s: -final[s])
@@ -587,7 +568,7 @@ def _sim_portfolio(run: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _range80(equity: float, vol: dict[str, Any] | None) -> dict[str, Any] | None:
     """The 80% range Timestral expects for the account value at its longest horizon, from the
-    forecast volatility of the portfolio held. None when the run recorded no risk figure."""
+    forecast volatility of the portfolio held."""
     if not vol or not vol.get("final"):
         return None
     sigma = vol["final"]
@@ -599,9 +580,8 @@ def _range80(equity: float, vol: dict[str, Any] | None) -> dict[str, Any] | None
 
 
 def _sim_outlook(run: dict[str, Any]) -> dict[str, Any]:
-    """The account value, what changed from the start, and the range Timestral expects for the
-    value at its longest horizon (80% interval, from the forecast portfolio volatility). No
-    expected profit: Timestral's direction has no measured skill, its risk does."""
+    """The account value, what changed from the start, and the range Timestral expects for the value
+    at its longest horizon (80% interval, from the forecast portfolio volatility)."""
     p, equity = run["portfolios"], run["account"]["equity"]
     cur, fin = p["current"], p["final"]
     vols = (run.get("risk") or {}).get("portfolio_vol") or {}
@@ -646,12 +626,10 @@ def _simulations(sims: list[dict[str, Any]], repo: str) -> dict[str, Any]:
     }
 
 
-# Measures the Evidence page shows in their own sections (behaviour tests, replay, calibration):
-# left out of the side-by-side table so nothing is said twice.
+# Shown in their own Evidence sections, so left out of the side-by-side table.
 _SHOWN_ELSEWHERE = {"tests", "past_return", "past_vol", "past_dd", "past_cov"}
 
-# What each measure of the side-by-side table means and how to read it, keyed as in
-# agent.dashboard._measures. Shown on demand next to the measure's name.
+# Shown on demand next to each measure of the side-by-side table (keys of records._measures).
 MEASURE_HELP: dict[str, str] = {
     "calls": "How often the LLM queried Timestral before deciding. The pipeline agent runs "
     "Timestral once, always.",
@@ -751,9 +729,6 @@ def site_data(
         "simulations": _simulations(sims, repo),
         "next": list(WHATS_NEXT),
     }
-
-
-# --------------------------------------------------------------------------- build
 
 
 def build(

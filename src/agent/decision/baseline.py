@@ -1,14 +1,5 @@
-"""Baseline portfolio from Timestral's uncertainty (D-004, sub-question 1b).
-
-Weight of each asset is proportional to 1 / (width of its 80% forecast interval at the
-decision horizon): the more uncertain Timestral is about an asset, the smaller its
-position. The forecast direction (median) is deliberately ignored: we measured no
-directional skill.
-
-Steps: inverse-width weights scaled to the maximum invested share, then per-asset and
-per-group caps. Weight removed by a cap goes to cash, so the baseline always satisfies
-the same invariants as the final check.
-"""
+"""Baseline portfolio from Timestral's uncertainty (D-004, sub-question 1b). Weights are inversely
+proportional to the 80% interval width; the median is ignored (no measured directional skill)."""
 
 from __future__ import annotations
 

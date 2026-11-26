@@ -1,17 +1,5 @@
-"""Audit log (D-011): one immutable JSON record per run, plus derived flat tables.
-
-Layout under the audit root (a checkout of the `audit-log` branch in production):
-
-    runs/YYYY-MM-DD_<mode>.json             decision record, written once, never modified
-    runs/YYYY-MM-DD_<mode>_reasoning.txt    LLM reasoning trace(s), referenced by the record
-    reconciliation/<day or run id>.json     order submission results, fills and realised outcomes
-    observations/YYYY-MM-DD.json            recorded closes (facts), the basis of forecast scoring
-    tables/{decisions,weights,forecasts,orders,fills,forecast_scores}.csv   derived, regenerable
-
-The reasoning file is written first and the JSON last: the JSON's existence means the
-run is complete. Existing files are never overwritten (atomic hard link), so a re-run
-of the same run id fails loudly instead of rewriting history.
-"""
+"""Audit log (D-011): one immutable JSON record per run, plus derived flat tables. Files are never
+overwritten, and the JSON is written last: its existence means the run is complete."""
 
 from __future__ import annotations
 
@@ -108,9 +96,7 @@ def build_record(
     label: str | None = None,
     requested_by: str | None = None,
 ) -> tuple[RunRecord, str]:
-    """Assemble the run record and the reasoning text from the pipeline objects.
-
-    `label` replaces the mode in the run id (a simulation is `YYYY-MM-DD_sim-HHMMSS`)."""
+    """Assemble the run record and the reasoning text from the pipeline objects."""
     rid = run_id(now, label or mode)
     horizons = tuple(range(1, cfg.forecast.horizon + 1))
     last = decision.attempts[-1]
@@ -167,7 +153,6 @@ def build_record(
             "prompt_version": decision.prompt_version,
             "outcome": decision.outcome,
             "attempts": attempts,
-            # Tool agent (D-018): exploration turns and every tool call with its result.
             "steps": [
                 {
                     "model": s.model,

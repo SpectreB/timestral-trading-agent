@@ -1,21 +1,4 @@
-"""Forecast scoring (D-013): did Timestral's forecasts match what actually happened?
-
-Two separate things, kept apart on purpose:
-
-- **Observations** are facts: once a day, the last completed closes of the universe are
-  recorded in `observations/YYYY-MM-DD.json` (immutable, like every audit file). Each file holds
-  a window of recent sessions taken on one price basis, so a return between two dates of the
-  same file is not distorted by a later dividend or split adjustment.
-- **Scores** are derived, never stored as events: `score_forecasts` joins the forecasts in the
-  run records with the observations, with no network, and is regenerated into
-  `tables/forecast_scores.csv` and the dashboard.
-
-A forecast made after the close of session d0 is scored at horizon h against the close h
-sessions after d0, using the earliest observation that contains both dates.
-
-Usage (daily, in the trade workflow):
-    python -m agent.evaluation.scoring --audit-dir audit
-"""
+"""Forecast scoring (D-013): did Timestral's forecasts match what actually happened?"""
 
 from __future__ import annotations
 

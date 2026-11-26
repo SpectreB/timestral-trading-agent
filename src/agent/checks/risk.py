@@ -1,22 +1,6 @@
 """Forecast portfolio risk (D-014): Timestral volatilities combined with historical correlations.
-
-Timestral forecasts each asset separately: its quantiles describe a *marginal* distribution,
-not a joint one, so it cannot give a covariance matrix on its own. The standard way to combine
-the two pieces of information:
-
-    covariance = D * R * D
-
-- D (diagonal): forward-looking volatility of each asset from Timestral, at a given horizon.
-  The 80% interval of a normal distribution spans 2 x 1.2816 standard deviations, so
-  sigma ≈ (q90 - q10) / 2.563. This is the part Timestral does well (see the D-006 backtest).
-- R: correlation of daily log returns over the last year, shrunk towards the identity to be
-  stable with 15 assets and ~250 observations.
-
-From it: the forecast volatility of any portfolio (cash has no risk) and each asset's share of
-that risk. These numbers are logged with every run so the forecast risk can later be compared
-with what happened. In a later version the same functions become a tool the LLM can call
-(D-004, option D).
-"""
+Covariance = D R D: D from Timestral's 80% intervals (sigma = (q90 - q10) / 2.563), R the shrunk
+historical correlation."""
 
 from __future__ import annotations
 

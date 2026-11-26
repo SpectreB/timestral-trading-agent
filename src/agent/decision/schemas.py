@@ -1,10 +1,5 @@
-"""Data contracts shared across the pipeline.
-
-`Proposal` is what the LLM must return (D-008). It is deliberately permissive on values
-(negative weights, out-of-range confidence): the schema only guarantees *shape*, and the
-guardrails decide what is correctable and what is severe (D-010). Non-finite numbers
-(NaN, infinity) are rejected at parsing time.
-"""
+"""Data contracts shared across the pipeline. The schema checks shape only; the guardrails decide
+what is correctable (D-010)."""
 
 from __future__ import annotations
 

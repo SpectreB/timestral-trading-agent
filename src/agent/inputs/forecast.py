@@ -1,10 +1,5 @@
-"""Timestral forecasts for the whole universe, in one batched call (D-006).
-
-Input: completed daily closes (prices, D-006). Timestral returns, for each asset and each
-of the next H trading days, 21 quantiles of the *price*. Since the cumulative return to
-day h is a monotone function of the price on day h, price quantiles map exactly to
-cumulative-return quantiles: q_return = q_price / last_price - 1.
-"""
+"""Timestral forecasts for the whole universe, in one batched call (D-006). Price quantiles map
+exactly to return quantiles: q_return = q_price / last_price - 1."""
 
 from __future__ import annotations
 
@@ -88,10 +83,7 @@ def forecast_assets(
     cfg: AgentConfig,
     covariates: Mapping[str, Any] | None = None,
 ) -> dict[str, AssetForecast]:
-    """Forecast every column of `closes` in one batch and sanity-check the result.
-
-    `covariates`: optional `past_covariates` / `known_covariates` arrays (D-019), in the batch
-    order of the columns."""
+    """Forecast every column of `closes` in one batch and sanity-check the result."""
     if cfg.forecast.input_type != "price":
         raise NotImplementedError("only price input is supported in production (D-006)")
     horizon = cfg.forecast.horizon
