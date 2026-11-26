@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from agent.config import AgentConfig
-from agent.forecast import AssetForecast
+from agent.inputs.forecast import AssetForecast
 
 
 def baseline_weights(forecasts: Mapping[str, AssetForecast], cfg: AgentConfig) -> dict[str, float]:

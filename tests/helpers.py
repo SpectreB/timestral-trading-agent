@@ -136,7 +136,7 @@ class FakeBroker:
         self.states: dict[str, Any] = {}  # client_order_id -> OrderState, set by the tests
 
     def account(self) -> Any:
-        from agent.execute import AccountSnapshot
+        from agent.execution.execute import AccountSnapshot
 
         return AccountSnapshot(self.equity, self.is_paper, self.status, self.blocked)
 
@@ -168,7 +168,7 @@ def positions_for(
     weights: dict[str, float], equity: float = 100_000.0, price: float = 100.0
 ) -> Any:
     """Positions worth `weight * equity` each, at a constant price."""
-    from agent.execute import Position
+    from agent.execution.execute import Position
 
     return {
         s: Position(quantity=w * equity / price, market_value=w * equity)

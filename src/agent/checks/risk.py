@@ -27,7 +27,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from agent.forecast import AssetForecast
+from agent.inputs.forecast import AssetForecast
 
 Z80 = 1.2815515655446004  # standard normal quantile at 0.90
 CORRELATION_WINDOW = 252  # sessions, about one year

@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from agent.audit import FileAuditStore
-from agent.execute import AccountSnapshot, Position
-from agent.valuation import record, sample
+from agent.execution.audit import FileAuditStore
+from agent.execution.execute import AccountSnapshot, Position
+from agent.jobs.valuation import record, sample
 
 NOW = datetime(2026, 11, 24, 16, 5, 30, tzinfo=UTC)
 

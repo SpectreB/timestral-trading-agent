@@ -2,7 +2,7 @@
 
 Flow:
 1. The LLM receives its own system prompt and the market context **without** Timestral's
-   forecasts or the baseline: it obtains them by calling its tools (`agent.tools`).
+   forecasts or the baseline: it obtains them by calling its tools (`agent.decision.tools`).
 2. Exploration: up to `max_rounds` turns in which it may call tools (`max_calls` calls in total).
    Each call is validated, answered and recorded.
 3. Final answer: the same strict JSON schema as the pipeline agent, then **the same guardrails**,
@@ -19,7 +19,7 @@ import json
 from typing import Any, Literal
 
 from agent.config import AgentConfig
-from agent.decide import (
+from agent.decision.decide import (
     Decision,
     DecisionInput,
     LLMClient,
@@ -31,8 +31,8 @@ from agent.decide import (
     final_decision,
     load_system_prompt,
 )
-from agent.forecast import QuantileModel
-from agent.tools import TimestralTools
+from agent.decision.tools import TimestralTools
+from agent.inputs.forecast import QuantileModel
 
 FINAL_INSTRUCTION = (
     "Exploration is over. Give your final decision now, as JSON matching the schema, with all "

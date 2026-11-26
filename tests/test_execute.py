@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 from hypothesis import given, settings
 
-from agent.execute import (
+from agent.checks.safety import final_check
+from agent.execution.execute import (
     ExecutionError,
     Position,
     order_records,
@@ -14,7 +15,6 @@ from agent.execute import (
     submit_orders,
     trading_enabled,
 )
-from agent.safety import final_check
 from tests.helpers import BASELINE, CFG, FakeBroker, positions_for
 from tests.test_guardrails_properties import valid_portfolio
 

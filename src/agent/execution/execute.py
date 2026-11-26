@@ -19,10 +19,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, cast
 
-from agent.audit import OrderRecord
+from agent.checks.safety import UnsafePortfolioError, final_check
 from agent.config import AgentConfig
-from agent.reconcile import OrderState
-from agent.safety import UnsafePortfolioError, final_check
+from agent.execution.audit import OrderRecord
+from agent.execution.reconcile import OrderState
 
 MIN_NOTIONAL = 1.0  # Alpaca minimum for fractional orders, in USD
 QTY_DECIMALS = 4

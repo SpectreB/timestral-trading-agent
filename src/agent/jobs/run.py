@@ -8,7 +8,7 @@ to the audit log *before* any order is sent, so the agent can never act without 
 Submission results then go to `reconciliation/<run_id>.json`.
 
 Usage:
-    python -m agent.run --mode morning [--live] [--audit-dir audit]
+    python -m agent.jobs.run --mode morning [--live] [--audit-dir audit]
 """
 
 from __future__ import annotations
@@ -23,13 +23,13 @@ from typing import Literal
 
 import pandas as pd
 
-from agent.audit import FileAuditStore, build_record, run_id
-from agent.baseline import baseline_weights
+from agent.checks.safety import final_check
 from agent.config import AgentConfig, news_agent_config, tool_agent_config
-from agent.data import NEW_YORK, MarketData, load_context
-from agent.decide import DecisionInput, LLMClient, Mode
-from agent.decide_tools import decide_agent
-from agent.execute import (
+from agent.decision.baseline import baseline_weights
+from agent.decision.decide import DecisionInput, LLMClient, Mode
+from agent.decision.decide_tools import decide_agent
+from agent.execution.audit import FileAuditStore, build_record, run_id
+from agent.execution.execute import (
     Broker,
     ExecutionError,
     Plan,
@@ -39,9 +39,9 @@ from agent.execute import (
     submit_orders,
     trading_enabled,
 )
-from agent.forecast import QuantileModel, forecast_assets
-from agent.news import NewsCovariates, news_record
-from agent.safety import final_check
+from agent.inputs.data import NEW_YORK, MarketData, load_context
+from agent.inputs.forecast import QuantileModel, forecast_assets
+from agent.inputs.news import NewsCovariates, news_record
 
 Status = Literal["done", "already_done", "market_closed"]
 
@@ -73,8 +73,8 @@ def news_provider(
         return None
     from dataclasses import replace
 
-    from agent.decide import MistralLLM
-    from agent.news import AlpacaNews, ScoreCache, fred_release_dates, news_covariates
+    from agent.decision.decide import MistralLLM
+    from agent.inputs.news import AlpacaNews, ScoreCache, fred_release_dates, news_covariates
 
     key, secret = alpaca_keys(cfg.agent if cfg.agent in ALPACA_KEY_NAMES else "news", env)
     analyst_cfg = replace(
@@ -224,10 +224,10 @@ def run_cycle(
 def main() -> None:  # pragma: no cover - CLI wiring, exercised by the smoke test
     from dotenv import load_dotenv
 
-    from agent.data import AlpacaMarketData
-    from agent.decide import MistralLLM
-    from agent.execute import AlpacaBroker
-    from agent.forecast import load_model
+    from agent.decision.decide import MistralLLM
+    from agent.execution.execute import AlpacaBroker
+    from agent.inputs.data import AlpacaMarketData
+    from agent.inputs.forecast import load_model
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["morning", "afternoon"], default="morning")

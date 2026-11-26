@@ -23,9 +23,9 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
+from agent.checks.guardrails import GuardrailResult, apply_guardrails, drawdown_actions
 from agent.config import AgentConfig
-from agent.forecast import AssetForecast
-from agent.guardrails import GuardrailResult, apply_guardrails, drawdown_actions
+from agent.inputs.forecast import AssetForecast
 
 Mode = Literal["morning", "afternoon"]
 
@@ -186,7 +186,7 @@ class DecisionInput:
     equity: float
     latest_prices: Mapping[str, float] = field(default_factory=dict)  # live reference prices
     news: str = "No news feed is connected yet."  # untrusted text: a prompt-injection surface
-    # D-019: news analysed into Timestral covariates (agent.news.NewsCovariates), tool agent only.
+    # D-019: news turned into Timestral covariates (tool agent only).
     news_covariates: Any = None
 
 
@@ -213,7 +213,11 @@ class Decision(BaseModel):
 def load_system_prompt(cfg: AgentConfig) -> str:
     """The versioned system prompt, filled with the limits of `cfg` (unused keys are ignored,
     so one function serves both agents' prompts)."""
-    template = resources.files("agent.prompts").joinpath(f"{cfg.llm.prompt_version}.md").read_text()
+    template = (
+        resources.files("agent.decision.prompts")
+        .joinpath(f"{cfg.llm.prompt_version}.md")
+        .read_text()
+    )
     risk = cfg.risk
     return template.format(
         max_turnover_pct=round(100 * cfg.execution.max_turnover_per_run),

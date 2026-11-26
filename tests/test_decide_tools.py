@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 
 from agent.config import AgentConfig, ToolConfig, tool_agent_config
-from agent.decide import LLMResponse, LLMStep, ToolCall, load_system_prompt
-from agent.decide_tools import FINAL_INSTRUCTION, decide_agent, decide_with_tools
+from agent.decision.decide import LLMResponse, LLMStep, ToolCall, load_system_prompt
+from agent.decision.decide_tools import FINAL_INSTRUCTION, decide_agent, decide_with_tools
 from tests.helpers import BASELINE, FakeTimestral, proposal
 from tests.test_decide import GOOD, FakeLLM, make_input
 

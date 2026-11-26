@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 
 from agent.config import news_agent_config
-from agent.decide import LLMResponse
-from agent.news import (
+from agent.decision.decide import LLMResponse
+from agent.inputs.news import (
     ANALYST_PROMPT,
     KNOWN_ROWS,
     Article,

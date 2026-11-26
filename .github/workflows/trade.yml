@@ -111,8 +111,8 @@ jobs:
           fi
           ARGS="--mode $MODE --audit-dir audit"
           if [ "$LIVE" = "true" ]; then ARGS="$ARGS --live"; fi
-          echo "Running: python -m agent.run $ARGS (TRADING_ENABLED='${TRADING_ENABLED}')"
-          python -m agent.run $ARGS
+          echo "Running: python -m agent.jobs.run $ARGS (TRADING_ENABLED='${TRADING_ENABLED}')"
+          python -m agent.jobs.run $ARGS
 
       - name: Run one cycle (tool agent)
         if: always()
@@ -134,8 +134,8 @@ jobs:
           fi
           ARGS="--agent tools --mode $MODE --audit-dir audit/agents/tools"
           if [ "$LIVE" = "true" ]; then ARGS="$ARGS --live"; fi
-          echo "Running: python -m agent.run $ARGS (TRADING_ENABLED_TOOLS='${TRADING_ENABLED}')"
-          python -m agent.run $ARGS
+          echo "Running: python -m agent.jobs.run $ARGS (TRADING_ENABLED_TOOLS='${TRADING_ENABLED}')"
+          python -m agent.jobs.run $ARGS
 
       - name: Reconcile earlier runs (fills, slippage)
         # After the cycle, so a reconciliation problem never blocks trading. Also after a
@@ -148,9 +148,9 @@ jobs:
           ALPACA_TOOLS_SECRET_KEY: ${{ secrets.ALPACA_TOOLS_SECRET_KEY }}
         run: |
           [ -d audit/.git ] || exit 0
-          python -m agent.reconcile --audit-dir audit
+          python -m agent.execution.reconcile --audit-dir audit
           if [ -n "$ALPACA_TOOLS_API_KEY" ] && [ -d audit/agents/tools/runs ]; then
-            python -m agent.reconcile --agent tools --audit-dir audit/agents/tools
+            python -m agent.execution.reconcile --agent tools --audit-dir audit/agents/tools
           fi
 
       - name: Record the day's closes (basis for forecast scoring)
@@ -161,9 +161,9 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
         run: |
           [ -d audit/.git ] || exit 0
-          python -m agent.scoring --audit-dir audit
+          python -m agent.evaluation.scoring --audit-dir audit
           if [ -d audit/agents/tools/runs ]; then
-            python -m agent.scoring --audit-dir audit/agents/tools
+            python -m agent.evaluation.scoring --audit-dir audit/agents/tools
           fi
 
       - name: Analyse the day's news (D-019)
@@ -177,7 +177,7 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
         run: |
           [ -d audit/.git ] || exit 0
-          python -m agent.news --audit-dir audit
+          python -m agent.inputs.news --audit-dir audit
 
       - name: Publish the audit log
         # Also after a failure: the record is written before any order is sent.
@@ -185,7 +185,7 @@ jobs:
         if: always() && (github.event_name != 'workflow_dispatch' || inputs.publish)
         run: |
           [ -d audit/.git ] || exit 0
-          python -c "from pathlib import Path; from agent.audit import FileAuditStore; [FileAuditStore(p).build_tables() for p in (Path('audit'), Path('audit/agents/tools')) if (p / 'runs').exists()]" || true
+          python -c "from pathlib import Path; from agent.execution.audit import FileAuditStore; [FileAuditStore(p).build_tables() for p in (Path('audit'), Path('audit/agents/tools')) if (p / 'runs').exists()]" || true
           cd audit
           git config user.name "trading-agent"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

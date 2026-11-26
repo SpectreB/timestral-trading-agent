@@ -17,8 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from agent.audit import FileAuditStore
-from agent.execute import AccountSnapshot, Position
+from agent.execution.audit import FileAuditStore
+from agent.execution.execute import AccountSnapshot, Position
 
 
 class Reader(Protocol):
@@ -51,8 +51,8 @@ def record(store: FileAuditStore, broker: Reader, now: datetime) -> Path | None:
 def main() -> None:  # pragma: no cover - CLI wiring, exercised by the workflow
     from dotenv import load_dotenv
 
-    from agent.execute import AlpacaBroker
-    from agent.run import AGENTS, alpaca_keys
+    from agent.execution.execute import AlpacaBroker
+    from agent.jobs.run import AGENTS, alpaca_keys
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agent", choices=AGENTS, default="pipeline")

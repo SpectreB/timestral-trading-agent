@@ -36,7 +36,7 @@ from typing import Any
 
 import numpy as np
 
-from agent.scoring import realised_return
+from agent.evaluation.scoring import realised_return
 
 Z80 = 1.2815515655446004
 SERIES = ("agent", "llm_proposal", "baseline", "equal_weight", "spy")

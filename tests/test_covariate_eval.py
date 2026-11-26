@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from agent.config import AssetType
-from agent.covariate_eval import (
+from agent.evaluation.covariate_eval import (
     BASE,
     MAX_COVERAGE_LOSS,
     PANEL_STOCKS,

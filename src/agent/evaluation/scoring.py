@@ -14,7 +14,7 @@ A forecast made after the close of session d0 is scored at horizon h against the
 sessions after d0, using the earliest observation that contains both dates.
 
 Usage (daily, in the trade workflow):
-    python -m agent.scoring --audit-dir audit
+    python -m agent.evaluation.scoring --audit-dir audit
 """
 
 from __future__ import annotations
@@ -29,10 +29,10 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 
 from agent.config import AgentConfig
-from agent.data import NEW_YORK, MarketData, completed_closes
+from agent.inputs.data import NEW_YORK, MarketData, completed_closes
 
 if TYPE_CHECKING:
-    from agent.audit import FileAuditStore
+    from agent.execution.audit import FileAuditStore
 
 WINDOW = 12  # sessions per observation: covers the 5 horizons plus margin for holidays
 
@@ -140,8 +140,8 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the trade workflow
 
     from dotenv import load_dotenv
 
-    from agent.audit import FileAuditStore
-    from agent.data import AlpacaMarketData
+    from agent.execution.audit import FileAuditStore
+    from agent.inputs.data import AlpacaMarketData
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--audit-dir", default="audit", type=Path)

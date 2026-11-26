@@ -19,12 +19,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from agent.checks.risk import Z80
 from agent.config import AgentConfig, Asset, AssetType, news_agent_config
-from agent.risk import Z80
 
 BASE = "prices"
 VARIANTS = (BASE, "news", "events", "news+events")
-KINDS = ("stock", "etf")
 
 # Large US stocks across sectors, plus the five stocks the agents trade. The groups are only
 # labels here: no guardrail is applied to a measurement.
