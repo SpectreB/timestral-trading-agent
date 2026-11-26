@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pytest
 
-from agent.data import DataError, completed_closes, load_context
+from agent.inputs.data import DataError, completed_closes, load_context
 from tests.helpers import CFG, FakeMarketData, make_closes
 
 NY = ZoneInfo("America/New_York")

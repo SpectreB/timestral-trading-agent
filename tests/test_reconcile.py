@@ -11,9 +11,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent.audit import FileAuditStore, OrderRecord, build_record
-from agent.decide import decide
-from agent.reconcile import OrderState, reconcile_runs, slippage_bps
+from agent.decision.decide import decide
+from agent.execution.audit import FileAuditStore, OrderRecord, build_record
+from agent.execution.reconcile import OrderState, reconcile_runs, slippage_bps
 from tests.helpers import CFG, FakeBroker, as_json, proposal
 from tests.test_decide import FakeLLM, make_input
 from tests.test_run import LIVE_ENV, cycle

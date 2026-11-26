@@ -16,10 +16,10 @@ from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 
-from agent.baseline import baseline_weights
 from agent.config import AgentConfig, ForecastConfig
-from agent.data import AlpacaMarketData, load_context
-from agent.forecast import forecast_assets, load_model
+from agent.decision.baseline import baseline_weights
+from agent.inputs.data import AlpacaMarketData, load_context
+from agent.inputs.forecast import forecast_assets, load_model
 
 
 def main() -> None:

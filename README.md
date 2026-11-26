@@ -26,15 +26,15 @@ Both             a rejected answer gets one retry with the reason, then the posi
 
 | Stage | What it does | Code |
 |---|---|---|
-| **Data** | Adjusted daily closes for 15 assets (10 ETFs, 5 large stocks). Today's unfinished bar is dropped; any data problem stops the run. | [data.py](src/agent/data.py) |
-| **Forecast** | Timestral on CPU: quantiles of the cumulative return 1 to 5 trading days ahead, for all assets in one batch. | [forecast.py](src/agent/forecast.py) |
-| **Rule** | Each weight inversely proportional to the width of Timestral's 80% interval (the *spread*): the more uncertain, the smaller the position. | [baseline.py](src/agent/baseline.py) |
-| **Decide, pipeline agent** | Mistral Large 4 (pinned, native reasoning) gets the forecasts, the rule's portfolio and the market context, and returns strict JSON: its analysis, then a weight, a reason and a confidence per asset. It may cut risk freely but add at most 15 points to an asset. | [decide.py](src/agent/decide.py), [prompt](src/agent/prompts/decide_v1.md) |
-| **Decide, tool agent** | The same model starts without the forecasts and asks for them through three tools: `get_forecasts`, `evaluate_portfolio` (Timestral's forecast of a candidate portfolio, and whether the guardrails would accept it) and `get_baseline`. Our own loop, no agent framework ([D-021](docs/decisions.md)). | [decide_tools.py](src/agent/decide_tools.py), [tools.py](src/agent/tools.py), [prompt](src/agent/prompts/decide_tools_v2.md) |
-| **Guardrails** | Reject unusable answers, correct and log rule breaches, apply a graduated drawdown circuit breaker. | [guardrails.py](src/agent/guardrails.py) |
-| **Final check** | A second, deliberately simple implementation re-checks the core limits before any order. | [safety.py](src/agent/safety.py) |
-| **Execute** | Marketable limit orders, sells before buys, one order id per decision and asset, paper-account check, kill switch. | [execute.py](src/agent/execute.py) |
-| **Record** | One immutable record per run, then fills and slippage; the account value sampled every hour of the US session. | [audit.py](src/agent/audit.py), [reconcile.py](src/agent/reconcile.py), [valuation.py](src/agent/valuation.py) |
+| **Data** | Adjusted daily closes for 15 assets (10 ETFs, 5 large stocks). Today's unfinished bar is dropped; any data problem stops the run. | [data.py](src/agent/inputs/data.py) |
+| **Forecast** | Timestral on CPU: quantiles of the cumulative return 1 to 5 trading days ahead, for all assets in one batch. | [forecast.py](src/agent/inputs/forecast.py) |
+| **Rule** | Each weight inversely proportional to the width of Timestral's 80% interval (the *spread*): the more uncertain, the smaller the position. | [baseline.py](src/agent/decision/baseline.py) |
+| **Decide, pipeline agent** | Mistral Large 4 (pinned, native reasoning) gets the forecasts, the rule's portfolio and the market context, and returns strict JSON: its analysis, then a weight, a reason and a confidence per asset. It may cut risk freely but add at most 15 points to an asset. | [decide.py](src/agent/decision/decide.py), [prompt](src/agent/decision/prompts/decide_v1.md) |
+| **Decide, tool agent** | The same model starts without the forecasts and asks for them through three tools: `get_forecasts`, `evaluate_portfolio` (Timestral's forecast of a candidate portfolio, and whether the guardrails would accept it) and `get_baseline`. Our own loop, no agent framework ([D-021](docs/decisions.md)). | [decide_tools.py](src/agent/decision/decide_tools.py), [tools.py](src/agent/decision/tools.py), [prompt](src/agent/decision/prompts/decide_tools_v2.md) |
+| **Guardrails** | Reject unusable answers, correct and log rule breaches, apply a graduated drawdown circuit breaker. | [guardrails.py](src/agent/checks/guardrails.py) |
+| **Final check** | A second, deliberately simple implementation re-checks the core limits before any order. | [safety.py](src/agent/checks/safety.py) |
+| **Execute** | Marketable limit orders, sells before buys, one order id per decision and asset, paper-account check, kill switch. | [execute.py](src/agent/execution/execute.py) |
+| **Record** | One immutable record per run, then fills and slippage; the account value sampled every hour of the US session. | [audit.py](src/agent/execution/audit.py), [reconcile.py](src/agent/execution/reconcile.py), [valuation.py](src/agent/jobs/valuation.py) |
 
 ### Why Timestral is a risk engine
 
@@ -78,8 +78,8 @@ cp .env.example .env                   # then fill in your Mistral and Alpaca PA
 Run one cycle. **This is a dry run: nothing is sent to the broker.**
 
 ```bash
-python -m agent.run --mode morning --audit-dir audit                                    # pipeline agent
-python -m agent.run --agent tools --mode morning --audit-dir audit/agents/tools         # tool agent (its own keys)
+python -m agent.jobs.run --mode morning --audit-dir audit                                    # pipeline agent
+python -m agent.jobs.run --agent tools --mode morning --audit-dir audit/agents/tools         # tool agent (its own keys)
 ```
 
 It loads the data, forecasts, calls the LLM, applies the guardrails, plans the orders and writes the record under `audit/`. The first call downloads the Timestral weights from Hugging Face.
@@ -87,8 +87,8 @@ It loads the data, forecasts, calls the LLM, applies the guardrails, plans the o
 Other entry points:
 
 ```bash
-python -m agent.smoke                  # check every external service, no order
-python -m agent.web --audit-dir audit --out site   # build the dashboard locally (site/index.html)
+python -m agent.jobs.smoke                  # check every external service, no order
+python -m agent.dashboard.web --audit-dir audit --out site   # build the dashboard locally (site/index.html)
 python scripts/run_forecast.py         # forecasts and the rule's portfolio only
 ruff check . && ruff format --check . && mypy && pytest --cov=agent   # the CI checks
 ```
@@ -127,7 +127,7 @@ Setup: the secrets `MISTRAL_API_KEY`, `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` (
 
 ## Dashboard
 
-https://spectreb.github.io/timestral-trading-agent/, rebuilt after every run and every hourly account reading. Four views: **Live** (both accounts, the last decision and its reasoning, Timestral's forecast, the portfolio, the orders), **How it works** (the design, the inputs, the guardrails), **Evidence** (the checks above, side by side for the two agents) and **Try it** (ask an agent to decide now; no order is sent). Python writes the data from the audit log ([web.py](src/agent/web.py)); a React page in [web/](web) lays it out ([D-012](docs/decisions.md)).
+https://spectreb.github.io/timestral-trading-agent/, rebuilt after every run and every hourly account reading. Four views: **Live** (both accounts, the last decision and its reasoning, Timestral's forecast, the portfolio, the orders), **How it works** (the design, the inputs, the guardrails), **Evidence** (the checks above, side by side for the two agents) and **Try it** (ask an agent to decide now; no order is sent). Python writes the data from the audit log ([web.py](src/agent/dashboard/web.py)); a React page in [web/](web) lays it out ([D-012](docs/decisions.md)).
 
 ## Reading the audit log
 
@@ -149,7 +149,15 @@ news/                                  the scored news articles (D-019)
 ## Repository layout
 
 ```
-src/agent/            the agents, one module per stage, and the versioned prompts
+src/agent/
+  config.py           every parameter, each traced to its decision
+  inputs/             market data, Timestral forecasts, news covariates
+  decision/           the rule baseline, both LLM agents, their tools and versioned prompts
+  checks/             guardrails, the independent final check, risk figures
+  execution/          orders, reconciliation with the broker, the audit log
+  evaluation/         forecast scoring, metrics, replays, behaviour tests
+  jobs/               the entry points the workflows run (trade, smoke, valuation, simulate)
+  dashboard/          the data behind the dashboard
 web/                  the dashboard page (React, no build step)
 tests/                offline unit, adversarial and property-based tests
 scripts/              exploration, backtests and read-only live runs

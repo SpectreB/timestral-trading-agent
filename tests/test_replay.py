@@ -11,9 +11,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from agent.audit import FileAuditStore
 from agent.config import AgentConfig
-from agent.replay import (
+from agent.evaluation.replay import (
     COST_BPS,
     Portfolio,
     ReplayError,
@@ -28,6 +27,7 @@ from agent.replay import (
     score_probe,
     write_manifest,
 )
+from agent.execution.audit import FileAuditStore
 from tests.helpers import BASELINE, CFG, FakeTimestral, as_json, proposal
 from tests.test_decide import BROKEN, FakeLLM
 
@@ -221,8 +221,8 @@ def test_a_rejected_proposal_holds_the_positions_in_the_replay(tmp_path: Path) -
 
 
 def test_an_unsafe_plan_is_logged_and_nothing_is_traded(tmp_path: Path, monkeypatch: Any) -> None:
-    from agent import replay as module
-    from agent.execute import ExecutionError
+    from agent.evaluation import replay as module
+    from agent.execution.execute import ExecutionError
 
     def refuse(*args: Any, **kwargs: Any) -> Any:
         raise ExecutionError("no safe plan: test")
@@ -339,8 +339,8 @@ def test_defaults_match_the_decision() -> None:
 def test_an_unsafe_plan_without_a_logger_is_simply_skipped(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    from agent import replay as module
-    from agent.execute import ExecutionError
+    from agent.evaluation import replay as module
+    from agent.execution.execute import ExecutionError
 
     def refuse(*args: Any, **kwargs: Any) -> Any:
         raise ExecutionError("no safe plan: test")

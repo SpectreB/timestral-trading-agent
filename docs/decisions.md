@@ -675,10 +675,10 @@ Chosen with the owner after reviewers found the page hard to enter: live activit
 | **B. React from a CDN with `htm`, no build (chosen)** | Real React, nothing to install, previews in any browser | Less standard than a Vite project, no TypeScript |
 | C. Redesign the Python-rendered page | Fastest | Not React |
 
-- **Split of concerns:** Python only writes `data.json` (`agent.web`, reusing the computations of `agent.dashboard`, so both views agree); the page (`web/`) only lays it out. LLM text is rendered as text, never as HTML.
+- **Split of concerns:** Python only writes `data.json` (`agent.dashboard.web`, from the per-agent views of `agent.dashboard.records`); the page (`web/`) only lays it out. LLM text is rendered as text, never as HTML.
 - **Four entry points, in the order a newcomer needs them** (revised 2026-11-24 after review): *Live* (both accounts, the differences between the agents in keywords, the last decision, Timestral's forecast and the orders folded until asked for), *How it works* (the idea, the diagram with both loops, the inputs, the guardrails, what comes next), *Evidence* (four headline checks, then the side-by-side measures, behaviour tests, replay, risk calibration and the news covariate trial, framed as a check of behaviour, not a race), *Try it* (a simulation the evaluator configures; no order sent). The lexicon is a link in the header. Details open on demand (tooltips, folded sections), never the conclusion.
 - **Timestral's raw output is shown:** per asset, the 80% interval and median 1 to 5 days ahead on one shared scale, with the **spread** (q90 - q10) and the weight the rule derives from it (1 / spread) next to the final weight; a table view; the record's JSON as stored; for the tool agent, the 7 quantiles it was given.
-- **Fallback:** the previous server-rendered page is still published as `classic.html` (no JavaScript needed). Libraries are pinned (`react@18.3.1`, `react-dom@18.3.1`, `htm@3.1.1`). Moving to option A later only replaces `web/`: the data file stays.
+- **No fallback page** (amended 2026-11-26): the server-rendered page (`classic.html`) was kept as a fallback at first, then removed with the code that only it used (about 1,600 lines), so there is one front end to read and maintain. Libraries are pinned (`react@18.3.1`, `react-dom@18.3.1`, `htm@3.1.1`). Moving to option A later only replaces `web/`: the data file stays.
 
 ---
 
@@ -848,7 +848,7 @@ The guardrails bound what the LLM can do, but they cannot say whether it behaves
 | **Repeated identical calls, measuring the spread of the proposals** | A direct measure of stability, with the production prompt and temperature | Costs API time; few repeats |
 
 ### Decision
-- **Seven scenarios** (`agent.evals`): a sudden crash (the LLM should reduce risk), one very uncertain asset (should not pile into it), reduce-only mode (no increase at all), the exposure cap (stay within 60%), a calm market (stay close to the baseline), a tempting median (should not chase it: the median has no measured skill), and an instruction hidden in the news text (should not follow it). Each runs the production `decide()` (real prompt, model and guardrails) **twice** and passes only if every run does. The check is applied to the **proposal before the guardrails**.
+- **Seven scenarios** (`agent.evaluation.evals`): a sudden crash (the LLM should reduce risk), one very uncertain asset (should not pile into it), reduce-only mode (no increase at all), the exposure cap (stay within 60%), a calm market (stay close to the baseline), a tempting median (should not chase it: the median has no measured skill), and an instruction hidden in the news text (should not follow it). Each runs the production `decide()` (real prompt, model and guardrails) **twice** and passes only if every run does. The check is applied to the **proposal before the guardrails**.
 - **Stability:** the same calm input asked five times; we report the average and largest difference between two proposals (in points of portfolio), the largest standard deviation of one weight, the agreement on the direction of material tilts, and the spread of the stated confidence.
 - **The checks are themselves tested offline** with scripted policies: a sound policy must pass every scenario and a flawed one must fail exactly the scenarios it is flawed for, which shows each check can detect what it is meant to detect.
 - **News is a field of the decision input**, so the injection scenario tests the very surface that real news (the bonus) would open.
@@ -913,7 +913,7 @@ The owner asked for the simulation to be interactive and personal. Chosen with t
 
 Options not taken, and why: a free prompt (a prompt injection surface and an unvalidated behaviour), a choice of covariance method or horizon (the evaluator cannot judge them and the agents were validated with one), a market scenario such as a crash (valuable, the behaviour scenarios of D-016 already cover it; kept for later).
 
-**Security.** The issue text stays untrusted. It reaches the workflow as an environment variable of a single step, never in a shell command, and `agent.simulate.parse_options` keeps only lines `agent|stance|start: <word>` whose word is in the closed list (first occurrence wins, 4,000 characters read at most). A refused value is replaced by the default, and the reply names the option (our own word), never the refused text. The workflow test fails if the issue body appears in any command. The run id carries the options that differ from the default (`..._sim-134842-tools-bold-cash`), and the record keeps the stance in its configuration and the start in its portfolios. The simulation still never sends an order: its broker refuses any order, the kill switch is forced off and the run is a dry run.
+**Security.** The issue text stays untrusted. It reaches the workflow as an environment variable of a single step, never in a shell command, and `agent.jobs.simulate.parse_options` keeps only lines `agent|stance|start: <word>` whose word is in the closed list (first occurrence wins, 4,000 characters read at most). A refused value is replaced by the default, and the reply names the option (our own word), never the refused text. The workflow test fails if the issue body appears in any command. The run id carries the options that differ from the default (`..._sim-134842-tools-bold-cash`), and the record keeps the stance in its configuration and the start in its portfolios. The simulation still never sends an order: its broker refuses any order, the kill switch is forced off and the run is a dry run.
 
 **Cost.** One more model download in the workflow (209M for the tool agent) and the tool agent's paper-account keys; a simulation that picks the tool agent takes a few minutes longer than the pipeline's.
 ---
@@ -985,7 +985,7 @@ Chosen with the owner: **A + C**, adopted only if the soundness checks confirmed
 v2 is as protective in a crash and halves the churn in a calm market; adopted. The full seven-scenario run with 3 repeats each (all must pass) gave 5 of 7 (one crash run at 88.6% invested, 0.6 pt short of the threshold; one calm run at 8.0 pts): with a stochastic LLM, single-scenario verdicts on 2 or 3 runs are too coarse, and run-level rates are the figure to read. Reports: [docs/evals/tools_v2](evals/tools_v2/README.md). The replay of the tool agent started with v1 is completed as is and followed by a replay with v2: more data, and a v1/v2 comparison.
 
 ### Impact on further development
-- Both agents go through `decide_agent()`, so the run, the replay and the evaluations treat them identically (`--agent tools` on `agent.run`, `agent.replay`, `agent.evals`, `agent.reconcile`).
+- Both agents go through `decide_agent()`, so the run, the replay and the evaluations treat them identically (`--agent tools` on `agent.jobs.run`, `agent.evaluation.replay`, `agent.evaluation.evals`, `agent.execution.reconcile`).
 - To do: the second paper account and its secrets (owner), the dashboard with both agents, the soundness checks (D-016) and the replay (D-015) on the tool agent.
 - Limitation: in the soundness scenarios that shift forecasts without changing prices, `evaluate_portfolio`'s direct portfolio forecast does not see the shift (the decomposition does).
 
@@ -1046,7 +1046,7 @@ Chosen with the owner. Priority from 2026-11-23: the covariates are measured, th
 
 - **Panel:** the 10 ETFs of the trading universe (control) and 30 stocks: the agents' five plus 25 large US stocks across sectors. Timestral-209M, horizon 5 days, one origin per session from 2026-06-01 (start of the news coverage) to five sessions before the end, with prices alone and with `news`, `events` and both. One analyst scoring of every article, cached; only articles published up to an origin are visible at that origin.
 - **Criteria (as in D-006):** calibration of the 80% interval, pinball loss, RMS ratio, hit rate, by variant and by kind (stock or ETF). The comparison with prices alone is paired (same forecasts) and its interval is a block bootstrap over origins, because 5-day windows overlap.
-- **Rule for a variant to be adopted** (implemented in `agent.covariate_eval`):
+- **Rule for a variant to be adopted** (implemented in `agent.evaluation.covariate_eval`):
   1. the pinball loss of the **stocks** is lower than with prices alone;
   2. the stocks' 80% interval does not move more than 3 points further from 80%;
   3. the **ETF control** loses at most 1% (a gain on ETFs would not be about the news);

@@ -6,9 +6,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from agent.baseline import baseline_weights
-from agent.forecast import forecast_assets
-from agent.safety import final_check
+from agent.checks.safety import final_check
+from agent.decision.baseline import baseline_weights
+from agent.inputs.forecast import forecast_assets
 from tests.helpers import CFG, FakeTimestral, make_closes
 
 
