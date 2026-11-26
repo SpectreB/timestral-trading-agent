@@ -702,20 +702,15 @@ def site_data(
     }
 
 
-def build(
+def collect(
     audit_dir: Path,
-    out_dir: Path,
     now: datetime,
     repo: str = DEFAULT_REPO,
     replay_dir: Path | None = None,
     tool_replay_dir: Path | None = None,
     evals_dir: Path | None = None,
     covariates_dir: Path | None = None,
-    web_dir: Path = WEB_DIR,
-) -> Path:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("index.html", "app.js", "style.css"):
-        shutil.copy(web_dir / name, out_dir / name)
+) -> dict[str, Any]:
     pipeline = _view(FileAuditStore(audit_dir), "pipeline", "Pipeline agent", PIPELINE_SUMMARY, "")
     pipeline = evolve(
         pipeline,
@@ -734,23 +729,39 @@ def build(
             replay_folder="docs/replay_tools",
         )
         agents.insert(0, tool)
-    tables: list[str] = []
-    for csv_file in sorted((audit_dir / "tables").glob("*.csv")):
-        (out_dir / "data").mkdir(exist_ok=True)
-        shutil.copy(csv_file, out_dir / "data" / csv_file.name)
-        tables.append(csv_file.name)
-    data = site_data(
+    return site_data(
         agents,
         chronological(FileAuditStore(audit_dir / "simulations").read_runs()),
         now,
         repo,
         _load_evals(evals_dir) if evals_dir else None,
         _load_json(covariates_dir / "results.json") if covariates_dir else None,
-        tables,
+        sorted(p.name for p in (audit_dir / "tables").glob("*.csv")),
     )
-    path = out_dir / "data.json"
-    path.write_text(json.dumps(data, indent=1, allow_nan=False), encoding="utf-8")
-    return path
+
+
+def build(
+    audit_dir: Path,
+    out_dir: Path,
+    now: datetime,
+    repo: str = DEFAULT_REPO,
+    replay_dir: Path | None = None,
+    tool_replay_dir: Path | None = None,
+    evals_dir: Path | None = None,
+    covariates_dir: Path | None = None,
+    web_dir: Path = WEB_DIR,
+) -> Path:
+    """The static site: the page, the CSV tables, and a snapshot of every API response."""
+    from agent.dashboard.api import export
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("index.html", "app.js", "style.css"):
+        shutil.copy(web_dir / name, out_dir / name)
+    for csv_file in sorted((audit_dir / "tables").glob("*.csv")):
+        (out_dir / "data").mkdir(exist_ok=True)
+        shutil.copy(csv_file, out_dir / "data" / csv_file.name)
+    data = collect(audit_dir, now, repo, replay_dir, tool_replay_dir, evals_dir, covariates_dir)
+    return export(data, out_dir)
 
 
 def main() -> None:  # pragma: no cover - CLI wiring, runs in the dashboard workflow

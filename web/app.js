@@ -985,12 +985,31 @@
   // ------------------------------------------------------------------ app
   /* How fresh the data is: green when the page was rebuilt in the last two hours (it is rebuilt
      after every run and every hourly account sample), grey otherwise, with the age spelled out. */
-  function Fresh({ at }) {
+  function Fresh({ at, source }) {
     const minutes = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 60000));
     const ago = minutes < 60 ? `${minutes} min ago` : minutes < 2880 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`;
-    return html`<span className="freshchip" title=${`Updated ${when(at)}, from the audit log, after every run and every hourly account reading`}>
-      <span className=${"dot " + (minutes <= 120 ? "live" : "stale")}></span>${ago}</span>`;
+    const live = source === "live";
+    const note = live ? "Served now by the live API, from the audit log" : "Snapshot of the API, published after every run and every hourly account reading";
+    return html`<span className="freshchip" title=${`Updated ${when(at)}. ${note}.`}>
+      <span className=${"dot " + (minutes <= 120 ? "live" : "stale")}></span>${live ? "Live API" : "Snapshot"} · ${ago}</span>`;
   }
+
+  // The page reads the API (D-022): first its snapshot in the static site, at once, then the
+  // live server when it answers (a free server may take a minute to wake up).
+  const API_BASE = (document.querySelector('meta[name="api-base"]') || {}).content || "";
+  const getJSON = (base, path, ms) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    return fetch(`${base}api/${path}.json`, { cache: "no-store", signal: ctrl.signal })
+      .then((r) => { if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.json(); })
+      .finally(() => clearTimeout(timer));
+  };
+  const loadSite = async (base, ms) => {
+    const get = (p) => getJSON(base, p, ms);
+    const [overview, agents, evidence, simulations] = await Promise.all([get("overview"), get("agents"), get("evidence"), get("simulations")]);
+    const details = await Promise.all(agents.map((a) => get(`agents/${a.key}`)));
+    return { ...overview, agents: details, ...evidence, simulations };
+  };
 
   const readTab = () => { const t = (location.hash || "").slice(1); return ROUTES.includes(t) ? t : "live"; };
 
@@ -1033,10 +1052,12 @@
       return () => window.removeEventListener("scroll", onScroll);
     }, []);
     useEffect(() => {
-      fetch("data.json", { cache: "no-store" })
-        .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then((d) => { setData(d); const first = d.agents.find((a) => a.started) || d.agents[0]; setAgent(first && first.key); })
-        .catch((e) => setError(String(e)));
+      const show = (d, source) => setData((old) => {
+        if (!old) { const first = d.agents.find((a) => a.started) || d.agents[0]; setAgent(first && first.key); }
+        return { ...d, source };
+      });
+      loadSite("", 20000).then((d) => show(d, "snapshot")).catch((e) => setError(String(e)));
+      if (API_BASE) loadSite(API_BASE.replace(/\/?$/, "/"), 90000).then((d) => { setError(null); show(d, "live"); }).catch(() => {});
       const onHash = () => setTab(readTab());
       window.addEventListener("hashchange", onHash);
       return () => window.removeEventListener("hashchange", onHash);
@@ -1066,7 +1087,7 @@
           <div className="brand">
             <div className="title"><h1><${Timestral} size=${22} />Timestral Trading Agent</h1><span className="badge">Paper trading</span></div>
             <div className="actions">
-              <${Fresh} at=${data.generated_at} />
+              <${Fresh} at=${data.generated_at} source=${data.source} />
               <a className="act" href=${data.links.audit_log}><${Glyph} d=${DOC} />Audit log</a>
               <a className="act" href="#lexicon" onClick=${(e) => { e.preventDefault(); go("lexicon"); }}><${Glyph} d=${BOOK} />Lexicon</a>
               <a className="act" href=${data.repo}><${Glyph} d=${CODE} />Code</a>
