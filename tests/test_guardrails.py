@@ -10,8 +10,8 @@ import math
 
 import pytest
 
-from agent.guardrails import apply_guardrails, drawdown_actions
-from agent.safety import final_check
+from agent.checks.guardrails import apply_guardrails, drawdown_actions
+from agent.checks.safety import final_check
 from tests.helpers import ALL_CASH, BASELINE, CFG, as_json, proposal
 
 

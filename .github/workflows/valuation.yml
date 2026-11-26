@@ -48,7 +48,7 @@ jobs:
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-        run: python -m agent.valuation --agent pipeline --audit-dir audit
+        run: python -m agent.jobs.valuation --agent pipeline --audit-dir audit
 
       - name: Sample the tool agent's account
         if: always()
@@ -57,7 +57,7 @@ jobs:
           ALPACA_TOOLS_SECRET_KEY: ${{ secrets.ALPACA_TOOLS_SECRET_KEY }}
         run: |
           if [ -z "$ALPACA_TOOLS_API_KEY" ]; then echo "Tool agent account not configured: skipped."; exit 0; fi
-          python -m agent.valuation --agent tools --audit-dir audit/agents/tools
+          python -m agent.jobs.valuation --agent tools --audit-dir audit/agents/tools
 
       - name: Publish the samples
         if: always()

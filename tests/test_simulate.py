@@ -10,11 +10,11 @@ from typing import Any
 import pytest
 import yaml
 
-from agent.audit import FileAuditStore
+from agent.checks.safety import final_check
 from agent.config import tool_agent_config
-from agent.execute import Position
-from agent.safety import final_check
-from agent.simulate import (
+from agent.execution.audit import FileAuditStore
+from agent.execution.execute import Position
+from agent.jobs.simulate import (
     COOLDOWN,
     DAILY_CAP,
     DEFAULT_OPTIONS,
@@ -243,7 +243,7 @@ def test_the_default_run_id_and_reply_are_unchanged() -> None:
 
 
 def test_the_dashboard_form_offers_exactly_the_options_the_parser_accepts() -> None:
-    from agent.dashboard import SIM_CHOICES
+    from agent.dashboard.records import SIM_CHOICES
 
     assert set(SIM_CHOICES) == set(OPTIONS)
     for key, (_, choices) in SIM_CHOICES.items():
@@ -253,7 +253,7 @@ def test_the_dashboard_form_offers_exactly_the_options_the_parser_accepts() -> N
 
 
 def test_the_dashboard_button_opens_the_request_the_workflow_expects() -> None:
-    from agent.dashboard import SIM_TITLE
+    from agent.dashboard.records import SIM_TITLE
 
     assert SIM_TITLE == TITLE
     assert BASELINE  # shared fixtures stay in use
@@ -261,7 +261,7 @@ def test_the_dashboard_button_opens_the_request_the_workflow_expects() -> None:
 
 def test_the_wide_universe_adds_the_panel_stocks_in_the_existing_sector_groups() -> None:
     from agent.config import AgentConfig
-    from agent.simulate import apply_universe
+    from agent.jobs.simulate import apply_universe
 
     base = AgentConfig()
     assert apply_universe(base, "standard") is base
@@ -275,7 +275,7 @@ def test_the_wide_universe_adds_the_panel_stocks_in_the_existing_sector_groups()
 
 def test_the_equal_weight_start_invests_90_percent_whatever_the_universe() -> None:
     from agent.config import AgentConfig
-    from agent.simulate import StartingPoint, apply_universe
+    from agent.jobs.simulate import StartingPoint, apply_universe
 
     for cfg in (AgentConfig(), apply_universe(AgentConfig(), "wide")):
         prices = dict.fromkeys(cfg.symbols, 100.0)
@@ -287,7 +287,7 @@ def test_the_whole_run_sees_one_universe_news_included() -> None:
     """2026-11-25: news + wide universe failed: the news covariates were built for the 15 live
     assets while the forecasts covered 40. One configuration now serves both."""
     from agent.config import news_agent_config
-    from agent.simulate import simulation_config
+    from agent.jobs.simulate import simulation_config
 
     options = {"agent": "news", "stance": "cautious", "start": "equal", "universe": "wide"}
     cfg = simulation_config(news_agent_config(), options)

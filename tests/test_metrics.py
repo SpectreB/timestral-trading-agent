@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from agent.metrics import (
+from agent.evaluation.metrics import (
     block_bootstrap_ci,
     comparisons,
     confidence_calibration,

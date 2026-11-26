@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from agent.decide import LLMResponse
-from agent.execute import ExecutionError
-from agent.smoke import SmokeError, smoke_check
+from agent.decision.decide import LLMResponse
+from agent.execution.execute import ExecutionError
+from agent.jobs.smoke import SmokeError, smoke_check
 from tests.helpers import CFG, FakeBroker, FakeMarketData, FakeTimestral, make_closes
 from tests.test_decide import NOW
 

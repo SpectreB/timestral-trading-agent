@@ -19,12 +19,12 @@ from zoneinfo import ZoneInfo
 from alpaca.trading.client import TradingClient
 from dotenv import load_dotenv
 
-from agent.baseline import baseline_weights
 from agent.config import AgentConfig
-from agent.data import AlpacaMarketData, load_context
-from agent.decide import DecisionInput, MistralLLM, decide
-from agent.forecast import forecast_assets, load_model
-from agent.schemas import Proposal
+from agent.decision.baseline import baseline_weights
+from agent.decision.decide import DecisionInput, MistralLLM, decide
+from agent.decision.schemas import Proposal
+from agent.inputs.data import AlpacaMarketData, load_context
+from agent.inputs.forecast import forecast_assets, load_model
 
 
 def current_weights(
