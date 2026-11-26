@@ -614,6 +614,7 @@ Immutability is the strongest argument for the "are decisions sound" question: t
 - It is **idempotent and append-only**: runs already reconciled are skipped, runs with open orders wait for a later pass, and a failing lookup is reported without blocking the other runs. The trade workflow runs it after each cycle (also after a failed one), so the morning orders are reconciled by the afternoon run and the afternoon orders by the next morning's.
 - A `fills.csv` table is derived from these files for the dashboard and the export.
 - The record and the reconciliation files are public, like the repository: the prompt and reasoning are exactly what reviewers want to examine.
+- **History rewritten on 2026-11-26** to remove co-author trailers from the commit messages (files unchanged, checked commit by commit). Each record's `git_sha` names the code that produced it as it was then: [docs/commit-map.csv](commit-map.csv) maps every old commit to its new one, and the old commits stay readable on GitHub through the pull requests.
 
 ---
 
