@@ -16,13 +16,9 @@ class Asset:
     symbol: str
     name: str
     type: AssetType
-    # Sector cap group (D-010): XLE and XOM both count towards "energy".
     group: str
 
 
-# D-005: 10 diversified ETFs + 5 single stocks, one per sector.
-# Group assignment is provisional: QQQ, NVDA and AMZN share "tech_growth" because
-# they are dominated by the same large-cap growth names.
 UNIVERSE: tuple[Asset, ...] = (
     Asset("SPY", "S&P 500", AssetType.ETF, "us_broad"),
     Asset("QQQ", "Nasdaq 100", AssetType.ETF, "tech_growth"),
@@ -44,38 +40,31 @@ UNIVERSE: tuple[Asset, ...] = (
 
 @dataclass(frozen=True)
 class ForecastConfig:
-    """D-006 (provisional values, to be confirmed by the multi-ticker backtest)."""
-
     model_id: str = "mistralai/Timestral-28M"  # switch to Timestral-123M after the backtest
-    input_type: str = "price"  # "price" or "log_return"
-    context_length: int = 512  # trading days (~2 years)
+    input_type: str = "price"
+    context_length: int = 512
     horizon: int = 5  # D-007: decisions use the 5-day forecast; days 1-5 are all logged
 
 
 @dataclass(frozen=True)
 class LLMConfig:
-    """D-008."""
-
     model: str = "mistral-large-4-0"  # pinned version, never a "-latest" alias
     temperature: float = 0.1
-    reasoning_effort: str = "high"  # native reasoning; the trace is stored in the audit log
-    prompt_version: str = "decide_v1"  # src/agent/decision/prompts/<version>.md
-    max_retries: int = 1  # one retry on invalid output, then fallback (D-010)
-    timeout_s: int = 600  # per call; a reasoning answer can take several minutes
+    reasoning_effort: str = "high"
+    prompt_version: str = "decide_v1"
+    max_retries: int = 1
+    timeout_s: int = 600
 
 
 @dataclass(frozen=True)
 class RiskLimits:
-    """Portfolio risk limits (D-004, D-010)."""
-
     min_cash: float = 0.10
     max_invested: float = 0.90  # no leverage: Alpaca would allow 2x buying power
     max_weight_etf: float = 0.25
     max_weight_stock: float = 0.10
     max_weight_group: float = 0.30
     max_increase_vs_baseline: float = 0.15  # asymmetric: decreases are unbounded
-    # Severity thresholds: beyond these, the whole proposal is rejected.
-    weight_sum_tolerance: float = 0.05  # weights + cash must be within 95-105%
+    weight_sum_tolerance: float = 0.05
     max_corrected_assets: int = 3
     max_total_correction: float = 0.20
 
@@ -86,7 +75,6 @@ class DrawdownLevel:
     action: str
 
 
-# D-010: graduated circuit breaker, measured from the portfolio's peak equity.
 DRAWDOWN_LEVELS: tuple[DrawdownLevel, ...] = (
     DrawdownLevel(-0.03, "alert"),
     DrawdownLevel(-0.05, "reduce_only"),
@@ -97,38 +85,30 @@ DRAWDOWN_LEVELS: tuple[DrawdownLevel, ...] = (
 
 @dataclass(frozen=True)
 class ExecutionConfig:
-    """D-007 and D-010."""
-
     no_trade_band: float = 0.02  # skip orders that move a weight by less than 2 pts
     # A move meant as 2 points that drifted by a few dollars since the decision still counts.
     # Found on 2026-11-24: two 2-point sells fell $3 short of the band and were skipped.
     band_tolerance: float = 0.001
     max_turnover_per_run: float = 0.30
-    # The cap brakes sudden *changes*; the initial deployment from cash is a different case.
-    # At most this share invested counts as "starting from cash": the cap is waived once.
     initial_deployment_max_invested: float = 0.05
     limit_price_tolerance: float = 0.003  # marketable limit: +/-0.3% beyond current price
 
 
 @dataclass(frozen=True)
 class ToolConfig:
-    """D-018: limits of the agent that calls Timestral as a tool."""
-
-    max_rounds: int = 6  # LLM turns allowed to call tools before the final decision
-    max_calls: int = 12  # tool calls in total per decision
+    max_rounds: int = 6
+    max_calls: int = 12
 
 
 @dataclass(frozen=True)
 class NewsConfig:
-    """D-019: news analysed into covariates for Timestral (off unless an agent enables it)."""
-
     enabled: bool = False
-    analyst_model: str = "mistral-small-2603"  # pinned; reads headlines, returns numbers only
-    batch_size: int = 20  # articles per analyst call
+    analyst_model: str = "mistral-small-2603"
+    batch_size: int = 20
     # First day of the free Alpaca news history for our stocks (measured on 2026-11-23):
     # before it, covariates are missing (NaN), not zero.
     coverage_start: str = "2026-06-01"  # ISO date (kept a string: the config is logged as JSON)
-    fred_release_ids: tuple[int, ...] = (10, 50)  # CPI, Employment Situation: official dates
+    fred_release_ids: tuple[int, ...] = (10, 50)
 
 
 @dataclass(frozen=True)
@@ -139,9 +119,7 @@ class AgentConfig:
     risk: RiskLimits = field(default_factory=RiskLimits)
     drawdown_levels: tuple[DrawdownLevel, ...] = DRAWDOWN_LEVELS
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
-    benchmark: str = "SPY"  # the market reference of the performance comparisons (D-014)
-    # D-018: "pipeline" (Timestral always runs, the LLM adjusts the baseline) or "tools"
-    # (the LLM queries Timestral through tools and builds the portfolio itself).
+    benchmark: str = "SPY"
     agent: str = "pipeline"
     tools: ToolConfig = field(default_factory=ToolConfig)
     news: NewsConfig = field(default_factory=NewsConfig)
@@ -162,7 +140,6 @@ class AgentConfig:
 
 
 def tool_agent_config(base: AgentConfig | None = None) -> AgentConfig:
-    """The agent that uses Timestral as a tool (D-018), derived from the pipeline agent."""
     from dataclasses import replace
 
     base = base or AgentConfig()
@@ -176,8 +153,6 @@ def tool_agent_config(base: AgentConfig | None = None) -> AgentConfig:
 
 
 def news_agent_config(base: AgentConfig | None = None) -> AgentConfig:
-    """The tool agent with news covariates (D-019): same agent, its tools can also ask Timestral for
-    forecasts conditioned on the news."""
     from dataclasses import replace
 
     cfg = tool_agent_config(base)

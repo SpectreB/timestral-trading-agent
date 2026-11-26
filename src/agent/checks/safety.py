@@ -18,7 +18,6 @@ class UnsafePortfolioError(RuntimeError):
 
 
 def final_check(weights: Mapping[str, float], cash: float, cfg: AgentConfig) -> None:
-    """Raise UnsafePortfolioError if the target portfolio breaks any core invariant."""
     violations: list[str] = []
     universe = set(cfg.symbols)
 

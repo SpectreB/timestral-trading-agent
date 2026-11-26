@@ -1,6 +1,3 @@
-"""Performance metrics (D-014): how is the agent doing, and what does each layer add? Shadow
-portfolios (equal weight, baseline, LLM proposal, final) isolate what each layer adds."""
-
 from __future__ import annotations
 
 import math
@@ -22,11 +19,11 @@ COMPARISONS = (
 )
 MIN_SESSIONS_FOR_CI = 10
 BLOCK = 5
-DEVIATION_THRESHOLD = 0.005  # the same 0.5 pt above which the prompt requires a rationale
+DEVIATION_THRESHOLD = 0.005
 
 
 def _date(run: dict[str, Any]) -> str:
-    return str(run["started_at"])[:10]  # started_at is in New York time
+    return str(run["started_at"])[:10]
 
 
 def _chronological(runs: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -34,7 +31,6 @@ def _chronological(runs: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def session_returns(observations: Sequence[dict[str, Any]]) -> dict[str, dict[str, float]]:
-    """Close-to-close return of every asset for every session pair found in the observations."""
     ordered = sorted(observations, key=lambda o: o["as_of"])
     dates = sorted({d for o in ordered for d in o["closes"]})
     out: dict[str, dict[str, float]] = {}
@@ -66,7 +62,6 @@ def _weights(run: dict[str, Any], series: str) -> dict[str, float]:
 def shadow_returns(
     runs: Sequence[dict[str, Any]], observations: Sequence[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """One row per session with an active run: the return of every shadow portfolio."""
     ordered = _chronological(runs)
     rows = []
     for session, returns in sorted(session_returns(observations).items()):
@@ -102,7 +97,6 @@ def summarise(daily: Sequence[float]) -> dict[str, Any]:
 def block_bootstrap_ci(
     values: Sequence[float], block: int = BLOCK, reps: int = 2000, seed: int = 0
 ) -> tuple[float, float] | None:
-    """95% interval for the mean, resampling blocks of consecutive sessions."""
     n = len(values)
     if n < MIN_SESSIONS_FOR_CI:
         return None
@@ -141,7 +135,6 @@ def comparisons(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
 def risk_calibration(
     runs: Sequence[dict[str, Any]], observations: Sequence[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Did the forecast portfolio risk (D-014) match what happened?"""
     ordered = sorted(observations, key=lambda o: o["as_of"])
     rows = []
     for run in runs:
@@ -179,7 +172,6 @@ def summarise_risk(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
                 "horizon": h,
                 "n": len(sub),
                 "inside_80": sum(r["inside_80"] for r in sub) / len(sub),
-                # 1 when the forecast risk is right; above 1 means risk was underestimated
                 "rms_z": math.sqrt(sum(r["z"] ** 2 for r in sub) / len(sub)),
             }
         )
@@ -189,7 +181,6 @@ def summarise_risk(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
 def confidence_calibration(
     runs: Sequence[dict[str, Any]], observations: Sequence[dict[str, Any]], horizon: int = 5
 ) -> list[dict[str, Any]]:
-    """Each LLM deviation from the baseline, its stated confidence, and whether it paid off."""
     ordered = sorted(observations, key=lambda o: o["as_of"])
     rows = []
     for run in runs:
@@ -236,7 +227,6 @@ def summarise_confidence(rows: Sequence[dict[str, Any]]) -> dict[str, Any] | Non
         "n": len(rows),
         "mean_confidence": sum(r["confidence"] for r in rows) / len(rows),
         "hit_rate": hit,
-        # Brier score: 0 is perfect; always answering 0.5 scores 0.25
         "brier": sum((r["confidence"] - o) ** 2 for r, o in zip(rows, outcomes, strict=True))
         / len(rows),
         "bins": bins,

@@ -1,5 +1,3 @@
-"""The account's value, sampled between runs. Read-only: it can never send an order."""
-
 from __future__ import annotations
 
 import argparse
@@ -18,7 +16,6 @@ class Reader(Protocol):
 
 
 def sample(broker: Reader, now: datetime) -> dict[str, Any]:
-    """The account at `now`: equity, invested value, cash and the value of each position."""
     account = broker.account()
     held = {s: round(p.market_value, 2) for s, p in sorted(broker.positions().items())}
     invested = round(sum(held.values()), 2)
@@ -32,7 +29,6 @@ def sample(broker: Reader, now: datetime) -> dict[str, Any]:
 
 
 def record(store: FileAuditStore, broker: Reader, now: datetime) -> Path | None:
-    """Take and store one sample; None when this minute already has one."""
     name = now.astimezone(UTC).strftime("%Y%m%dT%H%MZ")
     if store.has_valuation(name):
         return None
