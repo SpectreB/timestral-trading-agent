@@ -764,7 +764,11 @@ def build(
             replay_folder="docs/replay_tools",
         )
         agents.insert(0, tool)  # the final agent comes first
-    tables = sorted(p.name for p in (out_dir / "data").glob("*.csv"))
+    tables: list[str] = []
+    for csv_file in sorted((audit_dir / "tables").glob("*.csv")):
+        (out_dir / "data").mkdir(exist_ok=True)
+        shutil.copy(csv_file, out_dir / "data" / csv_file.name)
+        tables.append(csv_file.name)
     data = site_data(
         agents,
         chronological(FileAuditStore(audit_dir / "simulations").read_runs()),

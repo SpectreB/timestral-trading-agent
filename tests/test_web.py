@@ -328,3 +328,11 @@ def test_the_live_cards_carry_timestrals_range_for_the_account() -> None:
         _range80(100_000.0, None) is None
         and _range80(100_000.0, {"horizon": 5, "final": None}) is None
     )
+
+
+def test_the_derived_tables_are_published_for_download(tmp_path: Path) -> None:
+    _, _, _, store = cycle(tmp_path / "audit")
+    store.build_tables()
+    data = _site(tmp_path)
+    assert (tmp_path / "site" / "data" / "orders.csv").exists()
+    assert "data/orders.csv" in data["links"]["tables"]
