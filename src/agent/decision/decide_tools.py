@@ -38,8 +38,6 @@ def decide_agent(
         if model is None:
             raise ValueError("the tool agent needs the Timestral model (its portfolio tool)")
         return decide_with_tools(inp, llm, model, cfg, on_llm_failure)
-    if cfg.agent != "pipeline":
-        raise ValueError(f"unknown agent {cfg.agent!r}")
     return decide(inp, llm, cfg, on_llm_failure)
 
 

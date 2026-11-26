@@ -28,7 +28,6 @@ import json
 import os
 import sys
 import time
-from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -36,7 +35,7 @@ import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 
-from agent.config import AssetType
+from agent.config import AssetType, evolve
 from agent.evaluation.covariate_eval import (
     BASE,
     VARIANTS,
@@ -93,9 +92,9 @@ def main() -> None:
 
     from agent.decision.decide import MistralLLM
 
-    analyst_cfg = replace(
+    analyst_cfg = evolve(
         cfg,
-        llm=replace(cfg.llm, model=cfg.news.analyst_model, temperature=0.0, reasoning_effort=""),
+        llm=evolve(cfg.llm, model=cfg.news.analyst_model, temperature=0.0, reasoning_effort=""),
     )
     closes = load_closes(symbols, context)
     print(f"closes {closes.index[0].date()} to {closes.index[-1].date()}, {len(closes)} sessions")

@@ -38,7 +38,7 @@ def plan(target, current=None, prices=None, equity=EQUITY):  # type: ignore[no-u
         (FakeBroker(status="ACCOUNT_UPDATED"), "account status"),
         (FakeBroker(blocked=True), "blocked"),
         (FakeBroker(equity=0.0), "invalid equity"),
-        (FakeBroker(equity=float("nan")), "invalid equity"),
+        (FakeBroker(equity=float("nan")), "invalid account data"),
     ],
 )
 def test_preflight_refuses_unsafe_accounts(broker: FakeBroker, fragment: str) -> None:
@@ -277,3 +277,15 @@ def test_the_band_is_relaxed_step_by_step_not_dropped_at_once() -> None:
     p = plan(target, current=current)
     assert sorted(o.symbol for o in p.orders) == ["TLT", "XLE", "XLF", "XOM"]
     final_check(p.post_weights, p.post_cash, CFG)
+
+
+def test_an_order_with_no_quantity_or_price_cannot_be_built() -> None:
+    from pydantic import ValidationError
+
+    from agent.execution.execute import PlannedOrder
+
+    order = {"symbol": "SPY", "side": "buy", "quantity": 1.0, "limit_price": 500.0,
+             "client_order_id": "r-SPY-buy", "reference_price": 499.0}  # fmt: skip
+    for bad in ({"quantity": 0.0}, {"limit_price": -1.0}, {"side": "short"}):
+        with pytest.raises(ValidationError):
+            PlannedOrder.model_validate({**order, **bad})

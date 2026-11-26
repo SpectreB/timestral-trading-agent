@@ -6,18 +6,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from pydantic import Field
+
+from agent.config import Frozen
 from agent.execution.audit import FileAuditStore
 
 TERMINAL = frozenset({"filled", "canceled", "expired", "rejected", "done_for_day"})
 
 
-@dataclass(frozen=True)
-class OrderState:
+class OrderState(Frozen):
     status: str
-    filled_qty: float
-    filled_avg_price: float | None
-    submitted_at: str | None
-    filled_at: str | None
+    filled_qty: float = Field(ge=0)
+    filled_avg_price: float | None = Field(default=None, gt=0)
+    submitted_at: str | None = None
+    filled_at: str | None = None
 
 
 class OrderLookup(Protocol):
@@ -99,7 +101,7 @@ def _reconcile_one(
             continue
         state = lookup.order_by_client_id(coid)
         if state is None:
-            rows.append(_order_row(sub, ref, OrderState("not_found", 0.0, None, None, None)))
+            rows.append(_order_row(sub, ref, OrderState(status="not_found", filled_qty=0.0)))
         elif state.status not in TERMINAL:
             return None
         else:

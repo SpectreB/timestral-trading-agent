@@ -146,7 +146,7 @@ def test_drawdown_comes_from_the_peak_recorded_in_the_audit_log(tmp_path: Path) 
 
 
 def test_positions_outside_the_universe_stop_the_run(tmp_path: Path) -> None:
-    broker = FakeBroker(positions={"TSLA": Position(10.0, 2500.0)})
+    broker = FakeBroker(positions={"TSLA": Position(quantity=10.0, market_value=2500.0)})
     with pytest.raises(ExecutionError, match="TSLA"):
         cycle(tmp_path, broker=broker)
     assert not (tmp_path / "runs").exists()

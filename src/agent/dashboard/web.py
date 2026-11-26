@@ -4,13 +4,12 @@ import argparse
 import json
 import os
 import shutil
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from agent.checks.risk import Z80
-from agent.config import AgentConfig, AssetType, tool_agent_config
+from agent.config import AgentConfig, AssetType, evolve, tool_agent_config
 from agent.dashboard.records import (
     _MEASURE_ROWS,
     _TAGLINE,
@@ -718,7 +717,7 @@ def build(
     for name in ("index.html", "app.js", "style.css"):
         shutil.copy(web_dir / name, out_dir / name)
     pipeline = _view(FileAuditStore(audit_dir), "pipeline", "Pipeline agent", PIPELINE_SUMMARY, "")
-    pipeline = replace(
+    pipeline = evolve(
         pipeline,
         replay=_load_json(replay_dir / "report.json") if replay_dir else None,
         replay_folder="docs/replay",
@@ -729,7 +728,7 @@ def build(
         tool = _view(
             FileAuditStore(tools_dir), "tools", "Tool agent", TOOLS_SUMMARY, f"{TOOLS_FOLDER}/"
         )
-        tool = replace(
+        tool = evolve(
             tool,
             replay=_load_json(tool_replay_dir / "report.json") if tool_replay_dir else None,
             replay_folder="docs/replay_tools",

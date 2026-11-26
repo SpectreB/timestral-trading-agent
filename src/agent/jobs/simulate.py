@@ -9,12 +9,12 @@ import json
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from agent.config import AgentConfig, Asset, AssetType
+from agent.config import AgentConfig, Asset, AssetType, evolve
 from agent.decision.decide import LLMClient
 from agent.evaluation.covariate_eval import PANEL_STOCKS
 from agent.execution.audit import FileAuditStore
@@ -75,11 +75,11 @@ def apply_universe(cfg: AgentConfig, universe: str) -> AgentConfig:
         return cfg
     held = set(cfg.symbols)
     extra = tuple(
-        Asset(symbol, name, AssetType.STOCK, _GROUP[group])
+        Asset(symbol=symbol, name=name, type=AssetType.STOCK, group=_GROUP[group])
         for symbol, name, group in PANEL_STOCKS
         if symbol not in held
     )
-    return replace(cfg, universe=(*cfg.universe, *extra))
+    return evolve(cfg, universe=(*cfg.universe, *extra))
 
 
 def simulation_config(base: AgentConfig, options: Mapping[str, str]) -> AgentConfig:
@@ -90,7 +90,7 @@ def simulation_config(base: AgentConfig, options: Mapping[str, str]) -> AgentCon
 def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
     r = cfg.risk
     if stance == "cautious":
-        risk = replace(
+        risk = evolve(
             r,
             min_cash=0.30,
             max_invested=0.70,
@@ -100,7 +100,7 @@ def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
             max_increase_vs_baseline=min(r.max_increase_vs_baseline, 0.05),
         )
     elif stance == "bold":
-        risk = replace(
+        risk = evolve(
             r,
             max_weight_etf=0.30,
             max_weight_stock=0.15,
@@ -109,7 +109,7 @@ def apply_stance(cfg: AgentConfig, stance: str) -> AgentConfig:
         )
     else:
         return cfg
-    return replace(cfg, risk=risk)
+    return evolve(cfg, risk=risk)
 
 
 @dataclass

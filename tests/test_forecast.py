@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import numpy as np
 import pytest
 
-from agent.config import AgentConfig, ForecastConfig
+from agent.config import AgentConfig, ForecastConfig, evolve
 from agent.inputs.forecast import ForecastError, forecast_assets
 from tests.helpers import CFG, FakeTimestral, make_closes
 
@@ -88,7 +86,7 @@ def test_implausible_width_is_rejected(spread: float) -> None:
 
 
 def test_returns_input_is_not_supported_in_production() -> None:
-    cfg = replace(CFG, forecast=ForecastConfig(input_type="log_return"))
+    cfg = evolve(CFG, forecast=ForecastConfig(input_type="log_return"))
     with pytest.raises(NotImplementedError):
         forecast_assets(make_closes(64), FakeTimestral(SPREADS), cfg)
 

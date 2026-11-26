@@ -4,7 +4,7 @@ import argparse
 import json
 import random
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -12,7 +12,7 @@ from typing import Any
 import pandas as pd
 
 from agent.checks.safety import final_check
-from agent.config import AgentConfig, Asset
+from agent.config import AgentConfig, Asset, evolve
 from agent.decision.baseline import baseline_weights
 from agent.decision.decide import DecisionInput, LLMClient, build_payload
 from agent.decision.decide_tools import decide_agent
@@ -37,10 +37,12 @@ def anonymise(cfg: AgentConfig, seed: int = 0) -> tuple[AgentConfig, dict[str, s
     rng.shuffle(aliases)
     mapping = {a.symbol: alias for a, alias in zip(cfg.universe, aliases, strict=True)}
     universe = tuple(
-        Asset(mapping[a.symbol], f"Asset {mapping[a.symbol]}", a.type, a.group)
+        Asset(
+            symbol=mapping[a.symbol], name=f"Asset {mapping[a.symbol]}", type=a.type, group=a.group
+        )
         for a in cfg.universe
     )
-    return replace(cfg, universe=universe, benchmark=mapping[cfg.benchmark]), mapping
+    return evolve(cfg, universe=universe, benchmark=mapping[cfg.benchmark]), mapping
 
 
 def point_in_time(history: pd.DataFrame, session: pd.Timestamp, n: int) -> pd.DataFrame:
@@ -87,7 +89,9 @@ def execute_at_open(
     rid: str,
     cost_bps: float = COST_BPS,
 ) -> list[Any]:
-    positions = {s: Position(q, q * opens[s]) for s, q in pf.shares.items() if q > 0}
+    positions = {
+        s: Position(quantity=q, market_value=q * opens[s]) for s, q in pf.shares.items() if q > 0
+    }
     plan = plan_orders(target, positions, pf.value(opens), opens, cfg, rid)
     cost = cost_bps / 1e4
     for order in plan.orders:

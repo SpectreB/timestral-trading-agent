@@ -38,7 +38,13 @@ SESSIONS = [d.date() for d in CLOSES.index]
 
 
 def article(i: int, when: str, symbols: tuple[str, ...] = ("NVDA",), text: str = "") -> Article:
-    return Article(str(i), datetime.fromisoformat(when), f"Headline {i} {text}", "Summary", symbols)
+    return Article(
+        id=str(i),
+        created_at=datetime.fromisoformat(when),
+        headline=f"Headline {i} {text}",
+        summary="Summary",
+        symbols=symbols,
+    )
 
 
 class FakeAnalyst:
@@ -171,7 +177,15 @@ def test_batches_split_the_items() -> None:
 
 def test_the_cache_appends_once_and_reloads(tmp_path: Path) -> None:
     cache = ScoreCache(tmp_path)
-    s = Score("1", "NVDA", "2026-11-20", 0.5, 0.9, None, None)
+    s = Score(
+        article_id="1",
+        symbol="NVDA",
+        session="2026-11-20",
+        sentiment=0.5,
+        relevance=0.9,
+        event_type=None,
+        event_date=None,
+    )
     cache.add([s, s])
     cache.add([])
     assert ("1", "NVDA") in cache
@@ -186,11 +200,51 @@ def test_the_cache_appends_once_and_reloads(tmp_path: Path) -> None:
 def scores_for_tests() -> list[Score]:
     last = SESSIONS[-1].isoformat()
     return [
-        Score("1", "NVDA", last, 0.8, 1.0, "earnings", "2026-11-24"),
-        Score("2", "NVDA", last, -0.4, 0.5, None, None),
-        Score("3", "NVDA", last, 1.0, 0.2, None, None),  # not relevant enough: ignored
-        Score("4", "AMZN", "2026-11-10", 0.0, 0.9, "corporate", "2026-11-27"),
-        Score("5", "AMZN", last, 0.3, 0.9, "macro", "2026-11-25"),
+        Score(
+            article_id="1",
+            symbol="NVDA",
+            session=last,
+            sentiment=0.8,
+            relevance=1.0,
+            event_type="earnings",
+            event_date="2026-11-24",
+        ),
+        Score(
+            article_id="2",
+            symbol="NVDA",
+            session=last,
+            sentiment=-0.4,
+            relevance=0.5,
+            event_type=None,
+            event_date=None,
+        ),
+        Score(
+            article_id="3",
+            symbol="NVDA",
+            session=last,
+            sentiment=1.0,
+            relevance=0.2,
+            event_type=None,
+            event_date=None,
+        ),  # not relevant enough: ignored
+        Score(
+            article_id="4",
+            symbol="AMZN",
+            session="2026-11-10",
+            sentiment=0.0,
+            relevance=0.9,
+            event_type="corporate",
+            event_date="2026-11-27",
+        ),
+        Score(
+            article_id="5",
+            symbol="AMZN",
+            session=last,
+            sentiment=0.3,
+            relevance=0.9,
+            event_type="macro",
+            event_date="2026-11-25",
+        ),
     ]
 
 
@@ -300,7 +354,15 @@ def test_news_covariates_scores_new_articles_once(tmp_path: Path) -> None:
 
 def test_the_cache_skips_blank_lines_and_known_scores(tmp_path: Path) -> None:
     cache = ScoreCache(tmp_path)
-    s = Score("1", "NVDA", "2026-11-20", 0.5, 0.9, None, None)
+    s = Score(
+        article_id="1",
+        symbol="NVDA",
+        session="2026-11-20",
+        sentiment=0.5,
+        relevance=0.9,
+        event_type=None,
+        event_date=None,
+    )
     cache.add([s])
     with cache.path.open("a") as f:
         f.write("\n")
@@ -313,3 +375,14 @@ def test_official_macro_dates_outside_the_window_are_ignored() -> None:
     cov = build(fred=("2020-01-01",))
     macro = KNOWN_ROWS.index("event_macro")
     assert np.nansum(cov.known[:, macro]) == 0
+
+
+def test_a_score_outside_its_bounds_or_with_an_unknown_event_is_refused() -> None:
+    from pydantic import ValidationError
+
+    good = {"article_id": "1", "symbol": "NVDA", "session": "2026-11-20", "sentiment": 0.5,
+            "relevance": 0.9, "event_type": None, "event_date": None}  # fmt: skip
+    for bad in ({"sentiment": 1.5}, {"relevance": -0.1}, {"event_type": "rumour"},
+                {"event_date": "next week"}, {"sentiment": float("nan")}):  # fmt: skip
+        with pytest.raises(ValidationError):
+            Score.model_validate({**good, **bad})

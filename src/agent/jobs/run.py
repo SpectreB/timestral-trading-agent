@@ -57,15 +57,14 @@ def news_provider(
 ) -> Callable[[pd.DataFrame], NewsCovariates] | None:  # pragma: no cover - network wiring
     if not cfg.news.enabled:
         return None
-    from dataclasses import replace
-
+    from agent.config import evolve
     from agent.decision.decide import MistralLLM
     from agent.inputs.news import AlpacaNews, ScoreCache, fred_release_dates, news_covariates
 
     key, secret = alpaca_keys(cfg.agent if cfg.agent in ALPACA_KEY_NAMES else "news", env)
-    analyst_cfg = replace(
+    analyst_cfg = evolve(
         cfg,
-        llm=replace(cfg.llm, model=cfg.news.analyst_model, temperature=0.0, reasoning_effort=""),
+        llm=evolve(cfg.llm, model=cfg.news.analyst_model, temperature=0.0, reasoning_effort=""),
     )
     analyst = MistralLLM(env["MISTRAL_API_KEY"], analyst_cfg)
     fred = env.get("FRED_API_KEY")
