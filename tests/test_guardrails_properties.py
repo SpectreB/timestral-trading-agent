@@ -13,8 +13,8 @@ from typing import Any
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from agent.guardrails import apply_guardrails, drawdown_actions
-from agent.safety import final_check
+from agent.checks.guardrails import apply_guardrails, drawdown_actions
+from agent.checks.safety import final_check
 from tests.helpers import CFG
 
 SYMBOLS = list(CFG.symbols)

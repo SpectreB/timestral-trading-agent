@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from agent.safety import UnsafePortfolioError, final_check
+from agent.checks.safety import UnsafePortfolioError, final_check
 from tests.helpers import BASELINE, CFG
 
 

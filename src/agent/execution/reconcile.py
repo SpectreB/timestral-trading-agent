@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from agent.audit import FileAuditStore
+from agent.execution.audit import FileAuditStore
 
 TERMINAL = frozenset({"filled", "canceled", "expired", "rejected", "done_for_day"})
 
@@ -152,8 +152,8 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the trade workflow
 
     from dotenv import load_dotenv
 
-    from agent.execute import AlpacaBroker
-    from agent.run import AGENTS, alpaca_keys
+    from agent.execution.execute import AlpacaBroker
+    from agent.jobs.run import AGENTS, alpaca_keys
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--audit-dir", default="audit", type=Path)

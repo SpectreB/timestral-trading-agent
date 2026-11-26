@@ -9,7 +9,7 @@ no audit record:
   pinned model id: a silent alias change would otherwise go unnoticed.
 
 Usage:
-    python -m agent.smoke
+    python -m agent.jobs.smoke
 """
 
 from __future__ import annotations
@@ -19,12 +19,12 @@ import math
 from datetime import datetime
 from typing import Any
 
-from agent.baseline import baseline_weights
 from agent.config import AgentConfig
-from agent.data import MarketData, load_context
-from agent.decide import LLMClient
-from agent.execute import Broker, preflight
-from agent.forecast import QuantileModel, forecast_assets
+from agent.decision.baseline import baseline_weights
+from agent.decision.decide import LLMClient
+from agent.execution.execute import Broker, preflight
+from agent.inputs.data import MarketData, load_context
+from agent.inputs.forecast import QuantileModel, forecast_assets
 
 PING_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -83,10 +83,10 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the smoke workflow
 
     from dotenv import load_dotenv
 
-    from agent.data import AlpacaMarketData
-    from agent.decide import MistralLLM
-    from agent.execute import AlpacaBroker
-    from agent.forecast import load_model
+    from agent.decision.decide import MistralLLM
+    from agent.execution.execute import AlpacaBroker
+    from agent.inputs.data import AlpacaMarketData
+    from agent.inputs.forecast import load_model
 
     load_dotenv()
     cfg = AgentConfig()

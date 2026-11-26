@@ -42,7 +42,7 @@ import pandas as pd
 from pandas.tseries.holiday import USFederalHolidayCalendar
 
 from agent.config import AgentConfig, AssetType
-from agent.data import NEW_YORK
+from agent.inputs.data import NEW_YORK
 
 ANALYST_VERSION = "news_analyst_v1"
 FAMILIES = ("news", "events")
@@ -546,7 +546,7 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the Trade workflow
     from dotenv import load_dotenv
 
     from agent.config import news_agent_config
-    from agent.decide import MistralLLM
+    from agent.decision.decide import MistralLLM
 
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--audit-dir", default="audit", type=Path)

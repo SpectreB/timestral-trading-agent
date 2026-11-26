@@ -1,4 +1,4 @@
-"""The data file behind the React page (src/agent/web.py) and the page's own files (web/)."""
+"""The data file behind the React page (agent.dashboard.web) and the page files (web/)."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 
-from agent.audit import FileAuditStore
-from agent.reconcile import reconcile_runs
-from agent.web import WEB_DIR, _tool_steps, build
-from tests.test_dashboard import (
+from agent.dashboard.web import WEB_DIR, _tool_steps, build
+from agent.execution.audit import FileAuditStore
+from agent.execution.reconcile import reconcile_runs
+from tests.site_fixtures import (
     STAMP,
     _covariate_results,
     _evals_dir,
@@ -47,14 +47,13 @@ def _docs(tmp_path: Path) -> dict[str, Path]:
     }
 
 
-def test_the_site_has_the_page_its_data_and_the_plain_fallback(tmp_path: Path) -> None:
+def test_the_site_has_the_page_and_its_data(tmp_path: Path) -> None:
     cycle(tmp_path / "audit")
     data = _site(tmp_path)
     site = tmp_path / "site"
-    for name in ("index.html", "app.js", "style.css", "classic.html", "data.json"):
+    for name in ("index.html", "app.js", "style.css", "data.json"):
         assert (site / name).exists(), name
     assert (site / "index.html").read_text() == (WEB_DIR / "index.html").read_text()
-    assert data["links"]["classic"] == "classic.html"
     assert [a["key"] for a in data["agents"]] == ["pipeline"]  # no tool agent records yet
 
 
@@ -150,7 +149,7 @@ def test_simulations_offer_the_closed_choices_and_list_past_runs(tmp_path: Path)
 
 
 def test_behaviour_without_the_pipeline_results(tmp_path: Path) -> None:
-    from agent.web import _behaviour
+    from agent.dashboard.web import _behaviour
 
     assert _behaviour({"pipeline": None, "tools": None}) is None
     evals = json.loads((_evals_dir(tmp_path) / "results.json").read_text())
@@ -185,7 +184,7 @@ def test_the_page_renders_text_only_and_loads_pinned_libraries() -> None:
 
 
 def test_a_run_without_a_risk_block_has_no_portfolio_volatility() -> None:
-    from agent.web import _portfolio_vol
+    from agent.dashboard.web import _portfolio_vol
 
     assert _portfolio_vol({"risk": None}) is None
     assert _portfolio_vol(
@@ -206,7 +205,7 @@ def test_whats_next_names_each_item_with_its_decision_and_title(tmp_path: Path) 
 
 
 def test_each_agent_states_what_sets_it_apart_from_its_configuration(tmp_path: Path) -> None:
-    from agent.web import _traits
+    from agent.dashboard.web import _traits
 
     audit = tmp_path / "audit"
     cycle(audit)
@@ -231,7 +230,7 @@ def test_every_input_keyword_is_explained(tmp_path: Path) -> None:
 
 
 def test_the_cost_of_a_decision_is_measured_in_tokens(tmp_path: Path) -> None:
-    from agent.web import _cost
+    from agent.dashboard.web import _cost
 
     audit = tmp_path / "audit"
     cycle(audit)
@@ -268,7 +267,7 @@ def test_no_line_break_swallows_a_space_in_the_page_text() -> None:
 
 
 def test_each_simulation_comes_with_its_options_and_portfolio(tmp_path: Path) -> None:
-    from agent.web import _sim_options
+    from agent.dashboard.web import _sim_options
 
     cycle(tmp_path / "audit")
     cycle(tmp_path / "audit" / "simulations")
@@ -286,7 +285,7 @@ def test_each_simulation_comes_with_its_options_and_portfolio(tmp_path: Path) ->
 
 
 def test_a_simulation_says_its_value_what_changed_and_its_risk_range() -> None:
-    from agent.web import _sim_outlook
+    from agent.dashboard.web import _sim_outlook
 
     run = {
         "account": {"equity": 100_000.0},
@@ -304,7 +303,7 @@ def test_a_simulation_says_its_value_what_changed_and_its_risk_range() -> None:
 
 
 def test_a_simulation_keeps_the_positions_it_would_sell_entirely() -> None:
-    from agent.web import _sim_portfolio
+    from agent.dashboard.web import _sim_portfolio
 
     run = {
         "portfolios": {"current": {"A": 0.3, "B": 0.2, "C": 0.0},
@@ -318,7 +317,7 @@ def test_a_simulation_keeps_the_positions_it_would_sell_entirely() -> None:
 
 
 def test_the_live_cards_carry_timestrals_range_for_the_account() -> None:
-    from agent.web import _range80
+    from agent.dashboard.web import _range80
 
     r = _range80(100_000.0, {"horizon": 5, "final": 0.01, "rule": 0.012})
     assert r is not None and r["horizon"] == 5

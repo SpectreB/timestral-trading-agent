@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent.decide import (
+from agent.decision.decide import (
     DecisionInput,
     LLMResponse,
     build_payload,
@@ -17,8 +17,8 @@ from agent.decide import (
     load_system_prompt,
     response_schema,
 )
-from agent.forecast import forecast_assets
-from agent.schemas import Proposal
+from agent.decision.schemas import Proposal
+from agent.inputs.forecast import forecast_assets
 from tests.helpers import ALL_CASH, BASELINE, CFG, FakeTimestral, make_closes, proposal
 
 NOW = datetime(2026, 11, 23, 10, 0, tzinfo=ZoneInfo("America/New_York"))

@@ -1,7 +1,7 @@
 /* Timestral Trading Agent: the dashboard (D-012).
  *
  * React 18 with htm (JSX-like templates, no build step). All figures come from data.json, which
- * Python writes from the audit records (src/agent/web.py): this file only lays them out.
+ * Python writes from the audit records (src/agent/dashboard/web.py): this file only lays them out.
  * Text from the LLM is rendered as text, never as HTML. */
 (() => {
   "use strict";
@@ -572,14 +572,14 @@
   ];
 
   const STEP_HELP = {
-    "LLM explores": ["Reads the portfolio, prices and market context without Timestral's forecasts, and asks for them through tools.", "src/agent/decide_tools.py"],
-    "Timestral tools": ["get_forecasts: quantiles for any assets and horizon.\nevaluate_portfolio: Timestral's forecast for a candidate portfolio, and whether the guardrails would accept it.\nget_baseline: the rule's weights.", "src/agent/tools.py"],
-    "LLM decides": ["Returns the portfolio as strict JSON: its analysis first, then a weight, a confidence and a reason per asset.", "src/agent/decide.py"],
-    "Guardrails": ["Rejects unusable answers, corrects and logs limit breaches, applies the circuit breaker; an independent final check follows.", "src/agent/guardrails.py · src/agent/safety.py"],
-    "Orders": ["Marketable limit orders on the agent's own Alpaca paper account, idempotent ids, a kill switch.", "src/agent/execute.py"],
-    "Timestral": ["Forecasts all 15 assets, 1 to 5 days ahead, in one batch on CPU.", "src/agent/forecast.py"],
-    "Rule": ["Weights inversely proportional to the spread, within the limits.", "src/agent/baseline.py"],
-    "LLM adjusts": ["Starts from the rule: free to reduce risk, at most +15 points to add, strict JSON.", "src/agent/decide.py"],
+    "LLM explores": ["Reads the portfolio, prices and market context without Timestral's forecasts, and asks for them through tools.", "src/agent/decision/decide_tools.py"],
+    "Timestral tools": ["get_forecasts: quantiles for any assets and horizon.\nevaluate_portfolio: Timestral's forecast for a candidate portfolio, and whether the guardrails would accept it.\nget_baseline: the rule's weights.", "src/agent/decision/tools.py"],
+    "LLM decides": ["Returns the portfolio as strict JSON: its analysis first, then a weight, a confidence and a reason per asset.", "src/agent/decision/decide.py"],
+    "Guardrails": ["Rejects unusable answers, corrects and logs limit breaches, applies the circuit breaker; an independent final check follows.", "src/agent/checks/guardrails.py · src/agent/checks/safety.py"],
+    "Orders": ["Marketable limit orders on the agent's own Alpaca paper account, idempotent ids, a kill switch.", "src/agent/execution/execute.py"],
+    "Timestral": ["Forecasts all 15 assets, 1 to 5 days ahead, in one batch on CPU.", "src/agent/inputs/forecast.py"],
+    "Rule": ["Weights inversely proportional to the spread, within the limits.", "src/agent/decision/baseline.py"],
+    "LLM adjusts": ["Starts from the rule: free to reduce risk, at most +15 points to add, strict JSON.", "src/agent/decision/decide.py"],
   };
 
   /* The two agents as two flows. Two different loops: only the tool agent decides to call
@@ -1051,7 +1051,7 @@
       const el = document.getElementById("tab-" + next);
       if (el) el.focus();
     };
-    if (error) return html`<p className="boot">The records could not be loaded (${error}). Try the <a href="classic.html">plain page</a>.</p>`;
+    if (error) return html`<p className="boot">The records could not be loaded (${error}).</p>`;
     if (!data) return html`<p className="boot">Loading the agent's records…</p>`;
     return html`
       <${React.Fragment}>

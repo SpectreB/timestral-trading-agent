@@ -14,8 +14,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from agent.decide import LLMResponse
-from agent.evals import (
+from agent.decision.decide import LLMResponse
+from agent.evaluation.evals import (
     INJECTION,
     SCENARIOS,
     Outcome,

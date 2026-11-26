@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
-from agent.audit import FileAuditStore
-from agent.execute import ExecutionError, Position
-from agent.run import CycleResult, run_cycle
+from agent.execution.audit import FileAuditStore
+from agent.execution.execute import ExecutionError, Position
+from agent.jobs.run import CycleResult, run_cycle
 from tests.helpers import (
     BASELINE,
     CFG,
@@ -176,7 +176,7 @@ def test_an_llm_outage_is_recorded_as_a_held_run(tmp_path: Path) -> None:
 
 
 def test_each_agent_has_its_own_config_and_paper_account() -> None:
-    from agent.run import alpaca_keys, config_for
+    from agent.jobs.run import alpaca_keys, config_for
 
     assert config_for("pipeline").agent == "pipeline"
     assert config_for("tools").agent == "tools"
@@ -244,7 +244,7 @@ def _news_cycle(tmp_path: Path, news: Any) -> dict[str, Any]:
 
 
 def test_a_news_agent_cycle_records_the_news_it_used(tmp_path: Path) -> None:
-    from agent.news import build_covariates
+    from agent.inputs.news import build_covariates
     from tests.test_news import scores_for_tests
 
     def provide(closes: Any) -> Any:
@@ -258,7 +258,7 @@ def test_a_news_agent_cycle_records_the_news_it_used(tmp_path: Path) -> None:
 
 
 def test_a_news_failure_never_stops_the_run(tmp_path: Path) -> None:
-    from agent.news import NewsError
+    from agent.inputs.news import NewsError
 
     def broken(closes: Any) -> Any:
         raise NewsError("Alpaca news unreachable")
@@ -270,7 +270,7 @@ def test_a_news_failure_never_stops_the_run(tmp_path: Path) -> None:
 
 
 def test_the_news_agent_is_a_cli_choice_with_the_tool_agent_keys() -> None:
-    from agent.run import alpaca_keys, config_for
+    from agent.jobs.run import alpaca_keys, config_for
 
     assert config_for("news").news.enabled and config_for("news").agent == "tools"
     env = {"ALPACA_TOOLS_API_KEY": "k2", "ALPACA_TOOLS_SECRET_KEY": "s2"}

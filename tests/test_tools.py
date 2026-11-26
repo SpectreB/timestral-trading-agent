@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 
 from agent.config import ToolConfig, tool_agent_config
-from agent.forecast import forecast_assets
-from agent.tools import TimestralTools, _probability_below_zero
+from agent.decision.tools import TimestralTools, _probability_below_zero
+from agent.inputs.forecast import forecast_assets
 from tests.helpers import ALL_CASH, BASELINE, LEVELS, FakeTimestral, make_closes
 
 CFG = tool_agent_config()

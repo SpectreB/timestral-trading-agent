@@ -9,8 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from agent.forecast import forecast_assets
-from agent.risk import (
+from agent.checks.risk import (
     SHRINKAGE,
     Z80,
     correlation,
@@ -20,6 +19,7 @@ from agent.risk import (
     risk_contributions,
     risk_snapshot,
 )
+from agent.inputs.forecast import forecast_assets
 from tests.helpers import BASELINE, CFG, FakeTimestral, make_closes
 from tests.test_run import cycle
 

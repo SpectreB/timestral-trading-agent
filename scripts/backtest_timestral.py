@@ -31,7 +31,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from agent.config import AgentConfig
-from agent.data import AlpacaMarketData
+from agent.inputs.data import AlpacaMarketData
 
 HORIZON = 5
 CHUNK = 125

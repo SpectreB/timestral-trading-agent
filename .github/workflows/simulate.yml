@@ -3,7 +3,7 @@
 # The dashboard's "Run a simulation" button opens a pre-filled issue titled "Simulation request".
 # This workflow runs one full cycle on the current portfolio WITHOUT sending any order, posts the
 # decision in the issue and closes it. The issue text is untrusted: no shell step ever sees it.
-# One step receives it as an environment variable, and only `agent.simulate.parse_options` reads
+# One step receives it as an environment variable, and only `agent.jobs.simulate.parse_options` reads
 # it, keeping three words from closed lists (agent, stance, start); everything else is dropped.
 # The issue number and the author's login (set by GitHub) are used through env variables too.
 name: Simulate
@@ -71,11 +71,11 @@ jobs:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           OPTIONS: ${{ github.event.issue.body }}
           TRADING_ENABLED: "false"
-        run: python -m agent.simulate --audit-dir audit --requested-by "$REQUESTER" --comment-out comment.md
+        run: python -m agent.jobs.simulate --audit-dir audit --requested-by "$REQUESTER" --comment-out comment.md
 
       - name: Publish the simulation record
         run: |
-          python -c "from pathlib import Path; from agent.audit import FileAuditStore; FileAuditStore(Path('audit/simulations')).build_tables()" || true
+          python -c "from pathlib import Path; from agent.execution.audit import FileAuditStore; FileAuditStore(Path('audit/simulations')).build_tables()" || true
           cd audit
           git config user.name "trading-agent"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

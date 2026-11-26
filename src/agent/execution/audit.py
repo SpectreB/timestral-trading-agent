@@ -27,12 +27,12 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from agent.checks.risk import risk_snapshot
 from agent.config import AgentConfig
-from agent.decide import Decision, DecisionInput
-from agent.metrics import SERIES, shadow_returns
-from agent.risk import risk_snapshot
-from agent.schemas import Proposal
-from agent.scoring import score_forecasts
+from agent.decision.decide import Decision, DecisionInput
+from agent.decision.schemas import Proposal
+from agent.evaluation.metrics import SERIES, shadow_returns
+from agent.evaluation.scoring import score_forecasts
 
 SCHEMA_VERSION = 1
 

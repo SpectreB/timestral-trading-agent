@@ -9,7 +9,8 @@ from typing import Any
 
 import pytest
 
-from agent.audit import (
+from agent.decision.decide import decide
+from agent.execution.audit import (
     AuditError,
     FileAuditStore,
     OrderRecord,
@@ -18,7 +19,6 @@ from agent.audit import (
     code_version,
     run_id,
 )
-from agent.decide import decide
 from tests.helpers import CFG, as_json, proposal
 from tests.test_decide import BROKEN, NOW, FakeLLM, make_input
 

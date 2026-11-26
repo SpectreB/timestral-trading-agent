@@ -5,7 +5,7 @@ trading universe at every past origin of the news coverage, with prices alone an
 of covariates (`news`, `events`, both). Each 5-day forecast is scored against what happened. The
 ETFs are the control group: they receive no company news.
 
-The adoption rule is in `agent.covariate_eval`, fixed before the results were known.
+The adoption rule is in `agent.evaluation.covariate_eval`, fixed before the results were known.
 
 Network use, in this order, each cached so that a rerun is cheap:
   1. Alpaca: adjusted daily closes of the 40 assets, and the Benzinga news of the 30 stocks;
@@ -37,10 +37,18 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from agent.config import AssetType
-from agent.covariate_eval import BASE, VARIANTS, paired, panel_config, score, summarise, verdict
-from agent.data import AlpacaMarketData
-from agent.forecast import _to_numpy, load_model
-from agent.news import (
+from agent.evaluation.covariate_eval import (
+    BASE,
+    VARIANTS,
+    paired,
+    panel_config,
+    score,
+    summarise,
+    verdict,
+)
+from agent.inputs.data import AlpacaMarketData
+from agent.inputs.forecast import _to_numpy, load_model
+from agent.inputs.news import (
     AlpacaNews,
     ScoreCache,
     build_covariates,
@@ -83,7 +91,7 @@ def main() -> None:
         print(f"news and scores cached in {args.cache}; results in {args.out}")
         sys.exit(0)
 
-    from agent.decide import MistralLLM
+    from agent.decision.decide import MistralLLM
 
     analyst_cfg = replace(
         cfg,

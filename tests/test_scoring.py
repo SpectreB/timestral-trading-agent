@@ -10,8 +10,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-from agent.audit import AuditError, FileAuditStore
-from agent.scoring import WINDOW, calibration, record_observation, score_forecasts
+from agent.evaluation.scoring import WINDOW, calibration, record_observation, score_forecasts
+from agent.execution.audit import AuditError, FileAuditStore
 from tests.helpers import CFG, FakeMarketData, make_closes
 from tests.test_decide import NOW
 from tests.test_run import cycle

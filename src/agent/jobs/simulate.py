@@ -20,7 +20,7 @@ Everything that comes from outside is untrusted: the issue text is reduced to th
 and the LLM's text posted back is neutralised (no @-mention, no HTML) and length-limited.
 
 Usage (in the workflow):
-    OPTIONS="$ISSUE_BODY" python -m agent.simulate --audit-dir audit --requested-by LOGIN \
+    OPTIONS="$ISSUE_BODY" python -m agent.jobs.simulate --audit-dir audit --requested-by LOGIN \
         --comment-out comment.md
 """
 
@@ -37,15 +37,15 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from agent.audit import FileAuditStore
 from agent.config import AgentConfig, Asset, AssetType
-from agent.covariate_eval import PANEL_STOCKS
-from agent.data import NEW_YORK, MarketData
-from agent.decide import LLMClient
-from agent.execute import Broker, Position
-from agent.forecast import QuantileModel
-from agent.news import NewsCovariates
-from agent.run import CycleResult, run_cycle
+from agent.decision.decide import LLMClient
+from agent.evaluation.covariate_eval import PANEL_STOCKS
+from agent.execution.audit import FileAuditStore
+from agent.execution.execute import Broker, Position
+from agent.inputs.data import NEW_YORK, MarketData
+from agent.inputs.forecast import QuantileModel
+from agent.inputs.news import NewsCovariates
+from agent.jobs.run import CycleResult, run_cycle
 
 TITLE = "Simulation request"  # the workflow only reacts to issues whose title starts so
 COOLDOWN = timedelta(minutes=1)
@@ -352,10 +352,10 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the Simulate workf
 
     from dotenv import load_dotenv
 
-    from agent.data import AlpacaMarketData
-    from agent.decide import MistralLLM
-    from agent.execute import AlpacaBroker
-    from agent.forecast import load_model
+    from agent.decision.decide import MistralLLM
+    from agent.execution.execute import AlpacaBroker
+    from agent.inputs.data import AlpacaMarketData
+    from agent.inputs.forecast import load_model
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--audit-dir", default="audit", type=Path)
@@ -365,7 +365,7 @@ def main() -> None:  # pragma: no cover - CLI wiring, runs in the Simulate workf
     args = parser.parse_args()
 
     load_dotenv()
-    from agent.run import alpaca_keys, config_for, news_provider
+    from agent.jobs.run import alpaca_keys, config_for, news_provider
 
     options, refused = parse_options(os.environ.get(args.options_env, ""))
     agent = options["agent"]

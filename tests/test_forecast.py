@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from agent.config import AgentConfig, ForecastConfig
-from agent.forecast import ForecastError, forecast_assets
+from agent.inputs.forecast import ForecastError, forecast_assets
 from tests.helpers import CFG, FakeTimestral, make_closes
 
 H = CFG.forecast.horizon

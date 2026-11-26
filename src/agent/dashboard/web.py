@@ -10,8 +10,6 @@ The site has three parts, in the order a newcomer needs them:
   forecast behind it, the orders, the account value over time;
 - **How it works**: the design, the guardrails, and the evidence that the decisions are sound;
 - **Try it**: ask an agent to decide now on live data, without sending any order.
-
-The previous server-rendered page is still written next to it (`classic.html`) as a fallback.
 """
 
 from __future__ import annotations
@@ -25,9 +23,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from agent.audit import FileAuditStore
+from agent.checks.risk import Z80
 from agent.config import AgentConfig, AssetType, tool_agent_config
-from agent.dashboard import (
+from agent.dashboard.records import (
     _MEASURE_ROWS,
     _TAGLINE,
     _TOOL_LABEL,
@@ -55,13 +53,12 @@ from agent.dashboard import (
     _view,
     chronological,
 )
-from agent.dashboard import build as build_classic
-from agent.metrics import MIN_SESSIONS_FOR_CI, SERIES
-from agent.risk import Z80
-from agent.scoring import calibration
-from agent.simulate import DEFAULT_OPTIONS, OPTIONS
+from agent.evaluation.metrics import MIN_SESSIONS_FOR_CI, SERIES
+from agent.evaluation.scoring import calibration
+from agent.execution.audit import FileAuditStore
+from agent.jobs.simulate import DEFAULT_OPTIONS, OPTIONS
 
-WEB_DIR = Path(__file__).resolve().parents[2] / "web"  # index.html, app.js, style.css
+WEB_DIR = Path(__file__).resolve().parents[3] / "web"  # index.html, app.js, style.css
 
 _LEVELS = ("alert", "no new risk", "60% invested at most", "half the baseline, LLM paused")
 
@@ -566,7 +563,7 @@ def _covariates(cov: dict[str, Any] | None) -> dict[str, Any] | None:
 
 def _sim_options(run_id: str) -> dict[str, str]:
     """The options of a simulation, read back from its id: an option that differs from the
-    default is part of it (`agent.simulate.label_for`); every option value is unique."""
+    default is part of it (`agent.jobs.simulate.label_for`); every option value is unique."""
     chosen = dict(DEFAULT_OPTIONS)
     by_value = {v: k for k, values in OPTIONS.items() for v in values}
     for token in run_id.split("-")[1:]:
@@ -730,7 +727,6 @@ def site_data(
             "decisions": f"{repo}/blob/main/docs/decisions.md",
             "readme": f"{repo}#readme",
             "tables": [f"data/{t}" for t in tables or []],
-            "classic": "classic.html",
         },
         "agents": [agent_data(a, evals, now, repo) for a in agents],
         "measure_rows": [
@@ -773,10 +769,6 @@ def build(
 ) -> Path:
     """Writes the site: the React page and its data, and the classic page as a fallback."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    classic = build_classic(
-        audit_dir, out_dir, now, repo, replay_dir, tool_replay_dir, evals_dir, covariates_dir
-    )
-    classic.replace(out_dir / "classic.html")
     for name in ("index.html", "app.js", "style.css"):
         shutil.copy(web_dir / name, out_dir / name)
     pipeline = _view(FileAuditStore(audit_dir), "pipeline", "Pipeline agent", PIPELINE_SUMMARY, "")

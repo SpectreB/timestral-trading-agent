@@ -26,7 +26,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ValidationError
 
 from agent.config import AgentConfig
-from agent.schemas import Proposal
+from agent.decision.schemas import Proposal
 
 # A deviation from baseline smaller than this does not need a rationale (rounding noise).
 DEVIATION_NEEDING_RATIONALE = 0.005
