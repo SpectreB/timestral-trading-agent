@@ -1,0 +1,1225 @@
+{
+ "schema_version": 1,
+ "run_id": "2026-11-27_morning",
+ "mode": "morning",
+ "started_at": "2026-11-27T10:01:15-05:00",
+ "git_sha": "393fcced0f6cf1b17b08036bef72139e7a5b9a33",
+ "config": {
+  "universe": [
+   {
+    "symbol": "SPY",
+    "name": "S&P 500",
+    "type": "etf",
+    "group": "us_broad"
+   },
+   {
+    "symbol": "QQQ",
+    "name": "Nasdaq 100",
+    "type": "etf",
+    "group": "tech_growth"
+   },
+   {
+    "symbol": "IWM",
+    "name": "US small caps",
+    "type": "etf",
+    "group": "us_broad"
+   },
+   {
+    "symbol": "EFA",
+    "name": "Developed markets ex-US",
+    "type": "etf",
+    "group": "intl_developed"
+   },
+   {
+    "symbol": "EEM",
+    "name": "Emerging markets",
+    "type": "etf",
+    "group": "emerging"
+   },
+   {
+    "symbol": "XLE",
+    "name": "Energy sector",
+    "type": "etf",
+    "group": "energy"
+   },
+   {
+    "symbol": "XLV",
+    "name": "Health care sector",
+    "type": "etf",
+    "group": "health"
+   },
+   {
+    "symbol": "XLF",
+    "name": "Financials sector",
+    "type": "etf",
+    "group": "financials"
+   },
+   {
+    "symbol": "TLT",
+    "name": "Long-term US Treasuries",
+    "type": "etf",
+    "group": "bonds"
+   },
+   {
+    "symbol": "GLD",
+    "name": "Gold",
+    "type": "etf",
+    "group": "gold"
+   },
+   {
+    "symbol": "NVDA",
+    "name": "NVIDIA",
+    "type": "stock",
+    "group": "tech_growth"
+   },
+   {
+    "symbol": "JPM",
+    "name": "JPMorgan Chase",
+    "type": "stock",
+    "group": "financials"
+   },
+   {
+    "symbol": "XOM",
+    "name": "Exxon Mobil",
+    "type": "stock",
+    "group": "energy"
+   },
+   {
+    "symbol": "LLY",
+    "name": "Eli Lilly",
+    "type": "stock",
+    "group": "health"
+   },
+   {
+    "symbol": "AMZN",
+    "name": "Amazon",
+    "type": "stock",
+    "group": "tech_growth"
+   }
+  ],
+  "forecast": {
+   "model_id": "mistralai/Timestral-28M",
+   "input_type": "price",
+   "context_length": 512,
+   "horizon": 5
+  },
+  "llm": {
+   "model": "mistral-large-4-0",
+   "temperature": 0.1,
+   "reasoning_effort": "high",
+   "prompt_version": "decide_v1",
+   "max_retries": 1,
+   "timeout_s": 600
+  },
+  "risk": {
+   "min_cash": 0.1,
+   "max_invested": 0.9,
+   "max_weight_etf": 0.25,
+   "max_weight_stock": 0.1,
+   "max_weight_group": 0.3,
+   "max_increase_vs_baseline": 0.15,
+   "weight_sum_tolerance": 0.05,
+   "max_corrected_assets": 3,
+   "max_total_correction": 0.2
+  },
+  "drawdown_levels": [
+   {
+    "threshold": -0.03,
+    "action": "alert"
+   },
+   {
+    "threshold": -0.05,
+    "action": "reduce_only"
+   },
+   {
+    "threshold": -0.08,
+    "action": "cap_exposure_60"
+   },
+   {
+    "threshold": -0.12,
+    "action": "baseline_half_exposure_and_pause"
+   }
+  ],
+  "execution": {
+   "no_trade_band": 0.02,
+   "band_tolerance": 0.001,
+   "max_turnover_per_run": 0.3,
+   "initial_deployment_max_invested": 0.05,
+   "limit_price_tolerance": 0.003
+  },
+  "benchmark": "SPY",
+  "agent": "pipeline",
+  "tools": {
+   "max_rounds": 6,
+   "max_calls": 12
+  },
+  "news": {
+   "enabled": false,
+   "analyst_model": "mistral-small-2603",
+   "batch_size": 20,
+   "coverage_start": "2026-06-01",
+   "fred_release_ids": [
+    10,
+    50
+   ]
+  }
+ },
+ "data": {
+  "last_session": "2026-11-25",
+  "n_sessions": 512,
+  "symbols": [
+   "SPY",
+   "QQQ",
+   "IWM",
+   "EFA",
+   "EEM",
+   "XLE",
+   "XLV",
+   "XLF",
+   "TLT",
+   "GLD",
+   "NVDA",
+   "JPM",
+   "XOM",
+   "LLY",
+   "AMZN"
+  ]
+ },
+ "account": {
+  "equity": 100445.56,
+  "drawdown_from_peak": 0.0
+ },
+ "forecasts": {
+  "SPY": {
+   "1": {
+    "q10": -0.01993,
+    "median": 0.00333,
+    "q90": 0.02211,
+    "width_80": 0.04204
+   },
+   "2": {
+    "q10": -0.02698,
+    "median": 0.00469,
+    "q90": 0.03019,
+    "width_80": 0.05717
+   },
+   "3": {
+    "q10": -0.03085,
+    "median": 0.00585,
+    "q90": 0.03635,
+    "width_80": 0.0672
+   },
+   "4": {
+    "q10": -0.03447,
+    "median": 0.00742,
+    "q90": 0.04139,
+    "width_80": 0.07585
+   },
+   "5": {
+    "q10": -0.03741,
+    "median": 0.00836,
+    "q90": 0.04581,
+    "width_80": 0.08322
+   }
+  },
+  "QQQ": {
+   "1": {
+    "q10": -0.0295,
+    "median": 0.00272,
+    "q90": 0.03225,
+    "width_80": 0.06175
+   },
+   "2": {
+    "q10": -0.04081,
+    "median": 0.00333,
+    "q90": 0.04385,
+    "width_80": 0.08466
+   },
+   "3": {
+    "q10": -0.04853,
+    "median": 0.00376,
+    "q90": 0.05321,
+    "width_80": 0.10174
+   },
+   "4": {
+    "q10": -0.05419,
+    "median": 0.00503,
+    "q90": 0.0606,
+    "width_80": 0.1148
+   },
+   "5": {
+    "q10": -0.06018,
+    "median": 0.00514,
+    "q90": 0.06679,
+    "width_80": 0.12697
+   }
+  },
+  "IWM": {
+   "1": {
+    "q10": -0.01855,
+    "median": -0.0002,
+    "q90": 0.01664,
+    "width_80": 0.03519
+   },
+   "2": {
+    "q10": -0.02556,
+    "median": -9e-05,
+    "q90": 0.02307,
+    "width_80": 0.04864
+   },
+   "3": {
+    "q10": -0.03024,
+    "median": 0.00015,
+    "q90": 0.02851,
+    "width_80": 0.05875
+   },
+   "4": {
+    "q10": -0.03389,
+    "median": 0.00094,
+    "q90": 0.03303,
+    "width_80": 0.06692
+   },
+   "5": {
+    "q10": -0.03731,
+    "median": 0.00103,
+    "q90": 0.03698,
+    "width_80": 0.07428
+   }
+  },
+  "EFA": {
+   "1": {
+    "q10": -0.01768,
+    "median": 0.00122,
+    "q90": 0.01773,
+    "width_80": 0.03541
+   },
+   "2": {
+    "q10": -0.02262,
+    "median": 0.00237,
+    "q90": 0.02404,
+    "width_80": 0.04667
+   },
+   "3": {
+    "q10": -0.02574,
+    "median": 0.00335,
+    "q90": 0.02839,
+    "width_80": 0.05413
+   },
+   "4": {
+    "q10": -0.0287,
+    "median": 0.00476,
+    "q90": 0.03294,
+    "width_80": 0.06164
+   },
+   "5": {
+    "q10": -0.03066,
+    "median": 0.00573,
+    "q90": 0.03671,
+    "width_80": 0.06736
+   }
+  },
+  "EEM": {
+   "1": {
+    "q10": -0.03245,
+    "median": 0.00271,
+    "q90": 0.03428,
+    "width_80": 0.06672
+   },
+   "2": {
+    "q10": -0.04386,
+    "median": 0.00387,
+    "q90": 0.0474,
+    "width_80": 0.09126
+   },
+   "3": {
+    "q10": -0.05112,
+    "median": 0.00475,
+    "q90": 0.05697,
+    "width_80": 0.10809
+   },
+   "4": {
+    "q10": -0.05728,
+    "median": 0.00643,
+    "q90": 0.0656,
+    "width_80": 0.12287
+   },
+   "5": {
+    "q10": -0.06312,
+    "median": 0.00704,
+    "q90": 0.07269,
+    "width_80": 0.13581
+   }
+  },
+  "XLE": {
+   "1": {
+    "q10": -0.01984,
+    "median": 0.00056,
+    "q90": 0.02006,
+    "width_80": 0.0399
+   },
+   "2": {
+    "q10": -0.02658,
+    "median": 0.00114,
+    "q90": 0.02791,
+    "width_80": 0.05449
+   },
+   "3": {
+    "q10": -0.03164,
+    "median": 0.00122,
+    "q90": 0.03343,
+    "width_80": 0.06506
+   },
+   "4": {
+    "q10": -0.03533,
+    "median": 0.00198,
+    "q90": 0.0386,
+    "width_80": 0.07393
+   },
+   "5": {
+    "q10": -0.03921,
+    "median": 0.00194,
+    "q90": 0.04288,
+    "width_80": 0.08208
+   }
+  },
+  "XLV": {
+   "1": {
+    "q10": -0.01724,
+    "median": -0.00113,
+    "q90": 0.01438,
+    "width_80": 0.03163
+   },
+   "2": {
+    "q10": -0.02247,
+    "median": -0.00076,
+    "q90": 0.02081,
+    "width_80": 0.04327
+   },
+   "3": {
+    "q10": -0.0269,
+    "median": -0.00103,
+    "q90": 0.025,
+    "width_80": 0.0519
+   },
+   "4": {
+    "q10": -0.03029,
+    "median": -0.00073,
+    "q90": 0.02883,
+    "width_80": 0.05912
+   },
+   "5": {
+    "q10": -0.03341,
+    "median": -0.00115,
+    "q90": 0.03148,
+    "width_80": 0.06488
+   }
+  },
+  "XLF": {
+   "1": {
+    "q10": -0.01516,
+    "median": 5e-05,
+    "q90": 0.01446,
+    "width_80": 0.02962
+   },
+   "2": {
+    "q10": -0.0205,
+    "median": 0.0001,
+    "q90": 0.01952,
+    "width_80": 0.04001
+   },
+   "3": {
+    "q10": -0.02416,
+    "median": 0.00011,
+    "q90": 0.02331,
+    "width_80": 0.04747
+   },
+   "4": {
+    "q10": -0.02695,
+    "median": 0.00039,
+    "q90": 0.02657,
+    "width_80": 0.05351
+   },
+   "5": {
+    "q10": -0.0295,
+    "median": 0.00017,
+    "q90": 0.02925,
+    "width_80": 0.05875
+   }
+  },
+  "TLT": {
+   "1": {
+    "q10": -0.00903,
+    "median": -5e-05,
+    "q90": 0.00888,
+    "width_80": 0.0179
+   },
+   "2": {
+    "q10": -0.01209,
+    "median": 0.00031,
+    "q90": 0.01235,
+    "width_80": 0.02443
+   },
+   "3": {
+    "q10": -0.01456,
+    "median": 0.00067,
+    "q90": 0.01538,
+    "width_80": 0.02993
+   },
+   "4": {
+    "q10": -0.01665,
+    "median": 0.00081,
+    "q90": 0.01765,
+    "width_80": 0.0343
+   },
+   "5": {
+    "q10": -0.01854,
+    "median": 0.00097,
+    "q90": 0.01979,
+    "width_80": 0.03834
+   }
+  },
+  "GLD": {
+   "1": {
+    "q10": -0.02174,
+    "median": 0.00204,
+    "q90": 0.02536,
+    "width_80": 0.0471
+   },
+   "2": {
+    "q10": -0.03114,
+    "median": 0.00199,
+    "q90": 0.03486,
+    "width_80": 0.066
+   },
+   "3": {
+    "q10": -0.03841,
+    "median": 0.00199,
+    "q90": 0.04306,
+    "width_80": 0.08147
+   },
+   "4": {
+    "q10": -0.0436,
+    "median": 0.00248,
+    "q90": 0.04998,
+    "width_80": 0.09359
+   },
+   "5": {
+    "q10": -0.0491,
+    "median": 0.00258,
+    "q90": 0.05532,
+    "width_80": 0.10442
+   }
+  },
+  "NVDA": {
+   "1": {
+    "q10": -0.09588,
+    "median": -0.00121,
+    "q90": 0.09036,
+    "width_80": 0.18624
+   },
+   "2": {
+    "q10": -0.13115,
+    "median": -0.00152,
+    "q90": 0.12199,
+    "width_80": 0.25314
+   },
+   "3": {
+    "q10": -0.15771,
+    "median": -0.00052,
+    "q90": 0.14576,
+    "width_80": 0.30347
+   },
+   "4": {
+    "q10": -0.17431,
+    "median": 0.0006,
+    "q90": 0.16303,
+    "width_80": 0.33735
+   },
+   "5": {
+    "q10": -0.19138,
+    "median": 0.00098,
+    "q90": 0.18064,
+    "width_80": 0.37202
+   }
+  },
+  "JPM": {
+   "1": {
+    "q10": -0.0187,
+    "median": 0.00119,
+    "q90": 0.01996,
+    "width_80": 0.03866
+   },
+   "2": {
+    "q10": -0.02697,
+    "median": 0.00144,
+    "q90": 0.02769,
+    "width_80": 0.05466
+   },
+   "3": {
+    "q10": -0.03259,
+    "median": 0.00175,
+    "q90": 0.03357,
+    "width_80": 0.06616
+   },
+   "4": {
+    "q10": -0.03668,
+    "median": 0.0025,
+    "q90": 0.03899,
+    "width_80": 0.07567
+   },
+   "5": {
+    "q10": -0.04048,
+    "median": 0.00266,
+    "q90": 0.0435,
+    "width_80": 0.08398
+   }
+  },
+  "XOM": {
+   "1": {
+    "q10": -0.02219,
+    "median": 0.00057,
+    "q90": 0.02235,
+    "width_80": 0.04454
+   },
+   "2": {
+    "q10": -0.03009,
+    "median": 0.00067,
+    "q90": 0.03085,
+    "width_80": 0.06094
+   },
+   "3": {
+    "q10": -0.03619,
+    "median": 0.0004,
+    "q90": 0.03701,
+    "width_80": 0.07321
+   },
+   "4": {
+    "q10": -0.04079,
+    "median": 0.0009,
+    "q90": 0.04268,
+    "width_80": 0.08347
+   },
+   "5": {
+    "q10": -0.04578,
+    "median": 0.0006,
+    "q90": 0.04728,
+    "width_80": 0.09306
+   }
+  },
+  "LLY": {
+   "1": {
+    "q10": -0.02637,
+    "median": -0.00267,
+    "q90": 0.02089,
+    "width_80": 0.04726
+   },
+   "2": {
+    "q10": -0.03507,
+    "median": -0.00317,
+    "q90": 0.03077,
+    "width_80": 0.06584
+   },
+   "3": {
+    "q10": -0.04292,
+    "median": -0.00443,
+    "q90": 0.03659,
+    "width_80": 0.07951
+   },
+   "4": {
+    "q10": -0.04916,
+    "median": -0.00463,
+    "q90": 0.04215,
+    "width_80": 0.09131
+   },
+   "5": {
+    "q10": -0.05477,
+    "median": -0.00597,
+    "q90": 0.0455,
+    "width_80": 0.10026
+   }
+  },
+  "AMZN": {
+   "1": {
+    "q10": -0.03009,
+    "median": 0.00164,
+    "q90": 0.03325,
+    "width_80": 0.06335
+   },
+   "2": {
+    "q10": -0.04215,
+    "median": 0.00105,
+    "q90": 0.0448,
+    "width_80": 0.08694
+   },
+   "3": {
+    "q10": -0.05082,
+    "median": 0.00041,
+    "q90": 0.05267,
+    "width_80": 0.10349
+   },
+   "4": {
+    "q10": -0.05753,
+    "median": 0.00017,
+    "q90": 0.05882,
+    "width_80": 0.11635
+   },
+   "5": {
+    "q10": -0.06402,
+    "median": -0.0005,
+    "q90": 0.06461,
+    "width_80": 0.12863
+   }
+  }
+ },
+ "portfolios": {
+  "current": {
+   "SPY": 0.04142645954684309,
+   "QQQ": 0.03092478600348288,
+   "IWM": 0.06213445239391368,
+   "EFA": 0.05690679284380514,
+   "EEM": 0.03132445072733927,
+   "XLE": 0.04577423448084714,
+   "XLV": 0.10854411191495175,
+   "XLF": 0.0837773705776542,
+   "TLT": 0.18011591824466905,
+   "GLD": 0.010350554071280006,
+   "NVDA": 0.0,
+   "JPM": 0.05736018239133716,
+   "XOM": 0.03518238172000833,
+   "LLY": 0.05635384950813157,
+   "AMZN": 0.03657424147966321
+  },
+  "baseline": {
+   "SPY": 0.060443262019189904,
+   "QQQ": 0.03961379416044929,
+   "IWM": 0.0677142394440501,
+   "EFA": 0.07466849394460807,
+   "EEM": 0.037035909318578,
+   "XLE": 0.061277346476285764,
+   "XLV": 0.07752206140119858,
+   "XLF": 0.08561118748259293,
+   "TLT": 0.13120712404036025,
+   "GLD": 0.04817161874990851,
+   "NVDA": 0.013520323081700036,
+   "JPM": 0.059892841292772045,
+   "XOM": 0.05404952821326631,
+   "LLY": 0.05016758459669052,
+   "AMZN": 0.039104685778349794
+  },
+  "proposed": {
+   "SPY": {
+    "weight": 0.05,
+    "confidence": 0.55,
+    "rationale": "Below baseline (-1.0pp): S&P 500 is still in a 20d drawdown (-7.2%) with a wide 5d interval (0.083); keep a modest underweight versus baseline, preferring IWM within us_broad given its tighter interval and smaller drawdown."
+   },
+   "QQQ": {
+    "weight": 0.03,
+    "confidence": 0.6,
+    "rationale": "Below baseline (-1.0pp): Nasdaq 100 has the second-widest 5d interval (0.127) and a -12.6% 20d drawdown; trim versus baseline in the risk-off regime."
+   },
+   "IWM": {
+    "weight": 0.062,
+    "confidence": 0.55,
+    "rationale": "Near baseline (-0.6pp): small caps have a tighter interval (0.074) and a smaller 20d drawdown (-4.4%) than SPY/QQQ, so keep close to baseline with a slight trim."
+   },
+   "EFA": {
+    "weight": 0.065,
+    "confidence": 0.55,
+    "rationale": "Below baseline (-1.0pp): developed ex-US has a reasonably tight interval (0.067) but negative 20d momentum (-4.3%); modest underweight versus baseline."
+   },
+   "EEM": {
+    "weight": 0.031,
+    "confidence": 0.6,
+    "rationale": "Below baseline (-0.6pp): emerging markets carry a very wide 5d interval (0.136) and -11.2% 20d; keep underweight."
+   },
+   "XLE": {
+    "weight": 0.046,
+    "confidence": 0.6,
+    "rationale": "Below baseline (-1.5pp): energy sector is down -11.0% over 20d with a wide interval (0.082); trim versus baseline."
+   },
+   "XLV": {
+    "weight": 0.1,
+    "confidence": 0.6,
+    "rationale": "Overweight versus baseline (+2.3pp, within the +15pp limit): health care is defensive, has a tight 5d interval (0.065) and positive 20d momentum (+2.2%); health group with LLY stays at 15.6%, well under the 30% cap."
+   },
+   "XLF": {
+    "weight": 0.084,
+    "confidence": 0.5,
+    "rationale": "Essentially at baseline (-0.2pp): financials have the tightest equity 5d interval (0.059) and mildly positive 20d momentum (+0.7%); keep near baseline."
+   },
+   "TLT": {
+    "weight": 0.18,
+    "confidence": 0.65,
+    "rationale": "Overweight versus baseline (+4.9pp, within the +15pp limit and 25% ETF cap): long Treasuries have the narrowest 80% interval of all assets (5d width 0.038) and positive 5d/20d momentum (+2.5%/+2.0%); the core ballast in a risk-off tape."
+   },
+   "GLD": {
+    "weight": 0.02,
+    "confidence": 0.55,
+    "rationale": "Below baseline (-2.8pp): gold has a wide interval (0.104) and is down -12.3% over 20d, i.e. it has been correlating with the risk-off rather than hedging it; keep only a small diversifier stake."
+   },
+   "NVDA": {
+    "weight": 0.0,
+    "confidence": 0.65,
+    "rationale": "Zero (baseline 1.35%): NVIDIA has by far the widest 5d interval (0.372) and a -30.7% 20d drawdown; the risk signal is extreme, so exit entirely."
+   },
+   "JPM": {
+    "weight": 0.057,
+    "confidence": 0.5,
+    "rationale": "Near baseline (-0.3pp): JPMorgan has a moderate interval (0.084) and -6.6% 20d; financials group with XLF stays at 14.1%, under the 30% cap; keep close to baseline."
+   },
+   "XOM": {
+    "weight": 0.035,
+    "confidence": 0.6,
+    "rationale": "Below baseline (-1.9pp): Exxon is down -12.6% over 20d with a wide interval (0.093); energy group with XLE stays at 8.1%; trim versus baseline."
+   },
+   "LLY": {
+    "weight": 0.056,
+    "confidence": 0.55,
+    "rationale": "Slightly above baseline (+0.6pp): Lilly is the strongest 20d performer (+8.2%) and sits in the defensive health group, though its interval (0.100) is wider than XLV's; modest overweight."
+   },
+   "AMZN": {
+    "weight": 0.037,
+    "confidence": 0.5,
+    "rationale": "Near baseline (-0.2pp): Amazon has a wide 5d interval (0.129) and -8.7% over 5d, but the baseline already reflects that width; tech_growth group stays at 6.7%; keep close to baseline."
+   }
+  },
+  "proposed_cash": 0.147,
+  "final": {
+   "SPY": 0.05,
+   "QQQ": 0.03,
+   "IWM": 0.062,
+   "EFA": 0.065,
+   "EEM": 0.031,
+   "XLE": 0.046,
+   "XLV": 0.1,
+   "XLF": 0.084,
+   "TLT": 0.18,
+   "GLD": 0.02,
+   "NVDA": 0.0,
+   "JPM": 0.057,
+   "XOM": 0.035,
+   "LLY": 0.056,
+   "AMZN": 0.037
+  },
+  "final_cash": 0.1469999999999998
+ },
+ "decision": {
+  "agent": "pipeline",
+  "prompt_version": "decide_v1",
+  "outcome": "accepted",
+  "attempts": [
+   {
+    "model": "mistral-large-4-0",
+    "prompt_tokens": 5170,
+    "completion_tokens": 14678,
+    "answer": "{\n  \"analysis\": \"Regime read: the last 20 sessions show a clear risk-off rotation. High-beta growth and commodities have sold off hard (QQQ -12.6%, NVDA -30.7%, EEM -11.2%, XLE -11.0%, XOM -12.6%, GLD -12.3% over 20d), while defensives have held up (TLT +2.0%, XLV +2.2%, LLY +8.2%, XLF +0.7%). The forecast intervals corroborate this: TLT has by far the narrowest 80% interval (5d width 0.038), XLF (0.059) and XLV (0.065) are the tightest equity exposures, while NVDA (0.372), EEM (0.136), AMZN (0.129) and QQQ (0.127) are the widest. Since the median has no reliable directional skill, I am not buying positive medians; I am using the reliable width signal plus the observed cross-asset regime. The baseline already encodes width, so I stay close to it, with a modest defensive tilt: keep TLT elevated as ballast (narrowest interval, positive 5d/20d momentum), keep XLV modestly overweight (defensive, tight interval), trim the assets that are both wide-interval and in drawdown (QQQ, EEM, XLE, XOM, GLD, NVDA to zero given its extreme 0.372 width and -30.7% 20d), and hold cash at 14.7% (above the 10% floor) as a buffer in a risk-off tape. No drawdown is present, so no extra restrictions apply. All group caps (max health 15.6%, bonds 18.0%, us_broad 11.2%), ETF 25% cap, stock 10% cap, and the +15pp-above-baseline increase limit are respected; the largest increase over baseline is TLT at +4.9pp. Changes versus the current portfolio are all under 2pp, so this is effectively a hold of the existing defensive posture rather than churn.\",\n  \"positions\": [\n    {\"symbol\": \"SPY\", \"target_weight\": 0.050, \"rationale\": \"Below baseline (-1.0pp): S&P 500 is still in a 20d drawdown (-7.2%) with a wide 5d interval (0.083); keep a modest underweight versus baseline, preferring IWM within us_broad given its tighter interval and smaller drawdown.\", \"confidence\": 0.55},\n    {\"symbol\": \"QQQ\", \"target_weight\": 0.030, \"rationale\": \"Below baseline (-1.0pp): Nasdaq 100 has the second-widest 5d interval (0.127) and a -12.6% 20d drawdown; trim versus baseline in the risk-off regime.\", \"confidence\": 0.60},\n    {\"symbol\": \"IWM\", \"target_weight\": 0.062, \"rationale\": \"Near baseline (-0.6pp): small caps have a tighter interval (0.074) and a smaller 20d drawdown (-4.4%) than SPY/QQQ, so keep close to baseline with a slight trim.\", \"confidence\": 0.55},\n    {\"symbol\": \"EFA\", \"target_weight\": 0.065, \"rationale\": \"Below baseline (-1.0pp): developed ex-US has a reasonably tight interval (0.067) but negative 20d momentum (-4.3%); modest underweight versus baseline.\", \"confidence\": 0.55},\n    {\"symbol\": \"EEM\", \"target_weight\": 0.031, \"rationale\": \"Below baseline (-0.6pp): emerging markets carry a very wide 5d interval (0.136) and -11.2% 20d; keep underweight.\", \"confidence\": 0.60},\n    {\"symbol\": \"XLE\", \"target_weight\": 0.046, \"rationale\": \"Below baseline (-1.5pp): energy sector is down -11.0% over 20d with a wide interval (0.082); trim versus baseline.\", \"confidence\": 0.60},\n    {\"symbol\": \"XLV\", \"target_weight\": 0.100, \"rationale\": \"Overweight versus baseline (+2.3pp, within the +15pp limit): health care is defensive, has a tight 5d interval (0.065) and positive 20d momentum (+2.2%); health group with LLY stays at 15.6%, well under the 30% cap.\", \"confidence\": 0.60},\n    {\"symbol\": \"XLF\", \"target_weight\": 0.084, \"rationale\": \"Essentially at baseline (-0.2pp): financials have the tightest equity 5d interval (0.059) and mildly positive 20d momentum (+0.7%); keep near baseline.\", \"confidence\": 0.50},\n    {\"symbol\": \"TLT\", \"target_weight\": 0.180, \"rationale\": \"Overweight versus baseline (+4.9pp, within the +15pp limit and 25% ETF cap): long Treasuries have the narrowest 80% interval of all assets (5d width 0.038) and positive 5d/20d momentum (+2.5%/+2.0%); the core ballast in a risk-off tape.\", \"confidence\": 0.65},\n    {\"symbol\": \"GLD\", \"target_weight\": 0.020, \"rationale\": \"Below baseline (-2.8pp): gold has a wide interval (0.104) and is down -12.3% over 20d, i.e. it has been correlating with the risk-off rather than hedging it; keep only a small diversifier stake.\", \"confidence\": 0.55},\n    {\"symbol\": \"NVDA\", \"target_weight\": 0.000, \"rationale\": \"Zero (baseline 1.35%): NVIDIA has by far the widest 5d interval (0.372) and a -30.7% 20d drawdown; the risk signal is extreme, so exit entirely.\", \"confidence\": 0.65},\n    {\"symbol\": \"JPM\", \"target_weight\": 0.057, \"rationale\": \"Near baseline (-0.3pp): JPMorgan has a moderate interval (0.084) and -6.6% 20d; financials group with XLF stays at 14.1%, under the 30% cap; keep close to baseline.\", \"confidence\": 0.50},\n    {\"symbol\": \"XOM\", \"target_weight\": 0.035, \"rationale\": \"Below baseline (-1.9pp): Exxon is down -12.6% over 20d with a wide interval (0.093); energy group with XLE stays at 8.1%; trim versus baseline.\", \"confidence\": 0.60},\n    {\"symbol\": \"LLY\", \"target_weight\": 0.056, \"rationale\": \"Slightly above baseline (+0.6pp): Lilly is the strongest 20d performer (+8.2%) and sits in the defensive health group, though its interval (0.100) is wider than XLV's; modest overweight.\", \"confidence\": 0.55},\n    {\"symbol\": \"AMZN\", \"target_weight\": 0.037, \"rationale\": \"Near baseline (-0.2pp): Amazon has a wide 5d interval (0.129) and -8.7% over 5d, but the baseline already reflects that width; tech_growth group stays at 6.7%; keep close to baseline.\", \"confidence\": 0.50}\n  ],\n  \"cash_weight\": 0.147\n}",
+    "guardrails": {
+     "status": "accepted",
+     "weights": {
+      "SPY": 0.05,
+      "QQQ": 0.03,
+      "IWM": 0.062,
+      "EFA": 0.065,
+      "EEM": 0.031,
+      "XLE": 0.046,
+      "XLV": 0.1,
+      "XLF": 0.084,
+      "TLT": 0.18,
+      "GLD": 0.02,
+      "NVDA": 0.0,
+      "JPM": 0.057,
+      "XOM": 0.035,
+      "LLY": 0.056,
+      "AMZN": 0.037
+     },
+     "cash": 0.1469999999999998,
+     "corrections": [],
+     "rejection_reason": null,
+     "drawdown_actions": [],
+     "confidences": {
+      "SPY": 0.55,
+      "QQQ": 0.6,
+      "IWM": 0.55,
+      "EFA": 0.55,
+      "EEM": 0.6,
+      "XLE": 0.6,
+      "XLV": 0.6,
+      "XLF": 0.5,
+      "TLT": 0.65,
+      "GLD": 0.55,
+      "NVDA": 0.65,
+      "JPM": 0.5,
+      "XOM": 0.6,
+      "LLY": 0.55,
+      "AMZN": 0.5
+     }
+    }
+   }
+  ],
+  "steps": [],
+  "tool_calls": []
+ },
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are the portfolio decision-maker of an autonomous paper-trading agent. You manage a long-only portfolio of 15 US-listed assets (ETFs and single stocks) plus cash. Positions are rebalanced at most twice per trading day.\n\n# How the system works\n\n1. **Timestral**, a time-series foundation model, forecasts each asset's cumulative return over the next 1 to 5 trading days, as quantiles (q10, median, q90).\n2. A deterministic **baseline rule** turns those forecasts into a baseline portfolio: each weight is inversely proportional to the width of the asset's 80% forecast interval (q90 - q10). Uncertain assets get small weights.\n3. **You** receive the forecasts, the baseline, the current portfolio and recent market data, and propose target weights. Your job is to bring judgement the rule cannot: cross-asset relationships, the market regime, events, concentration risks, and anything in the data that the rule ignores.\n4. Deterministic **guardrails** then validate your proposal. Small rule violations are corrected and logged; severe ones reject your whole proposal and the portfolio stays unchanged.\n\n# How to read the forecasts\n\n- The intervals are well calibrated: about 80% of outcomes fall between q10 and q90. **The width is reliable information about risk.**\n- **The median has shown no reliable directional skill** in our tests (hit rate within noise of 50%). Do not treat a positive median as a buy signal on its own.\n- Returns are cumulative from the last completed close, expressed as fractions (0.02 = +2%).\n\n# Rules (enforced by the guardrails whatever you answer)\n\n- Long-only: every weight >= 0. No leverage.\n- Weights of all 15 assets plus cash must sum to 1.\n- Cash >= 10% of the portfolio.\n- Each ETF <= 25%, each single stock <= 10%, each group (assets sharing a \"group\" label) <= 30% in total.\n- **Asymmetric freedom:** you may reduce any position, down to zero, and raise cash as much as you want. You may **increase** a position by at most 15 percentage points above its baseline weight.\n- Every deviation from the baseline larger than 0.5 percentage points needs a rationale.\n- If the portfolio is in drawdown, stricter limits apply (see `portfolio.drawdown_actions`): `reduce_only` means you may not increase any position above its current weight; `cap_exposure_60` means at most 60% invested.\n- Too many corrections (more than 3 assets, or more than 20 points in total) and your proposal is rejected entirely. Respect the limits yourself.\n\n# How to decide\n\n- **Staying at the baseline is a legitimate decision.** Deviate only when you have a concrete reason grounded in the data provided. A smaller, well-justified tilt beats a large speculative one.\n- Avoid churn: changes smaller than 2 points from the current weight are not traded anyway.\n- Reason about the portfolio as a whole: correlations between assets (e.g. an ETF and a stock of the same sector), overall equity exposure, defensive assets (bonds, gold, cash).\n- Use only the data provided. Do not rely on remembered prices or events after the last date in the data.\n- `confidence` (0 to 1) is your probability that your deviation from the baseline will turn out better, on a risk-adjusted basis over the next 5 trading days, than keeping the baseline weight. Use 0.5 when you keep the baseline or have no edge. It is logged and checked against outcomes: be calibrated, not optimistic.\n\n# Output\n\nReturn JSON matching the schema. Write `analysis` **first**: your reading of the market, the main risks, and which changes you make and why. Then `positions` with **all 15 assets** (target weight, rationale, confidence), then `cash_weight`.\n"
+  },
+  {
+   "role": "user",
+   "content": "{\n \"as_of\": \"2026-11-27T10:01-05:00\",\n \"run\": \"morning\",\n \"last_completed_session\": \"2026-11-25\",\n \"forecast_horizons_trading_days\": [\n  1,\n  5\n ],\n \"portfolio\": {\n  \"equity_usd\": 100445.56,\n  \"current_cash\": 0.1633,\n  \"baseline_cash\": 0.1,\n  \"drawdown_from_peak\": 0.0,\n  \"drawdown_actions\": []\n },\n \"assets\": [\n  {\n   \"symbol\": \"SPY\",\n   \"name\": \"S&P 500\",\n   \"type\": \"etf\",\n   \"group\": \"us_broad\",\n   \"current_weight\": 0.0414,\n   \"baseline_weight\": 0.0604,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.01993,\n     \"median\": 0.00333,\n     \"q90\": 0.02211,\n     \"width_80\": 0.04204\n    },\n    \"5\": {\n     \"q10\": -0.03741,\n     \"median\": 0.00836,\n     \"q90\": 0.04581,\n     \"width_80\": 0.08322\n    }\n   },\n   \"recent\": {\n    \"return_1d\": -0.00289,\n    \"return_5d\": -0.01849,\n    \"return_20d\": -0.072,\n    \"volatility_20d_annualised\": 0.3167\n   },\n   \"latest_price\": 720.525,\n   \"move_since_last_close\": 0.00534\n  },\n  {\n   \"symbol\": \"QQQ\",\n   \"name\": \"Nasdaq 100\",\n   \"type\": \"etf\",\n   \"group\": \"tech_growth\",\n   \"current_weight\": 0.0309,\n   \"baseline_weight\": 0.0396,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.0295,\n     \"median\": 0.00272,\n     \"q90\": 0.03225,\n     \"width_80\": 0.06175\n    },\n    \"5\": {\n     \"q10\": -0.06018,\n     \"median\": 0.00514,\n     \"q90\": 0.06679,\n     \"width_80\": 0.12697\n    }\n   },\n   \"recent\": {\n    \"return_1d\": -0.00654,\n    \"return_5d\": -0.03879,\n    \"return_20d\": -0.12635,\n    \"volatility_20d_annualised\": 0.4778\n   },\n   \"latest_price\": 638.0,\n   \"move_since_last_close\": 0.00642\n  },\n  {\n   \"symbol\": \"IWM\",\n   \"name\": \"US small caps\",\n   \"type\": \"etf\",\n   \"group\": \"us_broad\",\n   \"current_weight\": 0.0621,\n   \"baseline_weight\": 0.0677,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.01855,\n     \"median\": -0.0002,\n     \"q90\": 0.01664,\n     \"width_80\": 0.03519\n    },\n    \"5\": {\n     \"q10\": -0.03731,\n     \"median\": 0.00103,\n     \"q90\": 0.03698,\n     \"width_80\": 0.07428\n    }\n   },\n   \"recent\": {\n    \"return_1d\": 0.00648,\n    \"return_5d\": -0.00463,\n    \"return_20d\": -0.04415,\n    \"volatility_20d_annualised\": 0.3124\n   },\n   \"latest_price\": 271.06,\n   \"move_since_last_close\": 0.00815\n  },\n  {\n   \"symbol\": \"EFA\",\n   \"name\": \"Developed markets ex-US\",\n   \"type\": \"etf\",\n   \"group\": \"intl_developed\",\n   \"current_weight\": 0.0569,\n   \"baseline_weight\": 0.0747,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.01768,\n     \"median\": 0.00122,\n     \"q90\": 0.01773,\n     \"width_80\": 0.03541\n    },\n    \"5\": {\n     \"q10\": -0.03066,\n     \"median\": 0.00573,\n     \"q90\": 0.03671,\n     \"width_80\": 0.06736\n    }\n   },\n   \"recent\": {\n    \"return_1d\": 0.00303,\n    \"return_5d\": -0.01077,\n    \"return_20d\": -0.0434,\n    \"volatility_20d_annualised\": 0.2515\n   },\n   \"latest_price\": 99.95,\n   \"move_since_last_close\": 0.00776\n  },\n  {\n   \"symbol\": \"EEM\",\n   \"name\": \"Emerging markets\",\n   \"type\": \"etf\",\n   \"group\": \"emerging\",\n   \"current_weight\": 0.0313,\n   \"baseline_weight\": 0.037,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.03245,\n     \"median\": 0.00271,\n     \"q90\": 0.03428,\n     \"width_80\": 0.06672\n    },\n    \"5\": {\n     \"q10\": -0.06312,\n     \"median\": 0.00704,\n     \"q90\": 0.07269,\n     \"width_80\": 0.13581\n    }\n   },\n   \"recent\": {\n    \"return_1d\": -0.00512,\n    \"return_5d\": -0.02557,\n    \"return_20d\": -0.11209,\n    \"volatility_20d_annualised\": 0.4601\n   },\n   \"latest_price\": 57.56,\n   \"move_since_last_close\": 0.02057\n  },\n  {\n   \"symbol\": \"XLE\",\n   \"name\": \"Energy sector\",\n   \"type\": \"etf\",\n   \"group\": \"energy\",\n   \"current_weight\": 0.0458,\n   \"baseline_weight\": 0.0613,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.01984,\n     \"median\": 0.00056,\n     \"q90\": 0.02006,\n     \"width_80\": 0.0399\n    },\n    \"5\": {\n     \"q10\": -0.03921,\n     \"median\": 0.00194,\n     \"q90\": 0.04288,\n     \"width_80\": 0.08208\n    }\n   },\n   \"recent\": {\n    \"return_1d\": 0.00744,\n    \"return_5d\": -0.00636,\n    \"return_20d\": -0.1103,\n    \"volatility_20d_annualised\": 0.3097\n   },\n   \"latest_price\": 61.8,\n   \"move_since_last_close\": 0.01478\n  },\n  {\n   \"symbol\": \"XLV\",\n   \"name\": \"Health care sector\",\n   \"type\": \"etf\",\n   \"group\": \"health\",\n   \"current_weight\": 0.1085,\n   \"baseline_weight\": 0.0775,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.01724,\n     \"median\": -0.00113,\n     \"q90\": 0.01438,\n     \"width_80\": 0.03163\n    },\n    \"5\": {\n     \"q10\": -0.03341,\n     \"median\": -0.00115,\n     \"q90\": 0.03148,\n     \"width_80\": 0.06488\n    }\n   },\n   \"recent\": {\n    \"return_1d\": -0.00563,\n    \"return_5d\": 0.01385,\n    \"return_20d\": 0.02203,\n    \"volatility_20d_annualised\": 0.2507\n   },\n   \"latest_price\": 183.0,\n   \"move_since_last_close\": -0.0037\n  },\n  {\n   \"symbol\": \"XLF\",\n   \"name\": \"Financials sector\",\n   \"type\": \"etf\",\n   \"group\": \"financials\",\n   \"current_weight\": 0.0838,\n   \"baseline_weight\": 0.0856,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.01516,\n     \"median\": 5e-05,\n     \"q90\": 0.01446,\n     \"width_80\": 0.02962\n    },\n    \"5\": {\n     \"q10\": -0.0295,\n     \"median\": 0.00017,\n     \"q90\": 0.02925,\n     \"width_80\": 0.05875\n    }\n   },\n   \"recent\": {\n    \"return_1d\": 0.00713,\n    \"return_5d\": 0.0016,\n    \"return_20d\": 0.00677,\n    \"volatility_20d_annualised\": 0.2508\n   },\n   \"latest_price\": 56.98,\n   \"move_since_last_close\": 0.00832\n  },\n  {\n   \"symbol\": \"TLT\",\n   \"name\": \"Long-term US Treasuries\",\n   \"type\": \"etf\",\n   \"group\": \"bonds\",\n   \"current_weight\": 0.1801,\n   \"baseline_weight\": 0.1312,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.00903,\n     \"median\": -5e-05,\n     \"q90\": 0.00888,\n     \"width_80\": 0.0179\n    },\n    \"5\": {\n     \"q10\": -0.01854,\n     \"median\": 0.00097,\n     \"q90\": 0.01979,\n     \"width_80\": 0.03834\n    }\n   },\n   \"recent\": {\n    \"return_1d\": 0.0092,\n    \"return_5d\": 0.02518,\n    \"return_20d\": 0.01971,\n    \"volatility_20d_annualised\": 0.1123\n   },\n   \"latest_price\": 81.745,\n   \"move_since_last_close\": -0.00602\n  },\n  {\n   \"symbol\": \"GLD\",\n   \"name\": \"Gold\",\n   \"type\": \"etf\",\n   \"group\": \"gold\",\n   \"current_weight\": 0.0104,\n   \"baseline_weight\": 0.0482,\n   \"max_weight\": 0.25,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.02174,\n     \"median\": 0.00204,\n     \"q90\": 0.02536,\n     \"width_80\": 0.0471\n    },\n    \"5\": {\n     \"q10\": -0.0491,\n     \"median\": 0.00258,\n     \"q90\": 0.05532,\n     \"width_80\": 0.10442\n    }\n   },\n   \"recent\": {\n    \"return_1d\": 0.00615,\n    \"return_5d\": -0.04027,\n    \"return_20d\": -0.12332,\n    \"volatility_20d_annualised\": 0.3395\n   },\n   \"latest_price\": 332.75,\n   \"move_since_last_close\": 0.01619\n  },\n  {\n   \"symbol\": \"NVDA\",\n   \"name\": \"NVIDIA\",\n   \"type\": \"stock\",\n   \"group\": \"tech_growth\",\n   \"current_weight\": 0.0,\n   \"baseline_weight\": 0.0135,\n   \"max_weight\": 0.1,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.09588,\n     \"median\": -0.00121,\n     \"q90\": 0.09036,\n     \"width_80\": 0.18624\n    },\n    \"5\": {\n     \"q10\": -0.19138,\n     \"median\": 0.00098,\n     \"q90\": 0.18064,\n     \"width_80\": 0.37202\n    }\n   },\n   \"recent\": {\n    \"return_1d\": -0.03913,\n    \"return_5d\": -0.011,\n    \"return_20d\": -0.30681,\n    \"volatility_20d_annualised\": 1.2724\n   },\n   \"latest_price\": 146.06,\n   \"move_since_last_close\": -0.0217\n  },\n  {\n   \"symbol\": \"JPM\",\n   \"name\": \"JPMorgan Chase\",\n   \"type\": \"stock\",\n   \"group\": \"financials\",\n   \"current_weight\": 0.0574,\n   \"baseline_weight\": 0.0599,\n   \"max_weight\": 0.1,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.0187,\n     \"median\": 0.00119,\n     \"q90\": 0.01996,\n     \"width_80\": 0.03866\n    },\n    \"5\": {\n     \"q10\": -0.04048,\n     \"median\": 0.00266,\n     \"q90\": 0.0435,\n     \"width_80\": 0.08398\n    }\n   },\n   \"recent\": {\n    \"return_1d\": -0.00114,\n    \"return_5d\": -0.02274,\n    \"return_20d\": -0.06649,\n    \"volatility_20d_annualised\": 0.3177\n   },\n   \"latest_price\": 321.82,\n   \"move_since_last_close\": 0.01604\n  },\n  {\n   \"symbol\": \"XOM\",\n   \"name\": \"Exxon Mobil\",\n   \"type\": \"stock\",\n   \"group\": \"energy\",\n   \"current_weight\": 0.0352,\n   \"baseline_weight\": 0.054,\n   \"max_weight\": 0.1,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.02219,\n     \"median\": 0.00057,\n     \"q90\": 0.02235,\n     \"width_80\": 0.04454\n    },\n    \"5\": {\n     \"q10\": -0.04578,\n     \"median\": 0.0006,\n     \"q90\": 0.04728,\n     \"width_80\": 0.09306\n    }\n   },\n   \"recent\": {\n    \"return_1d\": -0.00095,\n    \"return_5d\": -0.01557,\n    \"return_20d\": -0.12605,\n    \"volatility_20d_annualised\": 0.3123\n   },\n   \"latest_price\": 160.3,\n   \"move_since_last_close\": 0.01404\n  },\n  {\n   \"symbol\": \"LLY\",\n   \"name\": \"Eli Lilly\",\n   \"type\": \"stock\",\n   \"group\": \"health\",\n   \"current_weight\": 0.0564,\n   \"baseline_weight\": 0.0502,\n   \"max_weight\": 0.1,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.02637,\n     \"median\": -0.00267,\n     \"q90\": 0.02089,\n     \"width_80\": 0.04726\n    },\n    \"5\": {\n     \"q10\": -0.05477,\n     \"median\": -0.00597,\n     \"q90\": 0.0455,\n     \"width_80\": 0.10026\n    }\n   },\n   \"recent\": {\n    \"return_1d\": -0.01092,\n    \"return_5d\": 0.00685,\n    \"return_20d\": 0.08197,\n    \"volatility_20d_annualised\": 0.3837\n   },\n   \"latest_price\": 1386.28,\n   \"move_since_last_close\": -0.00427\n  },\n  {\n   \"symbol\": \"AMZN\",\n   \"name\": \"Amazon\",\n   \"type\": \"stock\",\n   \"group\": \"tech_growth\",\n   \"current_weight\": 0.0366,\n   \"baseline_weight\": 0.0391,\n   \"max_weight\": 0.1,\n   \"forecast\": {\n    \"1\": {\n     \"q10\": -0.03009,\n     \"median\": 0.00164,\n     \"q90\": 0.03325,\n     \"width_80\": 0.06335\n    },\n    \"5\": {\n     \"q10\": -0.06402,\n     \"median\": -0.0005,\n     \"q90\": 0.06461,\n     \"width_80\": 0.12863\n    }\n   },\n   \"recent\": {\n    \"return_1d\": -0.03115,\n    \"return_5d\": -0.08706,\n    \"return_20d\": -0.03995,\n    \"volatility_20d_annualised\": 0.4678\n   },\n   \"latest_price\": 249.47,\n   \"move_since_last_close\": 0.02062\n  }\n ],\n \"news\": \"No news feed is connected yet.\"\n}"
+  }
+ ],
+ "orders": [],
+ "execution_status": "live",
+ "reasoning_file": "2026-11-27_morning_reasoning.txt",
+ "risk": {
+  "method": "timestral_vol_x_shrunk_historical_correlation",
+  "correlation_window": 252,
+  "shrinkage": 0.2,
+  "vols": {
+   "1": {
+    "SPY": 0.016404,
+    "QQQ": 0.024093,
+    "IWM": 0.013731,
+    "EFA": 0.013814,
+    "EEM": 0.026032,
+    "XLE": 0.015567,
+    "XLV": 0.012339,
+    "XLF": 0.011556,
+    "TLT": 0.006985,
+    "GLD": 0.018377,
+    "NVDA": 0.072663,
+    "JPM": 0.015083,
+    "XOM": 0.017379,
+    "LLY": 0.018438,
+    "AMZN": 0.024714
+   },
+   "5": {
+    "SPY": 0.032467,
+    "QQQ": 0.049539,
+    "IWM": 0.028981,
+    "EFA": 0.026282,
+    "EEM": 0.052987,
+    "XLE": 0.032025,
+    "XLV": 0.025314,
+    "XLF": 0.022922,
+    "TLT": 0.014957,
+    "GLD": 0.040738,
+    "NVDA": 0.145145,
+    "JPM": 0.032765,
+    "XOM": 0.036308,
+    "LLY": 0.039117,
+    "AMZN": 0.050184
+   }
+  },
+  "portfolio_vol": {
+   "1": {
+    "current": 0.005917,
+    "baseline": 0.007073,
+    "proposed": 0.006099,
+    "final": 0.006099
+   },
+   "5": {
+    "current": 0.012146,
+    "baseline": 0.014467,
+    "proposed": 0.012505,
+    "final": 0.012505
+   }
+  },
+  "risk_contributions_final": {
+   "SPY": 0.098217,
+   "QQQ": 0.072637,
+   "IWM": 0.109026,
+   "EFA": 0.104769,
+   "EEM": 0.080394,
+   "XLE": -0.002985,
+   "XLV": 0.114226,
+   "XLF": 0.097978,
+   "TLT": 0.086921,
+   "GLD": 0.026721,
+   "NVDA": 0.0,
+   "JPM": 0.089078,
+   "XOM": -0.011589,
+   "LLY": 0.073096,
+   "AMZN": 0.061512
+  },
+  "correlation": {
+   "symbols": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "XLE",
+    "XLV",
+    "XLF",
+    "TLT",
+    "GLD",
+    "NVDA",
+    "JPM",
+    "XOM",
+    "LLY",
+    "AMZN"
+   ],
+   "matrix": [
+    [
+     1.0,
+     0.7502,
+     0.6667,
+     0.6405,
+     0.6506,
+     -0.1388,
+     0.2061,
+     0.4462,
+     0.1635,
+     0.3175,
+     0.5568,
+     0.3978,
+     -0.2263,
+     0.1018,
+     0.4352
+    ],
+    [
+     0.7502,
+     1.0,
+     0.6074,
+     0.5657,
+     0.6938,
+     -0.1531,
+     0.0303,
+     0.2546,
+     0.1019,
+     0.302,
+     0.576,
+     0.2509,
+     -0.2386,
+     -0.0081,
+     0.3941
+    ],
+    [
+     0.6667,
+     0.6074,
+     1.0,
+     0.6293,
+     0.5963,
+     -0.1236,
+     0.2664,
+     0.4524,
+     0.2587,
+     0.3273,
+     0.39,
+     0.4094,
+     -0.2211,
+     0.1439,
+     0.2834
+    ],
+    [
+     0.6405,
+     0.5657,
+     0.6293,
+     1.0,
+     0.6381,
+     -0.1581,
+     0.2767,
+     0.4149,
+     0.2853,
+     0.4147,
+     0.353,
+     0.4167,
+     -0.2182,
+     0.1833,
+     0.2948
+    ],
+    [
+     0.6506,
+     0.6938,
+     0.5963,
+     0.6381,
+     1.0,
+     -0.1316,
+     0.04,
+     0.1963,
+     0.167,
+     0.383,
+     0.5095,
+     0.2336,
+     -0.2146,
+     0.0012,
+     0.2956
+    ],
+    [
+     -0.1388,
+     -0.1531,
+     -0.1236,
+     -0.1581,
+     -0.1316,
+     1.0,
+     -0.051,
+     -0.0906,
+     -0.2579,
+     -0.0625,
+     -0.0796,
+     -0.0185,
+     0.7294,
+     -0.0447,
+     -0.2017
+    ],
+    [
+     0.2061,
+     0.0303,
+     0.2664,
+     0.2767,
+     0.04,
+     -0.051,
+     1.0,
+     0.3541,
+     0.2129,
+     0.1151,
+     -0.0274,
+     0.2548,
+     -0.0534,
+     0.6089,
+     0.0602
+    ],
+    [
+     0.4462,
+     0.2546,
+     0.4524,
+     0.4149,
+     0.1963,
+     -0.0906,
+     0.3541,
+     1.0,
+     0.1573,
+     0.1426,
+     0.1354,
+     0.6523,
+     -0.1431,
+     0.1412,
+     0.2348
+    ],
+    [
+     0.1635,
+     0.1019,
+     0.2587,
+     0.2853,
+     0.167,
+     -0.2579,
+     0.2129,
+     0.1573,
+     1.0,
+     0.1047,
+     0.0291,
+     0.0962,
+     -0.2806,
+     0.1165,
+     0.0471
+    ],
+    [
+     0.3175,
+     0.302,
+     0.3273,
+     0.4147,
+     0.383,
+     -0.0625,
+     0.1151,
+     0.1426,
+     0.1047,
+     1.0,
+     0.2439,
+     0.1821,
+     -0.0597,
+     0.0604,
+     0.1462
+    ],
+    [
+     0.5568,
+     0.576,
+     0.39,
+     0.353,
+     0.5095,
+     -0.0796,
+     -0.0274,
+     0.1354,
+     0.0291,
+     0.2439,
+     1.0,
+     0.1484,
+     -0.1313,
+     -0.0538,
+     0.2062
+    ],
+    [
+     0.3978,
+     0.2509,
+     0.4094,
+     0.4167,
+     0.2336,
+     -0.0185,
+     0.2548,
+     0.6523,
+     0.0962,
+     0.1821,
+     0.1484,
+     1.0,
+     -0.0796,
+     0.1197,
+     0.1606
+    ],
+    [
+     -0.2263,
+     -0.2386,
+     -0.2211,
+     -0.2182,
+     -0.2146,
+     0.7294,
+     -0.0534,
+     -0.1431,
+     -0.2806,
+     -0.0597,
+     -0.1313,
+     -0.0796,
+     1.0,
+     -0.035,
+     -0.2622
+    ],
+    [
+     0.1018,
+     -0.0081,
+     0.1439,
+     0.1833,
+     0.0012,
+     -0.0447,
+     0.6089,
+     0.1412,
+     0.1165,
+     0.0604,
+     -0.0538,
+     0.1197,
+     -0.035,
+     1.0,
+     0.0058
+    ],
+    [
+     0.4352,
+     0.3941,
+     0.2834,
+     0.2948,
+     0.2956,
+     -0.2017,
+     0.0602,
+     0.2348,
+     0.0471,
+     0.1462,
+     0.2062,
+     0.1606,
+     -0.2622,
+     0.0058,
+     1.0
+    ]
+   ]
+  }
+ },
+ "requested_by": null,
+ "news": null
+}
